@@ -21,7 +21,8 @@
 //! later tasks:
 //!
 //! * `Server_Path_Prefix` normalization + validation (Req 31.4, 31.5) — the
-//!   raw value is stored verbatim here; the normalizer lands in task 3.2.
+//!   normalizer lives in the [`path_prefix`] submodule (task 3.2) and is wired
+//!   into [`Config::load`], which rewrites the value in place / rejects it.
 //! * The detailed `APP__*` / `STREMTHRU_*` translation table (Req 36.3, 36.4)
 //!   — [`apply_compat_sources`] is the wired-in hook completed in task 3.3.
 
@@ -29,6 +30,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::Deserialize;
+
+/// `Server_Path_Prefix` normalization + validation (Req 31.4, 31.5) — task 3.2.
+pub mod path_prefix;
+
+pub use path_prefix::{normalize_path_prefix, PathPrefixError};
 
 /// A secret string whose value is kept out of `Debug` output.
 ///
@@ -72,6 +78,10 @@ pub enum ConfigLoadError {
     /// (Req 31.6).
     #[error("invalid transport_routes JSON: {0}")]
     InvalidTransportRoutes(String),
+    /// The configured `server.path_prefix` contained a forbidden character and
+    /// was rejected at load (Req 31.5). The payload names the offending value.
+    #[error("invalid server.path_prefix: {0}")]
+    InvalidPathPrefix(#[from] path_prefix::PathPrefixError),
     /// The underlying `config` crate could not build or deserialize the tree.
     #[error(transparent)]
     Source(#[from] ::config::ConfigError),
@@ -94,8 +104,10 @@ pub struct ServerConfig {
     pub workers: usize,
     /// Public URL path prefix for generated URLs behind a reverse proxy.
     ///
-    /// Stored **verbatim** here; normalization (leading `/`, no trailing `/`,
-    /// collapse repeats) and validation (Req 31.4, 31.5) land in task 3.2.
+    /// Normalized at load to start with `/`, not end with `/`, and collapse
+    /// repeated slashes (Req 31.4); a value containing whitespace, control, or
+    /// URL-delimiter characters is rejected at load (Req 31.5). See
+    /// [`path_prefix::normalize_path_prefix`].
     pub path_prefix: String,
 }
 
@@ -751,7 +763,12 @@ impl Config {
         }
 
         let built = builder.build()?;
-        let config: Config = built.try_deserialize()?;
+        let mut config: Config = built.try_deserialize()?;
+
+        // Normalize + validate `Server_Path_Prefix` in place (Req 31.4, 31.5).
+        // A forbidden character aborts the load naming the offending value via
+        // the `#[from]` conversion into `ConfigLoadError::InvalidPathPrefix`.
+        config.server.path_prefix = path_prefix::normalize_path_prefix(&config.server.path_prefix)?;
 
         config.validate()?;
         Ok(config)

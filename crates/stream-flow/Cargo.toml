@@ -39,6 +39,14 @@ config = { workspace = true }
 # wraps handler-future execution so a panicking handler becomes a `500`
 # without tearing down the worker (design: Error Handling -> Panic boundary).
 futures = { workspace = true }
+# Cache layer (task 4.1): `CacheBackend` trait + moka-backed `LocalCache`
+# (TTL + LRU). `async-trait` makes the async trait object-safe so Redis and
+# failover backends can implement it uniformly; `moka` provides the async
+# TTL+LRU cache; `bytes` is the cached-value payload type
+# (design: Components -> Cache backend; Req 30).
+async-trait = { workspace = true }
+moka = { workspace = true }
+bytes = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }

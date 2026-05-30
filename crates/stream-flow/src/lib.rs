@@ -12,6 +12,7 @@
 //! `AppState`, and the dual-surface router land in later tasks (router
 //! skeleton: task 11.2).
 
+pub mod cache;
 pub mod config;
 pub mod errors;
 pub mod http;
