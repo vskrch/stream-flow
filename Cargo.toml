@@ -1,0 +1,155 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/stream-flow",
+    "crates/stream-flow-bin",
+    "crates/stream-flow-ffi",
+    "crates/os_info_stub",
+]
+
+# ---------------------------------------------------------------------------
+# Shared package metadata
+# ---------------------------------------------------------------------------
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# ---------------------------------------------------------------------------
+# os_info patch
+# ---------------------------------------------------------------------------
+# Replace the `os_info` crate with a ~100-line stub in crates/os_info_stub/.
+# Upstream pulls in `objc2-ui-kit` + `objc2-foundation` on iOS — ~23 MB of
+# compiled UIKit bindings — purely to produce a system-info string that
+# grammers-client passes to Telegram's InitConnection.  We don't need actual
+# OS detection; a generic "iOS" / "64-bit" / "Unknown" is fine.  This keeps
+# the binary small and links cleanly on Linux/ARM (design: Technology Choices).
+[patch.crates-io]
+os_info = { path = "crates/os_info_stub" }
+
+# ---------------------------------------------------------------------------
+# Centralized, pinned dependency versions (design: Technology Choices table).
+# Member crates opt in via `{ workspace = true }` so every version is pinned
+# once for the whole workspace.
+# ---------------------------------------------------------------------------
+[workspace.dependencies]
+# HTTP server
+actix-web = "4.13"
+actix-cors = "0.7"
+
+# Async runtime
+tokio = { version = "1.51", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Serde / data
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+bytes = "1.11"
+async-stream = "0.3"
+async-trait = "0.1"
+
+# HTTP clients — default (reqwest, rustls) + impersonation (rquest, BoringSSL)
+reqwest = { version = "0.12.28", default-features = false, features = ["stream", "json", "socks", "gzip", "deflate"] }
+rquest = { version = "5", default-features = false, features = ["full", "socks"] }
+rquest-util = "2"
+
+# Crypto
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+cipher = { version = "0.4", features = ["block-padding"] }
+ctr = "0.9"
+aes-gcm = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.9.3"
+
+# Encoding / data
+base64 = "0.22.1"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+url = "2.5"
+urlencoding = "2.1"
+regex = "1.12"
+thiserror = "2.0"
+
+# Configuration
+config = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Concurrency
+dashmap = "6"
+
+# Time
+time = "0.3"
+
+# HLS / DASH
+m3u8-rs = "6"
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Caches
+moka = { version = "0.12", features = ["future"] }
+deadpool-redis = { version = "0.18", features = ["rt_tokio_1"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+# SQLite persistence
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
+
+# HTML scraping
+scraper = "0.20"
+
+# Telegram MTProto
+grammers-client = "0.7"
+grammers-tl-types = "0.7"
+
+# Web UI assets
+rust-embed = "8"
+mime_guess = "2"
+
+# Metrics
+prometheus = "0.13"
+
+# Process RSS sampling (Degradation Guard / readiness probe)
+sysinfo = "0.32"
+
+# Vendored OpenSSL (legacy opt-in only)
+openssl = { version = "0.10", features = ["vendored"] }
+
+# Internal lib crate (referenced by bin + ffi crates)
+stream-flow = { path = "crates/stream-flow" }
+
+# Dev / test
+proptest = "1"
+wiremock = "0.6"
+tokio-test = "0.4"
+tempfile = "3.27"
+
+# ---------------------------------------------------------------------------
+# Release profiles — per-target panic strategy (design: Profile note).
+#
+#   * Server binary + library  -> `panic = "unwind"`  so the actix top-level
+#     panic-boundary middleware can convert a panicking handler into a 500
+#     without tearing down the worker (Req 47.3).
+#   * FFI staticlib            -> `panic = "abort"`   (smaller binary, needed
+#     for the iOS staticlib).  The FFI crate relies on `catch_unwind` at every
+#     C-ABI boundary (Req 34.3) and must never let a panic unwind across it.
+#
+# Build the server with the default `release` profile and the FFI staticlib
+# with `--profile release-ffi`:
+#     cargo build --release -p stream-flow-bin
+#     cargo build --profile release-ffi -p stream-flow-ffi
+# ---------------------------------------------------------------------------
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = true
+debug = false
+
+[profile.release-ffi]
+inherits = "release"
+panic = "abort"

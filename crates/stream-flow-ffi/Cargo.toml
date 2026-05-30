@@ -1,0 +1,23 @@
+[package]
+name = "stream-flow-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# C-ABI bridge for the core streaming-proxy + store ops (Req 34). Built as both
+# a staticlib (iOS xcframework) and a cdylib (Android / desktop shared lib).
+# This crate is built with `--profile release-ffi` (`panic = "abort"`) and
+# relies on `catch_unwind` at every boundary (design: Profile note).
+[lib]
+name = "stream_flow_ffi"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib"]
+
+[features]
+# The C-ABI surface is gated behind `ffi` so the crate is a no-op unless an
+# FFI build explicitly opts in (matches mediaflow's `ffi` feature).
+default = []
+ffi = ["dep:stream-flow"]
+
+[dependencies]
+stream-flow = { workspace = true, optional = true }

@@ -1,0 +1,32 @@
+[package]
+name = "stream-flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The library crate holds all logic; the binary and FFI crates are thin
+# wrappers over it (design: Workspace and Crate Layout).
+[lib]
+name = "stream_flow"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+# Lints mirror mediaflow-proxy-light: many config fields, cache-key helpers,
+# and FFI-facing APIs are exposed for the phased roadmap before every item is
+# wired into the binary.
+[lints.rust]
+dead_code = "allow"
+
+[lints.clippy]
+too_many_arguments = "allow"
+
+[dependencies]
+# Only the dependencies needed by the current (skeleton) surface are enabled.
+# The full pinned set lives in the workspace `[workspace.dependencies]` table
+# (design: Technology Choices) and is opted into by later tasks as the modules
+# that use them land.
+actix-web = { workspace = true }
+
+[dev-dependencies]
+actix-web = { workspace = true }
+tokio = { workspace = true }

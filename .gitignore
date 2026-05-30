@@ -1,0 +1,20 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Backup / editor files
+**/*.rs.bk
+*.swp
+*~
+
+# OS files
+.DS_Store
+
+# Coverage output
+*.profraw
+/coverage/
+lcov.info
+
+# Environment / secrets
+.env
+*.local.toml
