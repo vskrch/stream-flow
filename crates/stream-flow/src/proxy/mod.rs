@@ -12,15 +12,26 @@
 //! Adaptive + jitter buffer). Task 13.3 lands [`source`], the `UpstreamSource`
 //! abstraction + `DirectSource` (egress-backed) that produce the re-issuable
 //! zero-copy byte stream the streaming core relays (design: Components →
-//! Streaming Core). Later tasks add transport routing (`proxy::routing`) and
-//! the `ResilientStream` streaming-core state machine.
+//! Streaming Core). Task 14.1 lands [`routing`], the per-pattern transport
+//! routing + forwarding-client machinery (`select_route` most-specific match,
+//! `all://`/`*` patterns, http/https/socks4/socks5 schemes, per-route SSL
+//! policy, and the `(proxy, verify_ssl)` client LRU — design: Components →
+//! Transport routing & forwarding). Later tasks add the `ResilientStream`
+//! streaming-core state machine.
 
 pub mod buffer;
 pub mod range;
+pub mod resilient;
+pub mod routing;
 pub mod source;
 
 pub use buffer::AdaptiveJitterBuffer;
 pub use range::{
     compute_response_metadata, RangeSpec, ResolvedRange, ResponseMetadata, Unsatisfiable,
+};
+pub use resilient::ResilientStream;
+pub use routing::{
+    ClientCache, ProxyScheme, ProxyUrl, PatternError, RoutePattern, RouteSelection, RoutingTable,
+    TransportRoute,
 };
 pub use source::{ContentRange, DirectSource, UpstreamBody, UpstreamSource};

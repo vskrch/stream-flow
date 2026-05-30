@@ -11,7 +11,9 @@
 //! `transport_routes` are accepted as a JSON document via the
 //! `APP__PROXY__TRANSPORT_ROUTES` environment variable and rejected when the
 //! JSON is invalid (Req 31.6). Validation of the individual route *patterns*
-//! (Req 13.8) lands with transport routing (task 14.1).
+//! and forwarding-proxy URLs (Req 13.8) is performed at load by building the
+//! [`RoutingTable`](crate::proxy::routing::RoutingTable) (task 14.1); an
+//! invalid pattern is rejected and logged.
 //!
 //! ## Scope of this task (3.1)
 //!
@@ -82,6 +84,11 @@ pub enum ConfigLoadError {
     /// (Req 31.6).
     #[error("invalid transport_routes JSON: {0}")]
     InvalidTransportRoutes(String),
+    /// A `transport_routes` entry had an invalid route pattern or forwarding
+    /// proxy URL (Req 13.8). The payload names the offending pattern + reason;
+    /// the invalid pattern is also recorded in the structured log at load.
+    #[error("invalid transport route: {0}")]
+    InvalidTransportRoute(String),
     /// The configured `server.path_prefix` contained a forbidden character and
     /// was rejected at load (Req 31.5). The payload names the offending value.
     #[error("invalid server.path_prefix: {0}")]
@@ -792,7 +799,27 @@ impl Config {
         match &self.auth.api_password {
             Some(secret) if !secret.is_empty() => Ok(()),
             _ => Err(ConfigLoadError::MissingRequired("auth.api_password".to_string())),
+        }?;
+        self.validate_transport_routes()
+    }
+
+    /// Validate every `transport_routes` pattern + forwarding-proxy URL and the
+    /// default forwarding proxy (Req 13.8).
+    ///
+    /// Building the [`RoutingTable`](crate::proxy::routing::RoutingTable)
+    /// parses each route pattern and proxy URL; an invalid one is rejected at
+    /// load and recorded in the structured log (Req 13.8) so the operator sees
+    /// exactly which entry was wrong rather than getting silent mis-routing.
+    fn validate_transport_routes(&self) -> Result<(), ConfigLoadError> {
+        if let Err(err) = crate::proxy::routing::RoutingTable::from_proxy_config(&self.proxy) {
+            tracing::error!(
+                target: "config",
+                reason = %err.message,
+                "rejecting configuration: invalid transport route",
+            );
+            return Err(ConfigLoadError::InvalidTransportRoute(err.message));
         }
+        Ok(())
     }
 }
 
@@ -941,9 +968,11 @@ mod tests {
     fn transport_route_defaults_verify_ssl_true_when_omitted() {
         let mut env = HashMap::new();
         env.insert("APP__AUTH__API_PASSWORD".to_string(), "secret".to_string());
+        // A complete, valid proxied route (proxy=true requires a proxy_url —
+        // Req 13.8) that omits `verify_ssl`, so the default is exercised.
         env.insert(
             "APP__PROXY__TRANSPORT_ROUTES".to_string(),
-            r#"{"example.com":{"proxy":true}}"#.to_string(),
+            r#"{"example.com":{"proxy":true,"proxy_url":"socks5://127.0.0.1:9050"}}"#.to_string(),
         );
         let config = Config::load(&LoadOptions::new().with_env(env)).expect("valid JSON loads");
         let route = config.proxy.transport_routes.get("example.com").unwrap();
@@ -961,6 +990,42 @@ mod tests {
         let err = Config::load(&LoadOptions::new().with_env(env))
             .expect_err("invalid JSON must be rejected");
         assert!(matches!(err, ConfigLoadError::InvalidTransportRoutes(_)));
+    }
+
+    // -- Req 13.8: invalid transport-route pattern rejected at load ---------
+
+    #[test]
+    fn invalid_transport_route_pattern_is_rejected_at_load() {
+        let mut env = HashMap::new();
+        env.insert("APP__AUTH__API_PASSWORD".to_string(), "secret".to_string());
+        // A syntactically-valid JSON document whose *pattern* (the map key) is
+        // malformed (contains a URL path delimiter) must be rejected at load
+        // (Req 13.8).
+        env.insert(
+            "APP__PROXY__TRANSPORT_ROUTES".to_string(),
+            r#"{"bad.host/path":{"proxy":true,"proxy_url":"http://p:8080"}}"#.to_string(),
+        );
+        let err = Config::load(&LoadOptions::new().with_env(env))
+            .expect_err("invalid route pattern must abort load");
+        match err {
+            ConfigLoadError::InvalidTransportRoute(msg) => {
+                assert!(msg.contains("bad.host/path"), "must name the offending pattern: {msg}");
+            }
+            other => panic!("expected InvalidTransportRoute, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_forwarding_proxy_scheme_is_rejected_at_load() {
+        let mut env = HashMap::new();
+        env.insert("APP__AUTH__API_PASSWORD".to_string(), "secret".to_string());
+        env.insert(
+            "APP__PROXY__TRANSPORT_ROUTES".to_string(),
+            r#"{"api.example.com":{"proxy":true,"proxy_url":"ftp://p:21"}}"#.to_string(),
+        );
+        let err = Config::load(&LoadOptions::new().with_env(env))
+            .expect_err("unsupported proxy scheme must abort load");
+        assert!(matches!(err, ConfigLoadError::InvalidTransportRoute(_)));
     }
 
     // -- Req 31.3: egress / security / degradation / db sub-configs present -

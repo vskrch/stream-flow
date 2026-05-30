@@ -38,6 +38,7 @@ use reqwest::{Method, Url};
 
 use crate::config::{EgressConfig, EgressPolicy, EgressTunnelMode};
 use crate::errors::AppError;
+use crate::proxy::routing::{ProxyUrl, RoutePattern, RoutingTable, TransportRoute};
 
 use self::tunnel::LeakCheck as TunnelState;
 
@@ -57,13 +58,17 @@ use self::tunnel::LeakCheck as TunnelState;
 ///   with Chrome JA3/JA4 TLS emulation, for Cloudflare-fronted extractor hosts
 ///   (Req 35.5).
 ///
-/// Per-host/per-store tunnel selection (Req 51.9) is exposed through
-/// [`select_tunnel_endpoint`](OutboundClient::select_tunnel_endpoint); wiring
-/// it to the full `proxy::routing` machinery lands in task 14 (see the
-/// `// TODO(task 14)` note there).
+/// Per-host/per-store tunnel selection (Req 51.9) is performed by an embedded
+/// [`proxy::routing`](crate::proxy::routing) [`RoutingTable`]: the configured
+/// per-host tunnel overrides become most-specific-wins route patterns and the
+/// default tunnel endpoint is the all-proxy fallback (Req 13.2, 13.5, 13.6).
+/// [`select_tunnel_endpoint`](OutboundClient::select_tunnel_endpoint) reports
+/// the selected endpoint and [`upstream`](OutboundClient::upstream) dials it
+/// through the matching cached forwarding client.
 pub struct OutboundClient {
     /// Default tunnelled client (rustls `reqwest`) — dials through the
-    /// Egress_Tunnel (proxy mode) or the host routing table (netns mode).
+    /// Egress_Tunnel (proxy mode) or the host routing table (netns mode). Used
+    /// when no per-host tunnel override matches.
     tunneled: reqwest::Client,
     /// Chrome-JA3/JA4 impersonation client (`wreq`, BoringSSL), also
     /// tunnelled — used for browser-TLS extractor hosts (Req 35.5).
@@ -78,10 +83,15 @@ pub struct OutboundClient {
     /// for diagnostics and per-host routing (Req 51.9).
     default_endpoint: Option<String>,
     /// Per-host tunnel overrides (`host -> tunnel URL`) so an operator can pin
-    /// specific stores/hosts to specific tunnels (Req 51.9). Selection is
-    /// exposed via [`select_tunnel_endpoint`](OutboundClient::select_tunnel_endpoint);
-    /// building distinct per-host clients is wired in task 14.
+    /// specific stores/hosts to specific tunnels (Req 51.9), retained for
+    /// diagnostics.
     per_host: HashMap<String, String>,
+    /// The per-host/per-store tunnel routing table (Req 51.9): per-host
+    /// overrides as most-specific route patterns, the default endpoint as the
+    /// all-proxy fallback. Owns the `(proxy, verify_ssl)` client LRU so the
+    /// selected tunnel is actually dialled (design: Components -> Transport
+    /// routing & forwarding).
+    tunnel_routes: RoutingTable,
 }
 
 /// A hand-written [`Debug`] that never dereferences the held clients or the
@@ -118,6 +128,7 @@ impl OutboundClient {
         default_endpoint: Option<String>,
         per_host: HashMap<String, String>,
     ) -> Self {
+        let tunnel_routes = build_tunnel_routes(default_endpoint.as_deref(), &per_host);
         Self {
             tunneled,
             tunneled_impersonate,
@@ -125,6 +136,7 @@ impl OutboundClient {
             resolver,
             default_endpoint,
             per_host,
+            tunnel_routes,
         }
     }
 
@@ -218,34 +230,19 @@ impl OutboundClient {
         self.resolver.as_ref()
     }
 
-    /// Select the tunnel endpoint for `url`'s host (Req 51.9).
+    /// Select the tunnel endpoint for `url` via the per-host/per-store routing
+    /// table (Req 51.9).
     ///
-    /// Returns the per-host override when one is configured, else the default
-    /// tunnel endpoint. Host match is case-insensitive (hostnames are
-    /// case-insensitive).
-    ///
-    // TODO(task 14): replace this exact-host lookup with the full
-    // `proxy::routing` pattern matcher (most-specific wins, `all://` / `*`
-    // patterns, scheme selection) and build a per-endpoint client so the
-    // selected tunnel is actually dialled, completing the Req 51.9 routing
-    // hook. For task 8.3 every request uses the single default tunnelled
-    // client; selection here only reports which endpoint *would* be used.
+    /// Returns the most-specific matching per-host tunnel override (Req 13.2),
+    /// else the default tunnel endpoint when configured (the all-proxy
+    /// fallback — Req 13.5), else `None` (direct — Req 13.6). Host match is
+    /// case-insensitive.
     pub fn select_tunnel_endpoint(&self, url: &Url) -> Option<&str> {
-        if let Some(host) = url.host_str() {
-            let host_lower = host.to_ascii_lowercase();
-            if let Some((_, endpoint)) = self
-                .per_host
-                .iter()
-                .find(|(h, _)| h.to_ascii_lowercase() == host_lower)
-            {
-                return Some(endpoint.as_str());
-            }
-        }
-        self.default_endpoint.as_deref()
+        self.tunnel_routes.select_route(url).proxy_str()
     }
 
     /// Build a sanitized, tunnelled `reqwest` request for a debrid/media
-    /// upstream — the primary outbound entry point (Req 51.1, 51.8).
+    /// upstream — the primary outbound entry point (Req 51.1, 51.8, 51.9).
     ///
     /// The fail-closed [`policy`] decision is made **before** anything is
     /// built:
@@ -259,6 +256,12 @@ impl OutboundClient {
     /// * [`DialTunneled`](EgressDecision::DialTunneled) → proceeds through the
     ///   verified tunnel.
     ///
+    /// Once authorized, the per-host/per-store tunnel routing table selects the
+    /// endpoint for `url` (Req 51.9): a matching per-host override dials through
+    /// its own cached forwarding client (built once per `(proxy, verify_ssl)`),
+    /// while the unmatched / default path uses the pre-built default tunnelled
+    /// client.
+    ///
     /// The returned [`reqwest::RequestBuilder`] starts from a fresh request
     /// carrying no client-identifying headers; callers forwarding inbound
     /// headers must first pass them through [`sanitize_outbound`] (the only
@@ -266,7 +269,29 @@ impl OutboundClient {
     pub fn upstream(&self, method: Method, url: &Url) -> Result<reqwest::RequestBuilder, AppError> {
         // Gate the dial on the deterministic fail-closed decision (Req 51.8).
         self.authorize_dial(url)?;
-        Ok(self.tunneled.request(method, url.clone()))
+        // Per-host/per-store tunnel selection (Req 51.9): a matched override
+        // dials its own forwarding client; everything else uses the default
+        // tunnelled client.
+        let client = self.client_for(url)?;
+        Ok(client.request(method, url.clone()))
+    }
+
+    /// Resolve the `reqwest::Client` to dial `url` through, honoring the
+    /// per-host/per-store tunnel routing table (Req 51.9).
+    ///
+    /// A matched per-host override yields its dedicated cached forwarding
+    /// client; the unmatched / default path yields the pre-built default
+    /// tunnelled client (which already dials through the default endpoint, or
+    /// direct in netns/disabled mode).
+    fn client_for(&self, url: &Url) -> Result<reqwest::Client, AppError> {
+        let selection = self.tunnel_routes.select_route(url);
+        if selection.matched {
+            // A specific per-host tunnel override → its own cached client.
+            self.tunnel_routes.client_for(url)
+        } else {
+            // Default / direct path → the pre-built default tunnelled client.
+            Ok(self.tunneled.clone())
+        }
     }
 
     /// Build a sanitized, tunnelled **impersonation** (`wreq`, Chrome
@@ -302,6 +327,61 @@ impl OutboundClient {
             EgressDecision::RefuseFailClosed => Err(fail_closed_error()),
         }
     }
+}
+
+/// Build the per-host/per-store tunnel routing table (Req 51.9) from the
+/// default tunnel endpoint plus the `host -> tunnel URL` overrides.
+///
+/// Each override becomes an exact-host [`TransportRoute`] (the most specific
+/// host match — Req 13.2) pinned to that tunnel as its forwarding proxy; the
+/// default endpoint becomes the all-proxy fallback so unmatched hosts report
+/// the default tunnel (Req 13.5), and no default (netns/disabled) means
+/// unmatched hosts route direct (Req 13.6).
+///
+/// This runs in the infallible [`OutboundClient::new`] constructor, so an
+/// override / default that is not a valid forwarding-proxy URL is **skipped
+/// with a warning** rather than aborting: the affected host then falls back to
+/// the default tunnelled client, never to the host's real IP. (Config load
+/// validates the operator-facing transport-route table up front via
+/// [`RoutingTable::from_proxy_config`].)
+fn build_tunnel_routes(
+    default_endpoint: Option<&str>,
+    per_host: &HashMap<String, String>,
+) -> RoutingTable {
+    let mut routes = Vec::with_capacity(per_host.len());
+    for (host, endpoint) in per_host {
+        let pattern = match RoutePattern::parse(host) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    target: "egress",
+                    host = %host,
+                    reason = %e,
+                    "skipping per-host tunnel override with an invalid host pattern",
+                );
+                continue;
+            }
+        };
+        match ProxyUrl::parse(endpoint) {
+            Ok(proxy) => routes.push(TransportRoute {
+                pattern,
+                proxy: Some(proxy),
+                verify_ssl: true,
+            }),
+            Err(e) => {
+                tracing::warn!(
+                    target: "egress",
+                    host = %host,
+                    reason = %e.message,
+                    "skipping per-host tunnel override with an invalid tunnel URL",
+                );
+            }
+        }
+    }
+
+    let default_proxy = default_endpoint.and_then(|e| ProxyUrl::parse(e).ok());
+    let all_proxy = default_proxy.is_some();
+    RoutingTable::new(routes, all_proxy, default_proxy)
 }
 
 /// Build the default tunnelled `reqwest` client (rustls), routing through the
