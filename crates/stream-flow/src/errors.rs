@@ -162,6 +162,14 @@ pub struct AppError {
     /// `true` when a failed Proxy_Auth check should advertise an
     /// authenticate-challenge header on the `403` response (Req 28.3, 21.9).
     pub auth_challenge: bool,
+    /// `true` when an [`UpstreamSource`](crate::proxy::UpstreamSource) cannot
+    /// re-resolve its underlying URL — i.e. a non-renewable source such as a
+    /// plain [`DirectSource`](crate::proxy::DirectSource) rejecting `renew`
+    /// (Req 37.6). For the `ResilientStream` state machine only: it lets the
+    /// machine distinguish "this source can never renew" from a transient
+    /// renew failure and skip pointless renewal retries (it does not change the
+    /// client HTTP status).
+    pub not_renewable: bool,
 }
 
 impl AppError {
@@ -178,6 +186,7 @@ impl AppError {
             circuit_open: false,
             deadline_exceeded: false,
             auth_challenge: false,
+            not_renewable: false,
         }
     }
 
@@ -254,6 +263,20 @@ impl AppError {
         Self::new(ErrorCategory::Unknown, message)
     }
 
+    /// The "source cannot re-resolve its URL" signal returned by
+    /// [`UpstreamSource::renew`](crate::proxy::UpstreamSource::renew) for a
+    /// non-renewable source such as [`DirectSource`](crate::proxy::DirectSource)
+    /// (Req 37.6; design: Streaming Core — `Err(NotRenewable)`).
+    ///
+    /// Categorised as `UpstreamUnavailable` (so if it ever reaches a client it
+    /// renders the familiar `503`) and flagged with the
+    /// [`not_renewable`](AppError::not_renewable) marker so the
+    /// `ResilientStream` state machine can recognise it and skip pointless
+    /// link-renewal attempts rather than treating it as a transient failure.
+    pub fn not_renewable() -> Self {
+        Self::upstream_unavailable("upstream source does not support link renewal").into_not_renewable()
+    }
+
     // -- Store-identifying constructors -------------------------------------
 
     /// `401` identifying the store whose auth failed (Req 16.8).
@@ -322,6 +345,20 @@ impl AppError {
         self.category = ErrorCategory::UpstreamUnavailable;
         self.deadline_exceeded = true;
         self
+    }
+
+    /// Flag this error as a non-renewable-source signal (Req 37.6). Used by
+    /// [`AppError::not_renewable`]; sets the marker without otherwise changing
+    /// the category or message so the `ResilientStream` machine can detect it.
+    pub fn into_not_renewable(mut self) -> Self {
+        self.not_renewable = true;
+        self
+    }
+
+    /// `true` when this error signals a non-renewable
+    /// [`UpstreamSource`](crate::proxy::UpstreamSource) (Req 37.6).
+    pub fn is_not_renewable(&self) -> bool {
+        self.not_renewable
     }
 
     /// The HTTP status this error maps to (design: Canonical taxonomy table).

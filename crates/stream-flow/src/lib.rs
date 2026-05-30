@@ -23,6 +23,7 @@ pub mod egress;
 pub mod errors;
 pub mod health;
 pub mod http;
+pub mod observability;
 pub mod persistence;
 pub mod proxy;
 pub mod resilience;

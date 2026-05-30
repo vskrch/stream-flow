@@ -130,6 +130,22 @@ base64 = { workspace = true }
 # Auth "constant-time compare via subtle/hmac-based equality"; Req 28.8).
 # `sha2` (already linked for the vault) is the HMAC hash.
 hmac = { workspace = true }
+# Degradation Guard (task 11.3): the basic guard tracks active connections with
+# atomic counters and samples process RSS via a cheap, periodic gauge to drive
+# the `LoadState` high-water marks (design: Components -> Degradation Guard;
+# Technology Choices "Process RSS sampling"; Req 44.2). Sampled (not
+# per-request) to stay lightweight.
+sysinfo = { workspace = true }
+# Observability (task 12.1): Prometheus exposition at `/metrics` (Req 32.1) is
+# built from a `prometheus::Registry` of counters/histograms covering proxied
+# requests, store operations, cache hit/miss, upstream failures, and every
+# self-healing action (retries, breaker transitions, store fallbacks, task
+# restarts, Redis reattach, resource reclamation) so the system's healing is
+# observable (Req 32.5, 50.14). `tracing-subscriber` installs the structured
+# logging stack (Req 32.3) with a secret-redaction layer that scrubs known
+# secrets from URLs/headers before any log line is emitted (Req 32.6, 46.7).
+prometheus = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
@@ -146,3 +162,9 @@ proptest = { workspace = true }
 # Proxy-auth property test (task 9.3, Property 27): builds the base64-encoded
 # `user:pass` form the verifier must accept alongside the plain form (Req 28.2).
 base64 = { workspace = true }
+# Mock upstream origin for the streaming-core `UpstreamSource`/`DirectSource`
+# tests (task 13.3): `wiremock` stands up an in-process HTTP origin that serves
+# ranged bodies and redirect chains so `DirectSource::open` is exercised
+# end-to-end against a real socket without any network dependency (design:
+# Testing Strategy -> Integration tests "Mock streaming origin"; Req 48.6).
+wiremock = { workspace = true }

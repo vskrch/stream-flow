@@ -108,15 +108,18 @@ pub mod stremthru_surface {
 pub mod shared {
     use super::*;
     use crate::health::health_endpoint;
+    use crate::observability::metrics_endpoint;
 
     /// Register the shared routes.
     ///
-    /// `/health` is backed by its real handler (task 7.3); `/metrics` and
-    /// `/v0/events` are skeleton placeholders until observability (task 12.1)
-    /// and SSE (task 23) land. The web UI assets are mounted by the web-UI task.
+    /// `/health` is backed by its real handler (task 7.3) and `/metrics` by the
+    /// observability handler (task 12.1), which renders the Prometheus
+    /// exposition behind the metrics password (Req 32.1, 32.2). `/v0/events` is
+    /// a skeleton placeholder until SSE (task 23) lands. The web UI assets are
+    /// mounted by the web-UI task.
     pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.route("/health", web::get().to(health_endpoint)) // Req 50.10, 32.4
-            .route("/metrics", web::get().to(not_implemented)) // Req 32.1 (task 12.1)
+            .route("/metrics", web::get().to(metrics_endpoint)) // Req 32.1, 32.2
             .route("/v0/events", web::get().to(not_implemented)); // Req 36.2 (task 23)
     }
 }

@@ -38,6 +38,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::health::{ComponentHealth, HealthProbes, HealthRegistry, LoadState, StoreBreaker};
+use crate::observability::Metrics;
 
 /// Default liveness-heartbeat staleness bound for the skeleton registry.
 ///
@@ -64,6 +65,11 @@ struct AppStateInner {
     config: Config,
     /// The health registry backing `/health?probe=` (Req 50.10, task 7.3).
     health: HealthRegistry,
+    /// The Prometheus metrics registry backing `/metrics` and recording
+    /// counters/latencies for proxied requests, store ops, cache hit/miss,
+    /// upstream failures, and every self-healing action (Req 32.5, 50.14,
+    /// task 12.1).
+    metrics: Metrics,
 }
 
 impl AppState {
@@ -99,7 +105,11 @@ impl AppState {
     /// live signals instead of the skeleton defaults.
     pub fn with_health(config: Config, health: HealthRegistry) -> Self {
         Self {
-            inner: Arc::new(AppStateInner { config, health }),
+            inner: Arc::new(AppStateInner {
+                config,
+                health,
+                metrics: Metrics::new(),
+            }),
         }
     }
 
@@ -112,6 +122,13 @@ impl AppState {
     /// `/health` handler can read it).
     pub fn health(&self) -> &HealthRegistry {
         &self.inner.health
+    }
+
+    /// Borrow the shared metrics registry (registered as `web::Data` so the
+    /// `/metrics` handler renders it and every call site records into it,
+    /// Req 32.5, 50.14).
+    pub fn metrics(&self) -> &Metrics {
+        &self.inner.metrics
     }
 }
 
