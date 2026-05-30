@@ -16,6 +16,8 @@ pub mod cache;
 pub mod config;
 pub mod errors;
 pub mod http;
+pub mod persistence;
+pub mod resilience;
 
 use actix_web::{dev::HttpServiceFactory, web, HttpResponse};
 

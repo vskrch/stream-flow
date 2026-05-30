@@ -54,6 +54,19 @@ bytes = { workspace = true }
 # backend; Req 30.2, 30.3).
 deadpool-redis = { workspace = true }
 redis = { workspace = true }
+# Persistence (task 5.1): embedded SQLite via `sqlx::SqlitePool`. The pool is
+# built from `SqliteConnectOptions` configured for WAL journal mode, a 5s
+# busy_timeout, `synchronous=NORMAL`, and `foreign_keys=ON`, with a
+# configurable `max_connections` (design: Database -> Connection configuration;
+# Req 29.1, 29.6).
+sqlx = { workspace = true }
+
+# Resilience primitives (task 6.1): the `RetryPolicy` full-jitter backoff RNG
+# (`rand`, already linked for crypto IVs — design: Technology Choices "Jitter /
+# backoff RNG") and `tokio::time::sleep` for the retry-run loop's backoff waits
+# (design: Resilience -> Pattern 2 "Unified Retry Policy"; Req 50.1, 35.4).
+rand = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
