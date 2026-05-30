@@ -26,7 +26,14 @@ too_many_arguments = "allow"
 # (design: Technology Choices) and is opted into by later tasks as the modules
 # that use them land.
 actix-web = { workspace = true }
+# Canonical error taxonomy (task 2.1): `thiserror` derives the error impls and
+# `serde`/`serde_json` drive the consistent `ErrorResponse` serialized body
+# (design: Data Models -> Canonical Error Taxonomy; Error Handling).
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
 tokio = { workspace = true }
+serde_json = { workspace = true }

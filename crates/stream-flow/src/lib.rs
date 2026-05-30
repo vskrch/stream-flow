@@ -12,6 +12,8 @@
 //! `AppState`, and the dual-surface router land in later tasks (router
 //! skeleton: task 11.2).
 
+pub mod errors;
+
 use actix_web::{dev::HttpServiceFactory, web, HttpResponse};
 
 /// Build the application's routing tree.

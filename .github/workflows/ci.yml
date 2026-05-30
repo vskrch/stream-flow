@@ -1,0 +1,87 @@
+# CI pipeline and coverage gate for stream-flow.
+#
+# Pipeline order (design: Testing Strategy -> Coverage; Req 48.5, 48.7):
+#   1. cargo test --workspace          (unit + property + integration tests)
+#   2. cargo llvm-cov --fail-under-lines 90   (>= 90% line coverage gate on the library crate)
+#   3. build release artifacts         -- ONLY reached after 1 and 2 succeed
+#
+# Any test failure or coverage shortfall fails the build BEFORE any artifact
+# step runs: the `artifacts` job `needs: test`, so a non-zero exit from either
+# `cargo test` or the coverage gate blocks artifact production entirely.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel superseded in-flight runs for the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate job: tests must pass AND coverage must meet the >= 90% threshold.
+  # A failure in either step exits non-zero and blocks the `artifacts` job.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test + coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Step 1: run the full workspace test suite (unit + property + integration).
+      # A failing test exits non-zero here and the job (and pipeline) stops.
+      - name: Run tests
+        run: cargo test --workspace --all-features
+
+      # Step 2: coverage gate. Measured across the library crate (Req 48.5).
+      # `--fail-under-lines 90` exits non-zero on any coverage shortfall,
+      # blocking the downstream artifact job (Req 48.7).
+      - name: Coverage gate (>= 90% lines)
+        run: cargo llvm-cov --package stream-flow --all-features --fail-under-lines 90
+
+  # ---------------------------------------------------------------------------
+  # Artifact job: builds release binaries. `needs: test` enforces that this
+  # runs ONLY after tests pass and the coverage gate is satisfied (Req 48.7).
+  # ---------------------------------------------------------------------------
+  artifacts:
+    name: Build release artifacts
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      # Server binary + library: panic = "unwind" (default `release` profile).
+      - name: Build server binary
+        run: cargo build --release -p stream-flow-bin
+
+      # FFI staticlib: panic = "abort" (`release-ffi` profile). The C-ABI
+      # surface (and its dependency on the library crate) is gated behind the
+      # `ffi` feature, so enable it to produce a non-empty artifact.
+      - name: Build FFI staticlib
+        run: cargo build --profile release-ffi -p stream-flow-ffi --features ffi
