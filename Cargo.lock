@@ -2510,6 +2510,7 @@ name = "stream-flow"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "arc-swap",
  "async-trait",
  "bytes",
  "config",
@@ -2526,6 +2527,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

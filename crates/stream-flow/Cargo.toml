@@ -61,6 +61,11 @@ redis = { workspace = true }
 # Req 29.1, 29.6).
 sqlx = { workspace = true }
 
+# Migration logging (task 5.2): a failing startup migration is recorded in the
+# structured log naming the failing version before startup aborts (Req 29.4;
+# design: Database -> Migration mechanism).
+tracing = { workspace = true }
+
 # Resilience primitives (task 6.1): the `RetryPolicy` full-jitter backoff RNG
 # (`rand`, already linked for crypto IVs — design: Technology Choices "Jitter /
 # backoff RNG") and `tokio::time::sleep` for the retry-run loop's backoff waits
@@ -72,6 +77,12 @@ tokio = { workspace = true }
 # (per-store/per-host/per-integration) shared across worker tasks
 # (design: Resilience -> Pattern 3 "Bulkhead Isolation"; Req 35.3, 20.3, 50.9).
 dashmap = { workspace = true }
+# FailoverCache (task 4.3): `arc-swap`'s `ArcSwapOption<RedisCache>` holds the
+# optional Redis backend so a Redis outage drops the handle and a supervised
+# reattach loop restores it — all without a lock on the cache hot path, so
+# in-flight requests never block or fail on a Redis blip
+# (design: Components -> Cache backend (FailoverCache); Req 30.5, 50.5).
+arc-swap = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }

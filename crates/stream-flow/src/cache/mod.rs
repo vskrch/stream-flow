@@ -44,6 +44,10 @@ pub mod redis;
 pub use local::LocalCache;
 pub use redis::RedisCache;
 
+pub mod failover;
+
+pub use failover::{FailoverCache, FailoverConfig};
+
 /// The single storage seam shared by the Local (moka) and Redis backends.
 ///
 /// Implementors store opaque [`Bytes`] under string keys with a per-entry

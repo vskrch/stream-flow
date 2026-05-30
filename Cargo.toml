@@ -82,6 +82,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Concurrency
 dashmap = "6"
+# Lock-free hot-swap of the optional Redis backend inside `FailoverCache`
+# (`ArcSwapOption<RedisCache>`): a Redis outage drops the handle and a
+# supervised reattach loop restores it without blocking in-flight cache reads
+# (design: Components -> Cache backend (FailoverCache); Req 30.5, 50.5).
+arc-swap = "1.7"
 
 # Time
 time = "0.3"
