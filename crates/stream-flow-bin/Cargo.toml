@@ -13,10 +13,3 @@ path = "src/main.rs"
 [dependencies]
 stream-flow = { workspace = true }
 actix-web = { workspace = true }
-
-# The link-contract smoke test (task 1.3) reuses `stream_flow::build_app`
-# through the actix test harness to prove the binary package links against the
-# library crate (Req 49.6).
-[dev-dependencies]
-actix-web = { workspace = true }
-tokio = { workspace = true }

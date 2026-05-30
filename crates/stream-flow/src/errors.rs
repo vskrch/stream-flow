@@ -43,7 +43,8 @@
 
 use std::time::Duration;
 
-use actix_web::http::StatusCode;
+use actix_web::http::{header, StatusCode};
+use actix_web::{HttpResponse, ResponseError};
 
 /// The canonical category every failure is mapped onto (Req 16.10, 47.1).
 ///
@@ -105,6 +106,30 @@ impl ErrorCategory {
     /// Convenience over `category.to_string()` for the hot serialization path.
     pub fn code(self) -> String {
         self.to_string()
+    }
+
+    /// Single source of truth for retryability (design: Resilience -> Unified
+    /// Retry Policy; Req 50.1).
+    ///
+    /// Only **transient** upstream categories are retryable: a generic
+    /// upstream failure/timeout/circuit-open (`UpstreamUnavailable`, 503/504),
+    /// a hoster outage (`HosterUnavailable`, 502), and a rate limit
+    /// (`TooManyRequests`, 429 — the `RetryPolicy` honors `retry_after`).
+    ///
+    /// Everything else is permanent and must **not** be retried — a bare retry
+    /// cannot clear the condition. In particular `StoreLimitExceeded` (an
+    /// account cap) routes to store fallback + cooldown rather than a retry,
+    /// and the 4xx-style categories (`Unauthorized`, `Forbidden`,
+    /// `PaymentRequired`, `NotFound`, `InfringingContent`, `BadRequest`,
+    /// `PayloadTooLarge`, `RangeNotSatisfiable`, `InvalidStoreName`) plus the
+    /// catch-all `Unknown` are non-retryable.
+    pub fn is_retryable(self) -> bool {
+        matches!(
+            self,
+            ErrorCategory::UpstreamUnavailable
+                | ErrorCategory::HosterUnavailable
+                | ErrorCategory::TooManyRequests
+        )
     }
 }
 
@@ -331,6 +356,39 @@ impl From<&AppError> for ErrorResponse {
     }
 }
 
+/// Render any [`AppError`] as the canonical HTTP response (Req 47.3, 47.6).
+///
+/// This is the single place an `AppError` becomes an actix [`HttpResponse`]:
+/// the status comes from [`AppError::http_status`] and the body is the
+/// consistent [`ErrorResponse`] envelope (design: Error Handling → Error
+/// response shape). A `429` additionally carries a `Retry-After` header (in
+/// whole seconds) when a [`retry_after`](AppError::retry_after) hint is present
+/// (Req 40.3).
+///
+/// Auth failures do not reveal resource existence (Req 47.5): a missing
+/// protected resource and an unauthorized one both surface their auth
+/// `AppError` (`401`/`403`) here, never a `404` — that policy lives in the
+/// handlers/middleware that choose to return the auth error, and this impl
+/// renders exactly the category it is given without re-deriving a status from
+/// any notion of existence.
+impl ResponseError for AppError {
+    fn status_code(&self) -> StatusCode {
+        self.http_status()
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        let mut builder = HttpResponse::build(self.http_status());
+
+        // Retry-After (whole seconds) for rate-limit / account-cap 429s when a
+        // hint was attached (Req 40.3). `Retry-After` is defined in seconds.
+        if let Some(retry_after) = self.retry_after {
+            builder.insert_header((header::RETRY_AFTER, retry_after.as_secs()));
+        }
+
+        builder.json(self.to_error_response())
+    }
+}
+
 /// The consistent serialized error envelope returned by every endpoint
 /// (Req 47.6).
 ///
@@ -549,5 +607,161 @@ mod tests {
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         assert_eq!(err.store.as_deref(), Some("torbox"));
         assert_eq!(err.http_status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// `is_retryable()` is the single source of truth for retryability
+    /// (design: Resilience -> Unified Retry Policy, Req 50.1). Exactly the
+    /// transient upstream categories are retryable; every permanent category
+    /// (4xx-style, account caps, panics) is not.
+    #[test]
+    fn is_retryable_marks_only_transient_categories() {
+        // Retryable: 502/503/504 + rate limit (honor Retry-After at the policy).
+        assert!(ErrorCategory::UpstreamUnavailable.is_retryable());
+        assert!(ErrorCategory::HosterUnavailable.is_retryable());
+        assert!(ErrorCategory::TooManyRequests.is_retryable());
+
+        // Not retryable: permanent / non-transient categories.
+        assert!(!ErrorCategory::InvalidStoreName.is_retryable());
+        assert!(!ErrorCategory::BadRequest.is_retryable());
+        assert!(!ErrorCategory::Unauthorized.is_retryable());
+        assert!(!ErrorCategory::PaymentRequired.is_retryable());
+        assert!(!ErrorCategory::Forbidden.is_retryable());
+        assert!(!ErrorCategory::NotFound.is_retryable());
+        // Account cap -> store fallback + cooldown, never a bare retry.
+        assert!(!ErrorCategory::StoreLimitExceeded.is_retryable());
+        assert!(!ErrorCategory::InfringingContent.is_retryable());
+        assert!(!ErrorCategory::PayloadTooLarge.is_retryable());
+        assert!(!ErrorCategory::RangeNotSatisfiable.is_retryable());
+        assert!(!ErrorCategory::Unknown.is_retryable());
+    }
+}
+
+#[cfg(test)]
+mod response_error_tests {
+    //! Tests for the actix [`ResponseError`] impl (task 2.2): every
+    //! [`AppError`] renders the correct status + canonical [`ErrorResponse`]
+    //! body, `429`s carry `Retry-After`, and auth failures do not reveal
+    //! resource existence (Req 47.3, 47.5, 47.6).
+    use super::*;
+    use actix_web::body::MessageBody;
+    use actix_web::http::StatusCode;
+    use actix_web::ResponseError;
+
+    /// Read a (test-sized, complete) actix response body into a `serde_json`
+    /// value.
+    fn body_json(resp: actix_web::HttpResponse) -> serde_json::Value {
+        let bytes = resp
+            .into_body()
+            .try_into_bytes()
+            .expect("error body should be fully buffered in tests");
+        serde_json::from_slice(&bytes).expect("error body must be valid JSON")
+    }
+
+    #[test]
+    fn response_error_renders_status_for_every_category() {
+        let cases = [
+            (ErrorCategory::InvalidStoreName, 400u16),
+            (ErrorCategory::BadRequest, 400),
+            (ErrorCategory::Unauthorized, 401),
+            (ErrorCategory::PaymentRequired, 402),
+            (ErrorCategory::Forbidden, 403),
+            (ErrorCategory::NotFound, 404),
+            (ErrorCategory::PayloadTooLarge, 413),
+            (ErrorCategory::RangeNotSatisfiable, 416),
+            (ErrorCategory::TooManyRequests, 429),
+            (ErrorCategory::StoreLimitExceeded, 429),
+            (ErrorCategory::InfringingContent, 451),
+            (ErrorCategory::HosterUnavailable, 502),
+            (ErrorCategory::UpstreamUnavailable, 503),
+            (ErrorCategory::Unknown, 500),
+        ];
+        for (category, expected) in cases {
+            let err = AppError::new(category, "boom");
+            // `status_code()` and the rendered response status both agree with
+            // the canonical mapping.
+            assert_eq!(err.status_code().as_u16(), expected, "{category:?}");
+            let resp = err.error_response();
+            assert_eq!(resp.status().as_u16(), expected, "{category:?} response");
+        }
+    }
+
+    #[test]
+    fn deadline_exceeded_upstream_renders_504() {
+        let err = AppError::upstream_unavailable("slow").into_deadline_exceeded();
+        assert_eq!(err.error_response().status(), StatusCode::GATEWAY_TIMEOUT);
+    }
+
+    #[test]
+    fn response_body_is_the_canonical_error_response_envelope() {
+        let err = AppError::store_limit_exceeded("RealDebrid: active download limit reached")
+            .with_store("realdebrid")
+            .with_upstream_status(429);
+        let resp = err.error_response();
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+
+        let json = body_json(resp);
+        let obj = json["error"].as_object().unwrap();
+        assert_eq!(obj["code"], "store-limit-exceeded");
+        assert_eq!(obj["message"], "RealDebrid: active download limit reached");
+        assert_eq!(obj["store"], "realdebrid");
+        assert_eq!(obj["upstream_status"], 429);
+    }
+
+    #[test]
+    fn response_body_omits_absent_optional_fields() {
+        let resp = AppError::bad_request("bad sid").error_response();
+        let json = body_json(resp);
+        let obj = json["error"].as_object().unwrap();
+        assert_eq!(obj["code"], "bad-request");
+        assert_eq!(obj["message"], "bad sid");
+        assert!(!obj.contains_key("store"));
+        assert!(!obj.contains_key("upstream_status"));
+    }
+
+    #[test]
+    fn content_type_is_json() {
+        let resp = AppError::not_found("gone").error_response();
+        let ct = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(ct.starts_with("application/json"), "got content-type {ct:?}");
+    }
+
+    #[test]
+    fn retry_after_header_present_for_rate_limit_when_hint_set() {
+        let resp = AppError::too_many_requests("rate limited")
+            .with_retry_after(Duration::from_secs(5))
+            .error_response();
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        let retry_after = resp
+            .headers()
+            .get(header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(retry_after, Some("5"));
+    }
+
+    #[test]
+    fn retry_after_header_absent_when_no_hint() {
+        let resp = AppError::too_many_requests("rate limited").error_response();
+        assert!(resp.headers().get(header::RETRY_AFTER).is_none());
+    }
+
+    #[test]
+    fn auth_failure_does_not_reveal_resource_existence() {
+        // Req 47.5: a missing protected resource and an unauthorized one both
+        // surface their auth error here — the rendered status is the auth
+        // status (401/403), never 404, so the response cannot be used to probe
+        // whether the resource exists.
+        let unauthorized = AppError::unauthorized("authentication required").error_response();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+        let unauthorized_code = body_json(unauthorized)["error"]["code"].clone();
+
+        let forbidden = AppError::forbidden("access denied").error_response();
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+        // The auth response never carries a 404 / not-found signal.
+        assert_ne!(unauthorized_code, serde_json::json!("not-found"));
     }
 }

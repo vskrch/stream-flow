@@ -12,9 +12,13 @@
 //! `AppState`, and the dual-surface router land in later tasks (router
 //! skeleton: task 11.2).
 
+pub mod config;
 pub mod errors;
+pub mod http;
 
 use actix_web::{dev::HttpServiceFactory, web, HttpResponse};
+
+use crate::http::PanicBoundary;
 
 /// Build the application's routing tree.
 ///
@@ -23,11 +27,16 @@ use actix_web::{dev::HttpServiceFactory, web, HttpResponse};
 /// (`test::init_service(App::new().service(build_app()))`) construct the
 /// exact same service graph (Req 49.6).
 ///
-/// This is a stub: it currently registers only a single liveness route. The
-/// real dual-surface router and `AppState` threading are added in task 11.2;
-/// the signature will grow a `state: AppState` parameter at that point.
+/// This is a stub: it currently registers only a single liveness route, now
+/// wrapped by the top-level [`PanicBoundary`] so a panicking handler is
+/// isolated to its own request and converted to a `500` without terminating
+/// the worker (Req 47.3, 50.8). The real dual-surface router and `AppState`
+/// threading are added in task 11.2; the signature will grow a
+/// `state: AppState` parameter at that point.
 pub fn build_app() -> impl HttpServiceFactory {
-    web::scope("").route("/health", web::get().to(health))
+    web::scope("")
+        .wrap(PanicBoundary)
+        .route("/health", web::get().to(health))
 }
 
 /// Minimal liveness handler used by the skeleton `build_app` factory.
