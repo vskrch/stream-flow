@@ -67,10 +67,19 @@ sqlx = { workspace = true }
 # (design: Resilience -> Pattern 2 "Unified Retry Policy"; Req 50.1, 35.4).
 rand = { workspace = true }
 tokio = { workspace = true }
+# Bulkhead isolation pools (task 6.4): `tokio::sync::Semaphore` backs each
+# per-dependency concurrency pool and `dashmap` holds the per-key registry
+# (per-store/per-host/per-integration) shared across worker tasks
+# (design: Resilience -> Pattern 3 "Bulkhead Isolation"; Req 35.3, 20.3, 50.9).
+dashmap = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
-tokio = { workspace = true }
+# `test-util` (additive over the workspace `full` set) enables the paused
+# "fake clock" runtime (`#[tokio::test(start_paused = true)]` /
+# `tokio::time::pause`/`advance`) used by the deadline tests (task 6.3) so
+# timeout behavior is verified deterministically without real sleeping.
+tokio = { workspace = true, features = ["test-util"] }
 serde_json = { workspace = true }
 # Temp config files for the config-loader tests (task 3.1).
 tempfile = { workspace = true }
