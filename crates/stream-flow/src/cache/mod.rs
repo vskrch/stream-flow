@@ -5,18 +5,20 @@
 //! `FailoverCache` wrapper, so callers never branch on which storage is
 //! active (design: Components -> Cache backend).
 //!
-//! ## What lives here (task 4.1)
+//! ## What lives here
 //!
 //! * The [`CacheBackend`] trait: async `get`/`set`(+TTL)/`del` plus the
 //!   [`CacheBackend::namespace`] key prefix (Req 30.3).
 //! * [`LocalCache`] — the always-present in-process backend over
 //!   `moka::future::Cache` with TTL + LRU eviction (Req 30.1, 30.4), in
-//!   [`local`].
+//!   [`local`] (task 4.1).
+//! * [`RedisCache`] — the optional distributed backend over `deadpool-redis`
+//!   (Req 30.2), in [`redis`] (task 4.2).
 //!
-//! `RedisCache` (task 4.2) and `FailoverCache` (task 4.3) are deliberately
-//! **not** here yet; the trait is shaped so they slot in without changing any
-//! call site. All three share the namespace-prefixing and TTL contracts
-//! defined and exercised by this module.
+//! The `FailoverCache` (task 4.3) wraps an optional [`RedisCache`] over the
+//! always-present [`LocalCache`]; the trait is shaped so both backends slot in
+//! without changing any call site. All backends share the namespace-prefixing
+//! and TTL contracts defined and exercised by this module.
 //!
 //! ## Contract
 //!
@@ -37,8 +39,10 @@ use bytes::Bytes;
 use crate::errors::AppError;
 
 pub mod local;
+pub mod redis;
 
 pub use local::LocalCache;
+pub use redis::RedisCache;
 
 /// The single storage seam shared by the Local (moka) and Redis backends.
 ///

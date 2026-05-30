@@ -34,6 +34,10 @@ use serde::Deserialize;
 /// `Server_Path_Prefix` normalization + validation (Req 31.4, 31.5) — task 3.2.
 pub mod path_prefix;
 
+/// `APP__*` / `STREMTHRU_*` compatibility / translation layer (Req 36.3, 36.4)
+/// — task 3.3.
+mod compat;
+
 pub use path_prefix::{normalize_path_prefix, PathPrefixError};
 
 /// A secret string whose value is kept out of `Debug` output.
@@ -825,17 +829,22 @@ fn transport_routes_value(
     Value::from(map)
 }
 
-/// Hook for the `APP__*` / `STREMTHRU_*` translation layer (Req 36.3, 36.4).
+/// Wire the `APP__*` / `STREMTHRU_*` translation layer (Req 36.3, 36.4) into the
+/// builder.
 ///
-/// The detailed mapping table and the custom `config::Source` land in task 3.3
-/// (`config::compat`). For now this preserves the documented layering order by
-/// occupying the `STREMTHRU_*` slot between the file and `APP__*` layers without
-/// altering the builder.
+/// This occupies the `STREMTHRU_*` slot between the file (layer 2) and the
+/// native nested `APP__*` source (layer 4): the [`compat::CompatSource`] maps
+/// both projects' legacy compatibility environment variables onto the internal
+/// [`Config`] dotted keys, then the native `APP__*` source added afterwards has
+/// the documented final say over any genuinely overlapping scalar (Req 36.4).
+/// Auth tokens are kept on separate lists (`auth.api_password` vs
+/// `auth.proxy_auth[]`) so both authentication mechanisms remain active when
+/// both prefixes are set (Req 36.4).
 fn apply_compat_sources(
     builder: ::config::ConfigBuilder<::config::builder::DefaultState>,
-    _opts: &LoadOptions,
+    opts: &LoadOptions,
 ) -> ::config::ConfigBuilder<::config::builder::DefaultState> {
-    builder
+    builder.add_source(compat::CompatSource::from_options(opts))
 }
 
 /// Look up a raw environment value from the explicit map or the process env.

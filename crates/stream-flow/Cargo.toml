@@ -47,6 +47,13 @@ futures = { workspace = true }
 async-trait = { workspace = true }
 moka = { workspace = true }
 bytes = { workspace = true }
+# Redis cache backend (task 4.2): `RedisCache` implements `CacheBackend` over a
+# `deadpool-redis` connection pool, issuing `SET ... PX`/`GET`/`DEL` via the
+# `redis` async client. Optional/distributed cache tier behind the same
+# namespace + TTL contract as `LocalCache` (design: Components -> Cache
+# backend; Req 30.2, 30.3).
+deadpool-redis = { workspace = true }
+redis = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
