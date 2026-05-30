@@ -26,8 +26,8 @@ pub mod hedge;
 pub mod retry;
 
 pub use breaker::{
-    guarded, with_retry, with_retry_seeded, with_retry_with_rng, BreakerConfig, BreakerKey,
-    BreakerPermit, BreakerState, CircuitBreaker,
+    guarded, select_available, with_retry, with_retry_seeded, with_retry_with_rng, BreakerConfig,
+    BreakerKey, BreakerPermit, BreakerState, CircuitBreaker,
 };
 pub use deadline::{with_deadline, with_timeout, Deadline, TimeoutBudget};
 pub use hedge::{hedged, Candidate, CandidateId, HedgeConfig};

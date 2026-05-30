@@ -197,7 +197,14 @@ impl BreakerKey {
 }
 
 /// The three circuit-breaker states (design: Pattern 1 `BreakerState`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// `serde::Serialize` is derived so the breaker state can be embedded directly
+/// in the health model's [`ComponentHealth`](crate::health::ComponentHealth)
+/// component breakdown (design: Health Model & Probes — `breaker:
+/// Option<BreakerState>`); it serializes as `"closed"` / `"open"` /
+/// `"half_open"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BreakerState {
     /// Calls run normally; trip-eligible failures accumulate toward opening.
     Closed,
@@ -548,6 +555,35 @@ where
             Err(err)
         }
     }
+}
+
+/// Breaker-aware selection over an ordered set of interchangeable dependencies
+/// (design: Pattern 1 — `StoreBreakerSet`; Req 50.3).
+///
+/// Given the breakers for a set of interchangeable dependencies **in the
+/// configured order** (e.g. the per-store breakers behind a
+/// `StoreFallbackChain`), this returns the first dependency still in rotation —
+/// the first whose breaker is **not** [`Open`](BreakerState::Open). An `Open`
+/// breaker removes its dependency from rotation so resolution falls through to
+/// the next configured candidate (Req 50.3, 37.7). When **every** breaker is
+/// `Open` the whole set is unavailable and a typed
+/// [`UpstreamUnavailable`](ErrorCategory::UpstreamUnavailable) error carrying
+/// the [`circuit_open`](AppError::circuit_open) marker is returned (Req 50.3);
+/// the same error is returned for an empty set (no candidate to route to).
+///
+/// A [`HalfOpen`](BreakerState::HalfOpen) breaker is deliberately **not**
+/// excluded: it is admitting a recovery probe and is therefore back in
+/// rotation, so a recovered dependency resumes serving automatically (Req
+/// 50.4). This is the breaker-aware refinement of `StoreFallbackChain`; the
+/// cooldown reconciliation (Property 54) layers on top of it.
+pub fn select_available(breakers: &[CircuitBreaker]) -> Result<&CircuitBreaker, AppError> {
+    breakers
+        .iter()
+        .find(|breaker| breaker.state() != BreakerState::Open)
+        .ok_or_else(|| {
+            AppError::upstream_unavailable("all dependencies unavailable (all circuits open)")
+                .with_circuit_open()
+        })
 }
 
 /// Compose the [`RetryPolicy`] **inside** the [`CircuitBreaker`], bounded by a
@@ -969,6 +1005,88 @@ mod tests {
         let host_err = host.acquire().expect_err("open");
         assert_eq!(host_err.category, ErrorCategory::HosterUnavailable);
         assert!(host_err.circuit_open);
+    }
+
+    // -- breaker-aware selection (select_available) -------------------------
+
+    /// Build a store breaker already driven into a given state, returning it
+    /// alongside its clock so further transitions can be staged.
+    fn breaker_in_state(name: &str, state: BreakerState) -> (CircuitBreaker, Arc<ManualClock>) {
+        let clock = Arc::new(ManualClock::new());
+        let breaker = CircuitBreaker::with_clock(
+            BreakerKey::Store(name.into()),
+            BreakerConfig::new(1, Duration::from_secs(10)),
+            clock.clone(),
+        );
+        match state {
+            BreakerState::Closed => {}
+            BreakerState::Open => {
+                breaker.on_failure(breaker.acquire().unwrap(), &eligible());
+            }
+            BreakerState::HalfOpen => {
+                breaker.on_failure(breaker.acquire().unwrap(), &eligible());
+                clock.advance(Duration::from_secs(10)); // cooldown elapsed
+                // Admitting a probe transitions Open → HalfOpen; dropping the
+                // probe releases the slot but leaves the observed state HalfOpen.
+                let _probe = breaker.acquire().expect("probe admitted");
+            }
+        }
+        assert_eq!(breaker.state(), state);
+        (breaker, clock)
+    }
+
+    /// Selection returns the **first** non-`Open` breaker in configured order;
+    /// an `Open` breaker is skipped (removed from rotation) (Req 50.3).
+    #[test]
+    fn select_available_returns_first_non_open_in_order() {
+        let (a, _ca) = breaker_in_state("rd", BreakerState::Open);
+        let (b, _cb) = breaker_in_state("ad", BreakerState::Closed);
+        let (c, _cc) = breaker_in_state("pm", BreakerState::Closed);
+
+        let set = [a, b, c];
+        let chosen = select_available(&set).expect("a healthy store exists");
+        assert_eq!(chosen.key().label(), "ad", "skip Open rd, pick first healthy ad");
+    }
+
+    /// A `HalfOpen` breaker is in rotation (it admits a recovery probe), so
+    /// selection may return it ahead of a later `Closed` store (Req 50.4).
+    #[test]
+    fn select_available_admits_half_open() {
+        let (a, _ca) = breaker_in_state("rd", BreakerState::Open);
+        let (b, _cb) = breaker_in_state("ad", BreakerState::HalfOpen);
+        let (c, _cc) = breaker_in_state("pm", BreakerState::Closed);
+
+        let set = [a, b, c];
+        let chosen = select_available(&set).expect("half-open is selectable");
+        assert_eq!(chosen.key().label(), "ad", "HalfOpen is in rotation");
+    }
+
+    /// When every breaker is `Open` the whole set is unavailable: a typed
+    /// `UpstreamUnavailable` + `circuit_open` error is returned (Req 50.3).
+    #[test]
+    fn select_available_errors_when_all_open() {
+        let (a, _ca) = breaker_in_state("rd", BreakerState::Open);
+        let (b, _cb) = breaker_in_state("ad", BreakerState::Open);
+
+        let set = [a, b];
+        let err = match select_available(&set) {
+            Ok(_) => panic!("all open → must be unavailable"),
+            Err(e) => e,
+        };
+        assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
+        assert!(err.circuit_open);
+    }
+
+    /// An empty set has no candidate to route to and surfaces the same typed
+    /// unavailable error.
+    #[test]
+    fn select_available_errors_on_empty_set() {
+        let err = match select_available(&[]) {
+            Ok(_) => panic!("no candidates → must be unavailable"),
+            Err(e) => e,
+        };
+        assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
+        assert!(err.circuit_open);
     }
 
     // -- guarded ------------------------------------------------------------

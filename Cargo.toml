@@ -49,10 +49,19 @@ bytes = "1.11"
 async-stream = "0.3"
 async-trait = "0.1"
 
-# HTTP clients — default (reqwest, rustls) + impersonation (rquest, BoringSSL)
-reqwest = { version = "0.12.28", default-features = false, features = ["stream", "json", "socks", "gzip", "deflate"] }
-rquest = { version = "5", default-features = false, features = ["full", "socks"] }
-rquest-util = "2"
+# HTTP clients — default (reqwest, rustls) + impersonation (wreq, BoringSSL).
+#
+# `wreq`/`wreq-util` are the maintained successors of `rquest`/`rquest-util`:
+# the `rquest` 5.x line was deprecated and pulled from crates.io (every 5.x
+# version yanked), and its author migrated the project to the renamed `wreq`
+# crate. `wreq` is a hard fork of `reqwest` with the same builder/request API
+# (Client::builder().emulation(..).proxy(..).build(), client.request(method,
+# uri)), so the Chrome-JA3/JA4 impersonation seam (Req 35.5) is unchanged. The
+# pinned versions track the current `6.0.0-rc` / `3.0.0-rc` releases (the only
+# published wreq line).
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream", "json", "socks", "gzip", "deflate"] }
+wreq = { version = "6.0.0-rc", default-features = false, features = ["socks", "webpki-roots", "gzip", "deflate", "json", "stream"] }
+wreq-util = "3.0.0-rc"
 
 # Crypto
 aes = "0.8"

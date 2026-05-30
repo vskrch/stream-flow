@@ -159,6 +159,9 @@ pub struct AppError {
     pub circuit_open: bool,
     /// `true` when a request-scoped deadline elapsed (Req 50.9, 35.4).
     pub deadline_exceeded: bool,
+    /// `true` when a failed Proxy_Auth check should advertise an
+    /// authenticate-challenge header on the `403` response (Req 28.3, 21.9).
+    pub auth_challenge: bool,
 }
 
 impl AppError {
@@ -174,6 +177,7 @@ impl AppError {
             retry_after: None,
             circuit_open: false,
             deadline_exceeded: false,
+            auth_challenge: false,
         }
     }
 
@@ -302,6 +306,15 @@ impl AppError {
         self
     }
 
+    /// Flag that this auth failure should advertise an authenticate-challenge
+    /// header (`Proxy-Authenticate` + `WWW-Authenticate`) on the response
+    /// (Req 28.3, 21.9). Used by failed Proxy_Auth checks; the
+    /// [`ResponseError`] impl renders the header when this marker is set.
+    pub fn with_auth_challenge(mut self) -> Self {
+        self.auth_challenge = true;
+        self
+    }
+
     /// Re-map this error as a deadline-exceeded `UpstreamUnavailable`
     /// (Req 50.9, 35.4), preserving the message and store. Shares the
     /// `503/504` status family while staying distinct in metrics/logs.
@@ -383,6 +396,15 @@ impl ResponseError for AppError {
         // hint was attached (Req 40.3). `Retry-After` is defined in seconds.
         if let Some(retry_after) = self.retry_after {
             builder.insert_header((header::RETRY_AFTER, retry_after.as_secs()));
+        }
+
+        // Authenticate-challenge headers for a failed Proxy_Auth check
+        // (Req 28.3, 21.9). The challenge is advertised on both the standard
+        // `WWW-Authenticate` and the `Proxy-Authenticate` header so clients
+        // using either convention re-prompt for HTTP Basic credentials.
+        if self.auth_challenge {
+            builder.insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"stream-flow\""));
+            builder.insert_header((header::PROXY_AUTHENTICATE, "Basic realm=\"stream-flow\""));
         }
 
         builder.json(self.to_error_response())
@@ -746,6 +768,36 @@ mod response_error_tests {
     fn retry_after_header_absent_when_no_hint() {
         let resp = AppError::too_many_requests("rate limited").error_response();
         assert!(resp.headers().get(header::RETRY_AFTER).is_none());
+    }
+
+    #[test]
+    fn auth_challenge_headers_present_when_marker_set() {
+        // Req 28.3 / 21.9: a failed Proxy_Auth `403` advertises the
+        // authenticate challenge on both header conventions.
+        let resp = AppError::forbidden("invalid proxy authorization")
+            .with_auth_challenge()
+            .error_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let www = resp
+            .headers()
+            .get(header::WWW_AUTHENTICATE)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(www, Some("Basic realm=\"stream-flow\""));
+
+        let proxy = resp
+            .headers()
+            .get(header::PROXY_AUTHENTICATE)
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(proxy, Some("Basic realm=\"stream-flow\""));
+    }
+
+    #[test]
+    fn auth_challenge_headers_absent_without_marker() {
+        // A generic `403` (not a Proxy_Auth failure) carries no challenge.
+        let resp = AppError::forbidden("access denied").error_response();
+        assert!(resp.headers().get(header::WWW_AUTHENTICATE).is_none());
+        assert!(resp.headers().get(header::PROXY_AUTHENTICATE).is_none());
     }
 
     #[test]

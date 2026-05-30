@@ -44,8 +44,19 @@
 //! aborts startup with the database left at its last consistent state
 //! (Req 29.4).
 //!
-//! The at-rest vault field codec and the repositories (task 5.3) build on top
-//! of the pool + schema this module produces and land in their own later task.
+//! ## At-rest vault field codec + repositories (task 5.3)
+//!
+//! On top of the pool + schema this module produces:
+//!
+//! * [`vault`] — the AES-256-GCM(`Vault_Secret`) field codec that encrypts
+//!   sensitive persisted fields at rest, or passes them through verbatim when
+//!   no secret is configured (Req 29.5).
+//! * [`models`] — one row `struct` per durable table (design: Data Models ->
+//!   Persistence Models).
+//! * [`repo`] — the [`Repos`](repo::Repos) typed CRUD layer, with every
+//!   operation wrapped in a busy/locked [`RetryPolicy`](crate::resilience::RetryPolicy)
+//!   so a transiently locked SQLite write is retried within the configured
+//!   busy timeout rather than surfacing an error (Req 50.6).
 //!
 //! [`DbConfig`]: crate::config::DbConfig
 
@@ -59,6 +70,17 @@ use sqlx::SqlitePool;
 
 use crate::config::DbConfig;
 use crate::errors::AppError;
+
+pub mod models;
+pub mod repo;
+pub mod vault;
+
+pub use models::{
+    HealthHistory, IdMapRow, IntegrationListRow, MagnetCacheRow, PeerRow, StoreUserData,
+    TraktTokenRow,
+};
+pub use repo::{busy_retry_policy, classify_sqlx_error, Repos};
+pub use vault::Vault;
 
 /// The embedded set of versioned migrations, resolved at **compile time** from
 /// `crates/stream-flow/migrations/` (design: Database -> Migration mechanism;

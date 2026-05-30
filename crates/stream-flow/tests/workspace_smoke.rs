@@ -14,6 +14,8 @@
 //! precisely the contract we want to lock in.
 
 use actix_web::App;
+use stream_flow::config::Config;
+use stream_flow::AppState;
 
 /// The library publicly exposes `build_app`, and the routing tree it returns
 /// is mountable by any external consumer (binary, FFI bridge, or SDK).
@@ -25,8 +27,10 @@ async fn library_exposes_reusable_build_app() {
     let factory = stream_flow::build_app;
 
     // Reusing `build_app` from this external test crate proves it is part of
-    // the public API and links against the library crate (Req 49.6).
-    let app = actix_web::test::init_service(App::new().service(factory())).await;
+    // the public API and links against the library crate (Req 49.6). It takes
+    // the shared `AppState` (also part of the public surface) the binary builds.
+    let state = AppState::new(Config::default());
+    let app = actix_web::test::init_service(App::new().service(factory(state))).await;
 
     // The reused factory produces a live routing tree.
     let req = actix_web::test::TestRequest::get().uri("/health").to_request();

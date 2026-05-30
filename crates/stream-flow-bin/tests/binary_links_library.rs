@@ -40,7 +40,11 @@ fn binary_artifact_builds() {
 fn binary_package_links_against_library() {
     // Constructing the service factory through the library dependency forces
     // the `stream-flow-bin -> stream_flow` link without standing up a server.
-    // `build_app` returns an opaque `impl HttpServiceFactory`, so we simply
-    // bind and drop it.
-    let _factory = stream_flow::build_app();
+    // `build_app` takes the shared `AppState` (also part of the library's
+    // public surface) and returns an opaque `impl HttpServiceFactory`, so we
+    // simply build and drop it.
+    use stream_flow::config::Config;
+    use stream_flow::{build_app, AppState};
+
+    let _factory = build_app(AppState::new(Config::default()));
 }

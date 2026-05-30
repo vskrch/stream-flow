@@ -54,6 +54,20 @@ bytes = { workspace = true }
 # backend; Req 30.2, 30.3).
 deadpool-redis = { workspace = true }
 redis = { workspace = true }
+# Egress single outbound seam (task 8.3): `OutboundClient` builds every
+# upstream request through a tunneled `reqwest` client (default, rustls) and a
+# tunneled `wreq` client (Chrome-JA3/JA4 impersonation for Cloudflare-fronted
+# extractor hosts, Req 35.5), routing through the configured Egress_Tunnel so
+# upstreams observe only the Egress_IP (design: Components -> Egress ->
+# OutboundClient; Req 51.1, 51.9). `url` parses/validates the target URL and
+# selects the per-host tunnel (Req 51.9). `wreq-util` supplies the browser
+# emulation templates for the impersonation client. (`wreq`/`wreq-util` are the
+# maintained successors of the deprecated, crates.io-removed `rquest`/`rquest-util`.)
+reqwest = { workspace = true }
+wreq = { workspace = true }
+wreq-util = { workspace = true }
+url = { workspace = true }
+
 # Persistence (task 5.1): embedded SQLite via `sqlx::SqlitePool`. The pool is
 # built from `SqliteConnectOptions` configured for WAL journal mode, a 5s
 # busy_timeout, `synchronous=NORMAL`, and `foreign_keys=ON`, with a
@@ -65,6 +79,19 @@ sqlx = { workspace = true }
 # structured log naming the failing version before startup aborts (Req 29.4;
 # design: Database -> Migration mechanism).
 tracing = { workspace = true }
+
+# Vault at-rest field encryption (task 5.3): AES-256-GCM authenticated
+# encryption of sensitive persisted fields (store tokens, Trakt tokens, peer
+# tokens) keyed from the configured `Vault_Secret`. `sha2` derives the fixed
+# 32-byte AES-256 key from the arbitrary-length secret; `rand` generates the
+# per-message 96-bit nonce (design: Database -> Schema "AES-GCM(Vault_Secret)";
+# Req 29.5).
+aes-gcm = { workspace = true }
+sha2 = { workspace = true }
+# Persistence row timestamps (task 5.3): `OffsetDateTime` for the row models'
+# time fields, stored as unix-second `INTEGER`s in SQLite (design: Data Models
+# -> Persistence Models).
+time = { workspace = true }
 
 # Resilience primitives (task 6.1): the `RetryPolicy` full-jitter backoff RNG
 # (`rand`, already linked for crypto IVs — design: Technology Choices "Jitter /
@@ -83,6 +110,26 @@ dashmap = { workspace = true }
 # in-flight requests never block or fail on a Redis blip
 # (design: Components -> Cache backend (FailoverCache); Req 30.5, 50.5).
 arc-swap = { workspace = true }
+# Proxy-link / URL-parameter encryption (task 9.2): mediaflow-proxy-light-style
+# AES-256-CBC over the proxy payload, keyed from the `API_Password`, with the
+# token framed as `base64url-no-pad(IV[16] || AES-CBC-PKCS7(json))` for drop-in
+# compatibility with existing mediaflow `d` parameters. `aes` is the AES block
+# cipher, `cbc` the CBC mode (with PKCS7 padding via the `block-padding`
+# `cipher` feature) and `alloc` for the `*_padded_vec_mut` helpers, and
+# `base64` the URL-safe-no-pad transport encoding (`rand`, already linked,
+# generates the per-token IV) (design: Data Models -> Proxy Link / Token
+# Formats; Req 14.1, 14.2, 14.3, 14.4).
+aes = { workspace = true }
+cbc = { workspace = true }
+cipher = { workspace = true }
+base64 = { workspace = true }
+# Auth verifiers + credential resolution (task 9.1): secret comparisons
+# (API_Password, Proxy_Auth passwords, tokens) use a constant-time
+# double-HMAC equality so a wrong secret takes the same time as a right one,
+# regardless of length, leaking neither value nor length (design: Components ->
+# Auth "constant-time compare via subtle/hmac-based equality"; Req 28.8).
+# `sha2` (already linked for the vault) is the HMAC hash.
+hmac = { workspace = true }
 
 [dev-dependencies]
 actix-web = { workspace = true }
@@ -96,3 +143,6 @@ serde_json = { workspace = true }
 tempfile = { workspace = true }
 # Property-based tests for the canonical error taxonomy (task 2.3, Property 47).
 proptest = { workspace = true }
+# Proxy-auth property test (task 9.3, Property 27): builds the base64-encoded
+# `user:pass` form the verifier must accept alongside the plain form (Req 28.2).
+base64 = { workspace = true }
