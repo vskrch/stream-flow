@@ -18,14 +18,28 @@
 //! policy, and the `(proxy, verify_ssl)` client LRU — design: Components →
 //! Transport routing & forwarding). Later tasks add the `ResilientStream`
 //! streaming-core state machine.
+//!
+//! Task 14.2 lands [`core`], the generic ranged proxy core: it wires an
+//! [`UpstreamSource`](source::UpstreamSource) to the [`AdaptiveJitterBuffer`]
+//! bounded relay + [`RangeSpec`](range::RangeSpec) request model and renders
+//! the result as an actix response (forwarding the `Range` upstream →
+//! `206`+`Content-Range`, propagating `Content-Length` for non-range,
+//! forwarding custom headers, terminating+logging on a mid-stream drop), plus
+//! the [`/proxy/ip`](core::proxy_ip_endpoint) endpoint returning the
+//! tunnel-observed Egress_IP from
+//! [`OutboundClient::egress_ip`](crate::egress::OutboundClient::egress_ip)
+//! (design: Components → Streaming Core, Transport routing; Req 5, 13.7, 51.10,
+//! 51.11).
 
 pub mod buffer;
+pub mod core;
 pub mod range;
 pub mod resilient;
 pub mod routing;
 pub mod source;
 
 pub use buffer::AdaptiveJitterBuffer;
+pub use core::{build_response, proxy_ip, proxy_ip_endpoint, relay_stream, serve};
 pub use range::{
     compute_response_metadata, RangeSpec, ResolvedRange, ResponseMetadata, Unsatisfiable,
 };

@@ -37,6 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::config::Config;
+use crate::egress::{HttpIpReflector, OutboundClient};
 use crate::health::{ComponentHealth, HealthProbes, HealthRegistry, LoadState, StoreBreaker};
 use crate::observability::Metrics;
 
@@ -70,6 +71,10 @@ struct AppStateInner {
     /// upstream failures, and every self-healing action (Req 32.5, 50.14,
     /// task 12.1).
     metrics: Metrics,
+    /// The single outbound seam (Req 51.1): the only approved way any handler
+    /// obtains an HTTP client for an upstream call, and the source of the
+    /// tunnel-observed Egress_IP backing `/proxy/ip` (Req 51.11, task 14.2).
+    egress: Arc<OutboundClient>,
 }
 
 impl AppState {
@@ -104,11 +109,35 @@ impl AppState {
     /// Degradation Guard, breaker registry) exist, so the registry reflects
     /// live signals instead of the skeleton defaults.
     pub fn with_health(config: Config, health: HealthRegistry) -> Self {
+        let egress = Arc::new(build_egress(&config));
         Self {
             inner: Arc::new(AppStateInner {
                 config,
                 health,
                 metrics: Metrics::new(),
+                egress,
+            }),
+        }
+    }
+
+    /// Build the shared state from a loaded [`Config`], an already-wired
+    /// [`HealthRegistry`], and an explicit egress [`OutboundClient`].
+    ///
+    /// The binary uses this once the egress resolver's refresh loop is spawned
+    /// under the task supervisor, so the live, leak-verified Egress_IP backs
+    /// `/proxy/ip` (Req 51.11). Tests use it to inject an `OutboundClient` with
+    /// a seeded resolver.
+    pub fn with_health_and_egress(
+        config: Config,
+        health: HealthRegistry,
+        egress: Arc<OutboundClient>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(AppStateInner {
+                config,
+                health,
+                metrics: Metrics::new(),
+                egress,
             }),
         }
     }
@@ -130,6 +159,64 @@ impl AppState {
     pub fn metrics(&self) -> &Metrics {
         &self.inner.metrics
     }
+
+    /// Borrow the shared egress [`OutboundClient`] — the single outbound seam
+    /// (Req 51.1) and the source of the tunnel-observed Egress_IP for
+    /// `/proxy/ip` (Req 51.11). Cheap: returns a reference behind the state
+    /// `Arc`; clone the returned `Arc` when an owned handle is needed.
+    pub fn egress(&self) -> &Arc<OutboundClient> {
+        &self.inner.egress
+    }
+}
+
+/// Build the egress [`OutboundClient`] from the loaded [`Config`] for the
+/// infallible [`AppState`] constructors (Req 51.1).
+///
+/// Production wires the egress resolver's refresh loop under the supervisor and
+/// constructs the client via [`AppState::with_health_and_egress`]; this helper
+/// backs the default / skeleton path. A misconfigured egress (e.g. proxy mode
+/// without a `tunnel_url`) is logged and falls back to a **disabled,
+/// fail-closed** client rather than aborting state construction — under the
+/// fail-closed default that client refuses every dial and exposes no Egress_IP,
+/// so it never leaks the host's real IP (Req 51.8).
+fn build_egress(config: &Config) -> OutboundClient {
+    let reflector = match HttpIpReflector::from_config(&config.egress) {
+        Ok(reflector) => Arc::new(reflector),
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "egress IP-reflector misconfigured; falling back to a disabled fail-closed egress",
+            );
+            return disabled_fail_closed_egress();
+        }
+    };
+    match OutboundClient::from_config(&config.egress, reflector) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "egress OutboundClient misconfigured; falling back to a disabled fail-closed egress",
+            );
+            disabled_fail_closed_egress()
+        }
+    }
+}
+
+/// A disabled, fail-closed [`OutboundClient`] used as the safe fallback when
+/// the configured egress cannot be built (Req 51.8). It has no tunnel, so it
+/// refuses every dial and reports no Egress_IP.
+fn disabled_fail_closed_egress() -> OutboundClient {
+    let cfg = crate::config::EgressConfig {
+        tunnel_mode: crate::config::EgressTunnelMode::Disabled,
+        policy: crate::config::EgressPolicy::FailClosed,
+        ..crate::config::EgressConfig::default()
+    };
+    // A disabled-mode reflector never performs I/O; from_config cannot fail.
+    let reflector = Arc::new(
+        HttpIpReflector::from_config(&cfg).expect("disabled-mode reflector always builds"),
+    );
+    OutboundClient::from_config(&cfg, reflector)
+        .expect("disabled-mode OutboundClient always builds")
 }
 
 /// A skeleton [`HealthProbes`] used until the concrete signal sources are

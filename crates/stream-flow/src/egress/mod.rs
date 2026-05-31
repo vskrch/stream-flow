@@ -20,11 +20,13 @@
 //!   OutboundClient).
 
 pub mod policy;
+pub mod reflector;
 pub mod resolver;
 pub mod sanitize;
 pub mod tunnel;
 
 pub use policy::{decide_egress, fail_closed_error, EgressDecision};
+pub use reflector::HttpIpReflector;
 pub use resolver::EgressResolver;
 pub use sanitize::{is_client_identifying_header, sanitize_outbound, CLIENT_IDENTIFYING_HEADERS};
 pub use tunnel::{IpReflector, LeakCheck, Tunnel};

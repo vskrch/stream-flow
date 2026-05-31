@@ -39,6 +39,12 @@ config = { workspace = true }
 # wraps handler-future execution so a panicking handler becomes a `500`
 # without tearing down the worker (design: Error Handling -> Panic boundary).
 futures = { workspace = true }
+# Generic ranged proxy core (task 14.2): `async-stream` builds the
+# bounded-buffer relay body as an `async` generator stream — reading upstream
+# chunks into the `AdaptiveJitterBuffer` and yielding drained bytes toward the
+# client without ever loading the whole body into memory (design: Components ->
+# Streaming Core; Req 5.7, 5.8).
+async-stream = { workspace = true }
 # Cache layer (task 4.1): `CacheBackend` trait + moka-backed `LocalCache`
 # (TTL + LRU). `async-trait` makes the async trait object-safe so Redis and
 # failover backends can implement it uniformly; `moka` provides the async

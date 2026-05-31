@@ -17,9 +17,11 @@
 //! Bytes that are **not** covered are left byte-for-byte unchanged: the clear
 //! leading bytes of every subsample, any bytes outside the protected
 //! subsamples, the *skipped* blocks of the `cens`/`cbcs` patterns, and the
-//! trailing partial run (`< crypt_byte_block` blocks) / partial block
-//! (`< 16` bytes) at the end of a protected range that the CENC pattern rules
-//! leave in the clear.
+//! trailing *partial* block (`< 16` bytes) at the end of a protected range that
+//! the CENC pattern rules leave in the clear. Note that trailing **whole**
+//! 16-byte blocks are always processed by the pattern even when the final crypt
+//! run is shorter than `crypt_byte_block` — only the sub-block remainder is
+//! ever left clear (ISO/IEC 23001-7 §10.4.2).
 //!
 //! ## The `cens` correctness note (design: Components → DRM, "cens bug note")
 //!
@@ -195,29 +197,39 @@ fn decrypt_ctr(
 
 /// Apply the `cens` crypt/skip pattern over one protected range: decrypt
 /// `crypt_blocks` 16-byte blocks, skip `skip_blocks` blocks (not fed through
-/// the cipher, so the counter does not advance), repeating. A trailing run
-/// shorter than one full crypt run is left in the clear.
+/// the cipher, so the counter does not advance), repeating over **every** whole
+/// 16-byte block of the range.
+///
+/// Per ISO/IEC 23001-7 §10.4.2 (and the shaka-packager `AesPatternCryptor` /
+/// Chromium `DecryptWithPattern` reference decoders), the pattern applies to
+/// the whole 16-byte blocks only; a final crypt run that contains **fewer than
+/// `crypt_blocks` whole blocks is still decrypted** — only the trailing
+/// *partial* (`< 16` byte) block at the very end of the protected range is left
+/// in the clear. (An earlier revision wrongly stopped at the first short crypt
+/// run, leaving trailing whole blocks undecrypted.)
 fn ctr_pattern(cipher: &mut Aes128Ctr, data: &mut [u8], crypt_blocks: u8, skip_blocks: u8) {
     let crypt_bytes = crypt_blocks as usize * BLOCK;
     let skip_bytes = skip_blocks as usize * BLOCK;
+    // The pattern covers whole 16-byte blocks only; the trailing partial block
+    // (if any) is always left clear.
+    let whole = data.len() / BLOCK * BLOCK;
 
-    // No crypt run defined: fall back to continuous CTR over the range so a
-    // degenerate (missing) pattern still decrypts rather than looping forever.
+    // No crypt run defined: fall back to continuous CTR over the whole blocks
+    // so a degenerate (missing) pattern still decrypts rather than looping
+    // forever.
     if crypt_bytes == 0 {
-        cipher.apply_keystream(data);
+        cipher.apply_keystream(&mut data[..whole]);
         return;
     }
 
-    let len = data.len();
     let mut pos = 0usize;
-    loop {
-        if len - pos < crypt_bytes {
-            break; // trailing partial run left clear
-        }
-        cipher.apply_keystream(&mut data[pos..pos + crypt_bytes]);
-        pos += crypt_bytes;
-        let s = skip_bytes.min(len - pos);
-        pos += s;
+    while pos < whole {
+        // A trailing crypt run shorter than crypt_bytes is still encrypted.
+        let c = crypt_bytes.min(whole - pos);
+        cipher.apply_keystream(&mut data[pos..pos + c]);
+        pos += c;
+        // Skipped blocks are not fed through the cipher (counter unchanged).
+        pos += skip_bytes.min(whole - pos);
     }
 }
 

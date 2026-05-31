@@ -84,9 +84,14 @@ pub mod mediaflow_surface {
     /// `/playlist/builder`, `/speedtest`) is filled in by the tasks that own
     /// each handler; the skeleton registers the streaming entry points that
     /// anchor the namespace.
+    ///
+    /// `/proxy/ip` is backed by its real handler (task 14.2): it returns the
+    /// tunnel-observed Egress_IP from the shared egress
+    /// [`OutboundClient`](crate::egress::OutboundClient) (Req 13.7, 51.10,
+    /// 51.11).
     pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.route("/proxy/stream", web::get().to(not_implemented)) // Req 36.1
-            .route("/proxy/ip", web::get().to(not_implemented)); // Req 51.10
+            .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)); // Req 51.10/51.11
     }
 }
 

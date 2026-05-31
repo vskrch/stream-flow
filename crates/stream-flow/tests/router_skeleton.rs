@@ -37,20 +37,36 @@ async fn mediaflow_surface_routes_are_registered() {
     let state = AppState::new(Config::default());
     let app = test::init_service(App::new().service(build_app(state))).await;
 
-    for uri in ["/proxy/stream", "/proxy/ip"] {
-        let req = test::TestRequest::get().uri(uri).to_request();
-        let resp = test::call_service(&app, req).await;
-        assert_ne!(
-            resp.status(),
-            StatusCode::NOT_FOUND,
-            "mediaflow route {uri} should be registered"
-        );
-        assert_eq!(
-            resp.status(),
-            StatusCode::NOT_IMPLEMENTED,
-            "mediaflow route {uri} is a skeleton placeholder"
-        );
-    }
+    // `/proxy/stream` is still a skeleton placeholder (`501`).
+    let req = test::TestRequest::get().uri("/proxy/stream").to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_ne!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "mediaflow route /proxy/stream should be registered"
+    );
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_IMPLEMENTED,
+        "mediaflow route /proxy/stream is a skeleton placeholder"
+    );
+
+    // `/proxy/ip` is backed by its real handler (task 14.2): registered (not
+    // `404`). With the default config the egress tunnel is disabled, so under
+    // the fail-closed default it answers `503` (no verified Egress_IP to leak)
+    // rather than the skeleton `501` (Req 51.8, 51.11).
+    let req = test::TestRequest::get().uri("/proxy/ip").to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_ne!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "mediaflow route /proxy/ip should be registered"
+    );
+    assert_eq!(
+        resp.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "/proxy/ip is fail-closed when no tunnel is configured"
+    );
 }
 
 /// The stremthru namespace is registered: representative stremthru paths route
