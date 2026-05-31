@@ -304,56 +304,568 @@ fn range_header_value(range: RangeSpec) -> Option<String> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::EgressPolicy;
     use crate::errors::ErrorCategory;
+    use crate::resilience::BreakerConfig;
+    use crate::store::fallback::StoreBreakerSet;
     use crate::store::types::*;
-    use crate::store::{Store, StoreName};
-    use async_trait::async_trait;
-    use std::net::{IpAddr, Ipv4Addr};
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::collections::{HashMap, VecDeque};
+    use std::net::{Ipv4Addr};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
+    use std::time::Duration;
     use time::OffsetDateTime;
 
-    // -- Test helpers --------------------------------------------------------
+    // -- Test seam helpers ---------------------------------------------------
 
-    /// The Egress_IP used in tests (never a client IP).
-    const EGRESS_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
+    /// A no-tunnel, fail-open [`OutboundClient`] whose
+    /// [`egress_ip`](OutboundClient::egress_ip) is `None` (no resolver
+    /// attached). Building the clients performs no network I/O, matching the
+    /// crate's `OutboundClient::new(...)` test-client pattern.
+    fn outbound_no_egress() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
 
-    /// A mock store that records the `client_ip` passed to `generate_link`.
+    /// A fail-open [`OutboundClient`] with a verified resolver, so
+    /// [`egress_ip`](OutboundClient::egress_ip) returns `Some(egress)` — the
+    /// tunnel-observed public IP, never any Client_IP (Req 51.4). Built from
+    /// the crate's mock reflector so there is no network dependency.
+    async fn outbound_with_egress(egress: &str, host: &str) -> Arc<OutboundClient> {
+        use crate::egress::tunnel::test_support::MockReflector;
+        use crate::egress::{EgressResolver, Tunnel};
+
+        let tunnel = Tunnel::proxy(
+            "http://proxy:8888",
+            Arc::new(MockReflector::isolated(egress, host)),
+        );
+        let resolver = Arc::new(EgressResolver::new(
+            Arc::new(tunnel),
+            Duration::from_secs(3600),
+        ));
+        // Populate the lock-free cache so `egress_ip()` is `Some(egress)`.
+        resolver.refresh().await;
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            Some(resolver),
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    /// A request context that carries a Client_IP — used to prove the link-gen
+    /// layer never forwards it to a store (Req 51.4).
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100))),
+            trusted: false,
+        }
+    }
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().expect("valid IP")
+    }
+
+    /// One scripted outcome for a [`RecordingStore::generate_link`] call.
+    enum Outcome {
+        /// Succeed, returning this direct link.
+        Link(String),
+        /// Reject as IP-restricted (sets the `ip_restricted` marker, Req 18.6).
+        IpRestricted,
+        /// Reject for a non-IP reason carrying the store name (Req 18.7).
+        Unauthorized,
+        /// Reject as upstream-unavailable (drives the fallback chain, Req 37.7).
+        Upstream,
+    }
+
+    /// A [`Store`] that records the `client_ip` it receives on every
+    /// `generate_link` call and replays a scripted queue of outcomes. Only
+    /// `generate_link` / `get_name` are exercised; the other operations are
+    /// trivial stubs so the trait is fully implemented and object-safe.
     struct RecordingStore {
         name: StoreName,
-        recorded_ips: Mutex<Vec<Option<IpAddr>>>,
-        call_count: AtomicU32,
-        /// If set, generate_link returns this error.
-        fail_with: Mutex<Option<AppError>>,
+        received: Mutex<Vec<Option<IpAddr>>>,
+        outcomes: Mutex<VecDeque<Outcome>>,
     }
 
     impl RecordingStore {
-        fn new(name: StoreName) -> Self {
-            Self {
+        fn new(name: StoreName, outcomes: Vec<Outcome>) -> Arc<Self> {
+            Arc::new(Self {
                 name,
-                recorded_ips: Mutex::new(Vec::new()),
-                call_count: AtomicU32::new(0),
-                fail_with: Mutex::new(None),
-            }
+                received: Mutex::new(Vec::new()),
+                outcomes: Mutex::new(VecDeque::from(outcomes)),
+            })
         }
 
-        fn set_failure(&self, err: AppError) {
-            *self.fail_with.lock().unwrap() = Some(err);
-        }
-
-        fn clear_failure(&self) {
-            *self.fail_with.lock().unwrap() = None;
-        }
-
-        fn recorded_ips(&self) -> Vec<Option<IpAddr>> {
-            self.recorded_ips.lock().unwrap().clone()
-        }
-
-        fn calls(&self) -> u32 {
-            self.call_count.load(Ordering::Relaxed)
+        /// The `client_ip` values passed to `generate_link`, in call order.
+        fn received_ips(&self) -> Vec<Option<IpAddr>> {
+            self.received.lock().unwrap().clone()
         }
     }
+
+    #[async_trait]
+    impl Store for RecordingStore {
+        fn get_name(&self) -> StoreName {
+            self.name
+        }
+
+        async fn get_user(&self, _p: &GetUserParams) -> Result<User, AppError> {
+            Ok(User {
+                id: "u1".into(),
+                email: "t@t.com".into(),
+                subscription_status: SubscriptionStatus::Premium,
+                has_usenet: false,
+            })
+        }
+
+        async fn check_magnet(
+            &self,
+            _p: &CheckMagnetParams<'_>,
+        ) -> Result<CheckMagnetData, AppError> {
+            Ok(CheckMagnetData { items: vec![] })
+        }
+
+        async fn add_magnet(&self, _p: &AddMagnetParams) -> Result<AddMagnetData, AppError> {
+            Ok(AddMagnetData {
+                id: "m1".into(),
+                hash: "abc".into(),
+                magnet: "magnet:?xt=urn:btih:abc".into(),
+                name: "t".into(),
+                size: 1,
+                status: MagnetStatus::Queued,
+                files: vec![],
+                private: false,
+                added_at: OffsetDateTime::UNIX_EPOCH,
+            })
+        }
+
+        async fn get_magnet(&self, _p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
+            Ok(GetMagnetData {
+                id: "m1".into(),
+                name: "t".into(),
+                hash: "abc".into(),
+                size: 1,
+                status: MagnetStatus::Cached,
+                files: vec![],
+                private: false,
+                added_at: OffsetDateTime::UNIX_EPOCH,
+            })
+        }
+
+        async fn list_magnets(&self, _p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
+            Ok(ListMagnetsData {
+                items: vec![],
+                total_items: 0,
+            })
+        }
+
+        async fn remove_magnet(
+            &self,
+            _p: &RemoveMagnetParams,
+        ) -> Result<RemoveMagnetData, AppError> {
+            Ok(RemoveMagnetData { id: "m1".into() })
+        }
+
+        async fn generate_link(
+            &self,
+            p: &GenerateLinkParams,
+        ) -> Result<GenerateLinkData, AppError> {
+            // Record exactly what IP (if any) the link-gen layer bound the call
+            // to — the heart of the Egress-IP-vs-omitted assertions.
+            self.received.lock().unwrap().push(p.client_ip);
+            match self.outcomes.lock().unwrap().pop_front() {
+                Some(Outcome::Link(link)) => Ok(GenerateLinkData { link }),
+                Some(Outcome::IpRestricted) => {
+                    Err(AppError::ip_restricted_for(self.name.as_str(), "IP not allowed"))
+                }
+                Some(Outcome::Unauthorized) => {
+                    Err(AppError::unauthorized_for(self.name.as_str(), "bad token"))
+                }
+                Some(Outcome::Upstream) => Err(AppError::upstream_unavailable_for(
+                    self.name.as_str(),
+                    "service unavailable",
+                )),
+                // Default when the script is exhausted: a stable success.
+                None => Ok(GenerateLinkData {
+                    link: "https://cdn.example/default.mkv".into(),
+                }),
+            }
+        }
+    }
+
+    fn breaker_set() -> Arc<StoreBreakerSet> {
+        Arc::new(StoreBreakerSet::new(
+            BreakerConfig::new(3, Duration::from_secs(15)),
+            Duration::from_secs(300),
+        ))
+    }
+
+    // -- requires_ip_binding (Req 18.3, 18.4) -------------------------------
+
+    #[test]
+    fn requires_ip_binding_is_true_only_for_realdebrid_and_torbox() {
+        // IP-locked stores bind the link to the requesting IP (Req 18.3).
+        assert!(requires_ip_binding(StoreName::RealDebrid));
+        assert!(requires_ip_binding(StoreName::TorBox));
+
+        // Every other store omits the IP and must not fail for its absence
+        // (Req 18.4).
+        for name in [
+            StoreName::AllDebrid,
+            StoreName::Debrider,
+            StoreName::DebridLink,
+            StoreName::EasyDebrid,
+            StoreName::Offcloud,
+            StoreName::PikPak,
+            StoreName::Premiumize,
+        ] {
+            assert!(!requires_ip_binding(name), "{name:?} must not bind IP");
+        }
+    }
+
+    // -- generate_link binds Egress_IP for IP-locked stores (Req 18.3, 51.4) -
+
+    #[tokio::test]
+    async fn generate_link_passes_egress_ip_for_ip_locked_store() {
+        let egress = ip("203.0.113.7");
+        let store = RecordingStore::new(
+            StoreName::RealDebrid,
+            vec![Outcome::Link("https://cdn.example/file.mkv".into())],
+        );
+
+        let data = generate_link(store.as_ref(), "https://store/dl/1", Some(egress), &ctx())
+            .await
+            .expect("link gen succeeds");
+
+        assert_eq!(data.link, "https://cdn.example/file.mkv");
+        // The Egress_IP — never a Client_IP — was bound at the store (Req 51.4).
+        assert_eq!(store.received_ips(), vec![Some(egress)]);
+    }
+
+    #[tokio::test]
+    async fn generate_link_passes_egress_ip_for_torbox_too() {
+        let egress = ip("198.51.100.42");
+        let store = RecordingStore::new(StoreName::TorBox, vec![]);
+
+        generate_link(store.as_ref(), "https://store/dl/2", Some(egress), &ctx())
+            .await
+            .expect("link gen succeeds");
+
+        assert_eq!(store.received_ips(), vec![Some(egress)]);
+    }
+
+    #[tokio::test]
+    async fn generate_link_never_forwards_client_ip_to_store() {
+        // Even though the Ctx carries a Client_IP, only the Egress_IP is bound
+        // at the store (Req 51.4). The Ctx Client_IP must never appear.
+        let egress = ip("203.0.113.7");
+        let store = RecordingStore::new(StoreName::RealDebrid, vec![]);
+        let ctx = ctx();
+        let client_ip = ctx.client_ip.unwrap();
+
+        generate_link(store.as_ref(), "https://store/dl/c", Some(egress), &ctx)
+            .await
+            .expect("link gen succeeds");
+
+        let ips = store.received_ips();
+        assert_eq!(ips, vec![Some(egress)]);
+        assert_ne!(ips[0], Some(client_ip), "Client_IP must never reach the store");
+    }
+
+    // -- generate_link omits the IP for non-IP-binding stores (Req 18.4) -----
+
+    #[tokio::test]
+    async fn generate_link_omits_ip_for_non_ip_binding_store_even_when_egress_known() {
+        let egress = ip("203.0.113.7");
+        let store = RecordingStore::new(StoreName::AllDebrid, vec![]);
+
+        // An Egress_IP is available, but a non-IP-binding store must still get
+        // `None` so the IP is never bound (Req 18.4).
+        generate_link(store.as_ref(), "https://store/dl/3", Some(egress), &ctx())
+            .await
+            .expect("non-IP store link gen succeeds");
+
+        assert_eq!(store.received_ips(), vec![None]);
+    }
+
+    #[tokio::test]
+    async fn generate_link_non_ip_store_does_not_fail_when_egress_ip_absent() {
+        // Req 18.4: absence of IP binding must not, by itself, fail link gen.
+        let store = RecordingStore::new(StoreName::Offcloud, vec![]);
+
+        let data = generate_link(store.as_ref(), "https://store/dl/4", None, &ctx())
+            .await
+            .expect("must not fail solely for lack of IP binding");
+
+        assert_eq!(data.link, "https://cdn.example/default.mkv");
+        assert_eq!(store.received_ips(), vec![None]);
+    }
+
+    // -- generate_link_with_retry: success on the first attempt -------------
+
+    #[tokio::test]
+    async fn generate_link_with_retry_succeeds_without_refresh_on_first_try() {
+        let store = RecordingStore::new(
+            StoreName::RealDebrid,
+            vec![Outcome::Link("https://cdn.example/ok.mkv".into())],
+        );
+        let refreshed = AtomicBool::new(false);
+
+        let data = generate_link_with_retry(
+            store.as_ref(),
+            "https://store/dl/ok",
+            Some(ip("203.0.113.7")),
+            &ctx(),
+            || async {
+                refreshed.store(true, Ordering::SeqCst);
+                Some(ip("203.0.113.99"))
+            },
+        )
+        .await
+        .expect("first attempt succeeds");
+
+        assert_eq!(data.link, "https://cdn.example/ok.mkv");
+        assert!(!refreshed.load(Ordering::SeqCst), "no refresh when the first try works");
+        assert_eq!(store.received_ips().len(), 1);
+    }
+
+    // -- generate_link_with_retry: one-time Egress-IP regen (Req 18.6) -------
+
+    #[tokio::test]
+    async fn generate_link_with_retry_regenerates_once_with_refreshed_egress_ip() {
+        let first_ip = ip("203.0.113.7");
+        let refreshed_ip = ip("203.0.113.99");
+        // First attempt is IP-rejected; the retry (with the refreshed IP)
+        // succeeds.
+        let store = RecordingStore::new(
+            StoreName::RealDebrid,
+            vec![
+                Outcome::IpRestricted,
+                Outcome::Link("https://cdn.example/after-regen.mkv".into()),
+            ],
+        );
+
+        let refreshed = AtomicBool::new(false);
+        let data = generate_link_with_retry(
+            store.as_ref(),
+            "https://store/dl/5",
+            Some(first_ip),
+            &ctx(),
+            || async {
+                refreshed.store(true, Ordering::SeqCst);
+                Some(refreshed_ip)
+            },
+        )
+        .await
+        .expect("retry with refreshed Egress_IP succeeds");
+
+        assert_eq!(data.link, "https://cdn.example/after-regen.mkv");
+        assert!(refreshed.load(Ordering::SeqCst), "the refresh closure ran once");
+        // Exactly two attempts: the original IP, then the refreshed Egress_IP.
+        assert_eq!(store.received_ips(), vec![Some(first_ip), Some(refreshed_ip)]);
+    }
+
+    // -- generate_link_with_retry: non-IP error returns without retry (18.7) -
+
+    #[tokio::test]
+    async fn generate_link_with_retry_returns_non_ip_error_without_retrying() {
+        let store = RecordingStore::new(StoreName::RealDebrid, vec![Outcome::Unauthorized]);
+
+        let refreshed = AtomicBool::new(false);
+        let err = generate_link_with_retry(
+            store.as_ref(),
+            "https://store/dl/6",
+            Some(ip("203.0.113.7")),
+            &ctx(),
+            || async {
+                refreshed.store(true, Ordering::SeqCst);
+                Some(ip("203.0.113.99"))
+            },
+        )
+        .await
+        .expect_err("a non-IP rejection must surface as an error");
+
+        // Mapped onto the canonical taxonomy and carries the store reason
+        // (Req 18.7).
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("realdebrid"));
+        assert!(!refreshed.load(Ordering::SeqCst), "no IP refresh on a non-IP error");
+        // Only the single original attempt was made (no retry).
+        assert_eq!(store.received_ips().len(), 1);
+    }
+
+    // -- DebridSource trait surface (initial state) -------------------------
+
+    #[tokio::test]
+    async fn debrid_source_reports_unknown_metadata_before_first_open() {
+        let client = outbound_no_egress();
+        let store = RecordingStore::new(StoreName::RealDebrid, vec![]);
+        let source = DebridSource::new(
+            client,
+            store as Arc<dyn Store>,
+            "https://store/dl/meta".into(),
+            Url::parse("https://cdn.example/file.mkv").unwrap(),
+            ctx(),
+        );
+
+        assert_eq!(source.total_size(), None);
+        assert!(!source.accept_ranges());
+        // content_type is intentionally None (served from UpstreamBody instead).
+        assert_eq!(source.content_type(), None);
+    }
+
+    // -- DebridSource::current_link / renew re-generates the link (Req 37.6) -
+
+    #[tokio::test]
+    async fn debrid_source_exposes_initial_link_then_renew_replaces_it() {
+        let client = outbound_with_egress("203.0.113.7", "198.51.100.1").await;
+        let store = RecordingStore::new(
+            StoreName::RealDebrid,
+            vec![Outcome::Link("https://cdn.example/fresh.mkv".into())],
+        );
+        let source = DebridSource::new(
+            client,
+            store.clone() as Arc<dyn Store>,
+            "https://store/dl/7".into(),
+            Url::parse("https://cdn.example/stale.mkv").unwrap(),
+            ctx(),
+        );
+
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/stale.mkv");
+
+        source.renew().await.expect("renew re-generates the link");
+
+        // The link was transparently regenerated (Req 37.6) …
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/fresh.mkv");
+        // … bound to the verified Egress_IP for this IP-locked store (Req 18.3).
+        assert_eq!(store.received_ips(), vec![Some(ip("203.0.113.7"))]);
+    }
+
+    // -- renew: one-time Egress-IP regen on IP rejection inside renew (18.6) -
+
+    #[tokio::test]
+    async fn debrid_source_renew_regenerates_on_ip_rejection_one_time() {
+        let client = outbound_with_egress("203.0.113.7", "198.51.100.1").await;
+        let store = RecordingStore::new(
+            StoreName::RealDebrid,
+            vec![
+                Outcome::IpRestricted,
+                Outcome::Link("https://cdn.example/regen.mkv".into()),
+            ],
+        );
+        let source = DebridSource::new(
+            client,
+            store.clone() as Arc<dyn Store>,
+            "https://store/dl/8".into(),
+            Url::parse("https://cdn.example/stale.mkv").unwrap(),
+            ctx(),
+        );
+
+        source.renew().await.expect("renew retries once and succeeds");
+
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/regen.mkv");
+        // Both attempts bound to the current Egress_IP (the one-time regen).
+        assert_eq!(
+            store.received_ips(),
+            vec![Some(ip("203.0.113.7")), Some(ip("203.0.113.7"))]
+        );
+    }
+
+    // -- renew on a non-IP-binding store omits the IP (Req 18.4) ------------
+
+    #[tokio::test]
+    async fn debrid_source_renew_omits_ip_for_non_ip_binding_store() {
+        let client = outbound_with_egress("203.0.113.7", "198.51.100.1").await;
+        let store = RecordingStore::new(
+            StoreName::AllDebrid,
+            vec![Outcome::Link("https://cdn.example/ad.mkv".into())],
+        );
+        let source = DebridSource::new(
+            client,
+            store.clone() as Arc<dyn Store>,
+            "https://store/dl/ad".into(),
+            Url::parse("https://cdn.example/stale.mkv").unwrap(),
+            ctx(),
+        );
+
+        source.renew().await.expect("renew succeeds for non-IP store");
+
+        // Even though a verified Egress_IP exists, a non-IP-binding store gets
+        // `None` (Req 18.4).
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/ad.mkv");
+        assert_eq!(store.received_ips(), vec![None]);
+    }
+
+    // -- renew: walks the fallback chain on primary failure (Req 37.7, 37.6) -
+
+    #[tokio::test]
+    async fn debrid_source_renew_walks_fallback_chain_on_primary_failure() {
+        let client = outbound_no_egress();
+
+        // Primary store fails with an upstream error (not IP-restricted → no
+        // retry), forcing the fallback chain to be consulted.
+        let primary = RecordingStore::new(StoreName::RealDebrid, vec![Outcome::Upstream]);
+        // The fallback store generates a fresh link successfully.
+        let fallback = RecordingStore::new(
+            StoreName::AllDebrid,
+            vec![Outcome::Link("https://cdn.example/fallback.mkv".into())],
+        );
+
+        let chain = Arc::new(StoreFallbackChain::new(
+            vec![(StoreName::AllDebrid, fallback.clone() as Arc<dyn Store>)],
+            breaker_set(),
+        ));
+
+        let source = DebridSource::new(
+            client,
+            primary.clone() as Arc<dyn Store>,
+            "https://store/dl/9".into(),
+            Url::parse("https://cdn.example/stale.mkv").unwrap(),
+            ctx(),
+        )
+        .with_fallback_chain(chain);
+
+        source.renew().await.expect("renew falls back to the next store");
+
+        // The fallback store's fresh link is now current (Req 37.7).
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/fallback.mkv");
+        assert_eq!(primary.received_ips().len(), 1, "primary tried exactly once");
+        assert_eq!(fallback.received_ips().len(), 1, "fallback tried exactly once");
+    }
+
+    // -- renew: no fallback chain → primary failure surfaces (Req 37.6) ------
+
+    #[tokio::test]
+    async fn debrid_source_renew_without_chain_returns_primary_error() {
+        let client = outbound_no_egress();
+        let store = RecordingStore::new(StoreName::RealDebrid, vec![Outcome::Upstream]);
+        let source = DebridSource::new(
+            client,
+            store.clone() as Arc<dyn Store>,
+            "https://store/dl/10".into(),
+            Url::parse("https://cdn.example/stale.mkv").unwrap(),
+            ctx(),
+        );
+
+        let err = source
+            .renew()
+            .await
+            .expect_err("with no fallback chain the primary error must surface");
+        assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
+        assert_eq!(err.store.as_deref(), Some("realdebrid"));
+        // The current link is left untouched on a failed renew.
+        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/stale.mkv");
+    }
+}

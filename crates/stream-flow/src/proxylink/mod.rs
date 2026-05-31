@@ -32,6 +32,7 @@
 //! [`token`] and across the dispatcher here).
 
 pub mod encrypted;
+pub mod handler;
 pub mod token;
 
 use std::net::IpAddr;

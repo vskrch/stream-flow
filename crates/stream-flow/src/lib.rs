@@ -28,6 +28,7 @@ pub mod extractor;
 pub mod health;
 pub mod hls;
 pub mod http;
+pub mod meta;
 pub mod mpd;
 pub mod observability;
 pub mod persistence;

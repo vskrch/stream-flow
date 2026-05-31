@@ -130,9 +130,12 @@ pub mod stremthru_surface {
     /// filled in by the tasks that own each handler; the skeleton registers the
     /// token-proxy entry point that anchors the namespace.
     pub fn configure(cfg: &mut web::ServiceConfig) {
-        cfg.route("/v0/proxy", web::get().to(not_implemented)); // Req 36.2, 36.6
+        cfg.route("/v0/proxy", web::get().to(not_implemented)) // Req 36.2, 36.6
+            .route("/v0/proxy", web::post().to(not_implemented)); // Req 21.1-21.9
         // Store magnet endpoints (task 24.1, Req 17)
         crate::store::endpoints::configure_store_routes(cfg);
+        // Meta / ID-map endpoint (task 24.5, Req 22)
+        crate::meta::configure_meta_routes(cfg);
     }
 }
 
