@@ -244,7 +244,7 @@ pub async fn subtitle_proxy_endpoint(
     let result = proxy.fetch(&query.url, &headers).await?;
 
     Ok(HttpResponse::Ok()
-        .insert_header((CONTENT_TYPE, result.content_type.as_str()))
+        .insert_header((actix_web::http::header::CONTENT_TYPE, result.content_type.as_str()))
         .body(result.body))
 }
 

@@ -714,4 +714,142 @@ mod tests {
         // But not two.
         assert!(limiter.check_local("user:alice").is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Property 40: Token-bucket rate limiting (Req 40.1, 40.2, 40.3, 40.4)
+    // -----------------------------------------------------------------------
+    // Feature: stream-flow, Property 40: Token-bucket rate limiting
+    // Validates: Requirements 40.1, 40.2, 40.3, 40.4
+
+    use proptest::prelude::*;
+
+    proptest! {
+        /// For any capacity and burst of requests, the limiter admits at most
+        /// `capacity` requests in an instantaneous burst (Req 40.1, 40.4).
+        #[test]
+        fn prop_burst_never_exceeds_capacity(
+            rpm in 1u32..=120u32,
+            extra_requests in 1u32..=20u32,
+        ) {
+            let cfg = RateLimitConfig { enabled: true, requests_per_minute: rpm };
+            let limiter = RateLimiter::new(&cfg, None);
+            let capacity = rpm as usize;
+            let key = "user:test";
+
+            let mut allowed = 0usize;
+            let mut denied = 0usize;
+            for _ in 0..(capacity + extra_requests as usize) {
+                match limiter.check_local(key) {
+                    Ok(()) => allowed += 1,
+                    Err(_) => denied += 1,
+                }
+            }
+
+            // Must admit exactly `capacity` requests in the burst.
+            prop_assert_eq!(
+                allowed, capacity,
+                "burst allowed {allowed} but capacity is {capacity}"
+            );
+            // The extra requests must all be denied.
+            prop_assert_eq!(
+                denied, extra_requests as usize,
+                "expected {extra_requests} denials, got {denied}"
+            );
+        }
+
+        /// Tokens never exceed capacity after any number of refill cycles
+        /// (Req 40.4).
+        #[test]
+        fn prop_tokens_never_exceed_capacity(
+            rpm in 1u32..=300u32,
+            idle_secs in 0u64..=3600u64,
+        ) {
+            let cfg = RateLimitConfig { enabled: true, requests_per_minute: rpm };
+            let limiter = RateLimiter::new(&cfg, None);
+            let key = "user:overflow";
+
+            // Consume one token to create the bucket entry.
+            let _ = limiter.check_local(key);
+
+            // Simulate a long idle period.
+            if let Some(bucket) = limiter.local.get(key) {
+                let mut guard = bucket.blocking_lock();
+                guard.last_refill = Instant::now() - Duration::from_secs(idle_secs);
+            }
+
+            // Trigger a refill by consuming one token.
+            let _ = limiter.check_local(key);
+
+            // Tokens must not exceed capacity.
+            if let Some(tokens) = limiter.local_tokens(key) {
+                prop_assert!(
+                    tokens <= rpm as f64,
+                    "tokens {tokens} exceeded capacity {rpm}"
+                );
+            }
+        }
+
+        /// Exceeding the limit yields a 429 error with Retry-After set
+        /// (Req 40.3).
+        #[test]
+        fn prop_exceeded_limit_yields_429_with_retry_after(
+            rpm in 1u32..=60u32,
+        ) {
+            let cfg = RateLimitConfig { enabled: true, requests_per_minute: rpm };
+            let limiter = RateLimiter::new(&cfg, None);
+            let key = "user:limited";
+
+            // Drain the bucket.
+            for _ in 0..rpm {
+                let _ = limiter.check_local(key);
+            }
+
+            // Next request must be denied with 429 + Retry-After.
+            let err = limiter.check_local(key).unwrap_err();
+            prop_assert_eq!(
+                err.category,
+                crate::errors::ErrorCategory::TooManyRequests,
+                "expected TooManyRequests, got {:?}", err.category
+            );
+            prop_assert!(
+                err.retry_after.is_some(),
+                "Retry-After must be set on 429 error"
+            );
+            prop_assert!(
+                err.retry_after.unwrap() > Duration::ZERO,
+                "Retry-After must be positive"
+            );
+        }
+
+        /// Per-user and per-IP buckets are independent: exhausting one key
+        /// does not affect another (Req 40.1, 40.2).
+        #[test]
+        fn prop_per_key_buckets_are_independent(
+            rpm in 2u32..=30u32,
+            suffix_a in "[a-z]{3,6}",
+            suffix_b in "[a-z]{3,6}",
+        ) {
+            prop_assume!(suffix_a != suffix_b);
+
+            let cfg = RateLimitConfig { enabled: true, requests_per_minute: rpm };
+            let limiter = RateLimiter::new(&cfg, None);
+            let key_a = format!("user:{suffix_a}");
+            let key_b = format!("ip:{suffix_b}");
+
+            // Drain key_a's bucket.
+            for _ in 0..rpm {
+                let _ = limiter.check_local(&key_a);
+            }
+            // key_a is now rate-limited.
+            prop_assert!(
+                limiter.check_local(&key_a).is_err(),
+                "key_a should be rate-limited after draining"
+            );
+            // key_b is unaffected.
+            prop_assert!(
+                limiter.check_local(&key_b).is_ok(),
+                "key_b should not be affected by key_a's exhaustion"
+            );
+        }
+    }
 }

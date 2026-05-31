@@ -96,6 +96,11 @@ pub mod mediaflow_surface {
     pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.route("/proxy/stream", web::get().to(not_implemented)) // Req 36.1
             .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)) // Req 51.10/51.11
+            // Subtitle proxy (Req 39.1, 39.3, 39.4, 39.5) — task 28.2.
+            .route(
+                "/proxy/subtitle",
+                web::get().to(crate::subtitles::subtitle_proxy_endpoint),
+            ) // Req 39.1
             // Streaming utilities (Req 15) — task 20.1.
             .route(
                 "/base64/encode",

@@ -45,6 +45,7 @@ pub mod security;
 pub mod sse;
 pub mod store;
 pub mod stremio;
+pub mod subtitles;
 pub mod supervisor;
 pub mod telegram;
 pub mod transcode;
