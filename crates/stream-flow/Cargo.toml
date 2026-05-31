@@ -200,6 +200,17 @@ serde_json = { workspace = true }
 tempfile = { workspace = true }
 # Property-based tests for the canonical error taxonomy (task 2.3, Property 47).
 proptest = { workspace = true }
+# HLS manifest parse/serialize round-trip + full-rewriting property test
+# (task 16.6, Property 10): the integration test renders arbitrary valid
+# master/media `.m3u8` manifests and drives them through `stream_flow::hls`.
+# `m3u8-rs` parses + serializes the generated manifest to assert the
+# parse→serialize→parse round trip is a fixed point (Req 1.x / 48.4), and `url`
+# builds the manifest base `Url` passed to `HlsRewriter::rewrite` and computes
+# the expected relative-URI resolution (Req 1.4). Integration tests are
+# separate crates and do not inherit the library's `[dependencies]`, so both
+# are declared here.
+m3u8-rs = { workspace = true }
+url = { workspace = true }
 # Proxy-auth property test (task 9.3, Property 27): builds the base64-encoded
 # `user:pass` form the verifier must accept alongside the plain form (Req 28.2).
 base64 = { workspace = true }
@@ -209,3 +220,15 @@ base64 = { workspace = true }
 # end-to-end against a real socket without any network dependency (design:
 # Testing Strategy -> Integration tests "Mock streaming origin"; Req 48.6).
 wiremock = { workspace = true }
+# CENC decryption round-trip property test (task 16.9, Property 13): the test
+# builds an independent reference encryptor for the four CENC schemes
+# (cenc/cens/cbc1/cbcs) and round-trips it against
+# `drm::cenc::decrypt_sample`. Integration tests are separate crates and do not
+# inherit the library `[dependencies]`, so the AES primitives are redeclared
+# here: `aes` (the AES-128 block cipher), `ctr` (AES-CTR for cenc/cens), `cbc`
+# (AES-CBC for cbc1/cbcs), and `cipher` (the shared Key/IV-init, stream- and
+# block-cipher traits plus `GenericArray`).
+aes = { workspace = true }
+ctr = { workspace = true }
+cbc = { workspace = true }
+cipher = { workspace = true }

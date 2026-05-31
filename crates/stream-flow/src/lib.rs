@@ -21,6 +21,7 @@ pub mod cache;
 pub mod config;
 pub mod drm;
 pub mod egress;
+pub mod epg;
 pub mod errors;
 pub mod health;
 pub mod hls;

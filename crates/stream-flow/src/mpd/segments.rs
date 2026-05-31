@@ -700,6 +700,48 @@ mod tests {
         assert_eq!(resolved.segments[0].url, "b128000/$lit/seg-1.m4s");
     }
 
+    #[test]
+    fn fixed_template_substitutes_all_four_identifiers_with_width_specifiers() {
+        // Req 3.1/3.5: fixed-duration SegmentTemplate substitutes all four of
+        // $Number$/$Time$/$RepresentationID$/$Bandwidth$, honoring width
+        // specifiers on the numeric identifiers ($Number%04d$, $Time%08d$).
+        // $Time$ in fixed mode is `index * @duration` (0, 3000, 6000, ...).
+        let template = SegmentTemplate {
+            media: Some(
+                "$RepresentationID$/b$Bandwidth$/n$Number%04d$-t$Time%08d$.m4s".into(),
+            ),
+            initialization: Some("$RepresentationID$/init-$Bandwidth$.mp4".into()),
+            start_number: Some(1),
+            duration: Some(3000),
+            timescale: Some(1000),
+            timeline: None,
+        };
+        let rep = rep_with("v0", 800_000, SegmentAddressing::Template(template));
+        // 9s / 3s = 3 segments.
+        let resolved = resolve_segments(&rep, Some(9.0)).unwrap();
+        let urls: Vec<&str> = resolved.segments.iter().map(|s| s.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            vec![
+                // $Number$ zero-padded to 4, $Time$ zero-padded to 8; $Time$
+                // accumulates as index * duration (0, 3000, 6000).
+                "v0/b800000/n0001-t00000000.m4s",
+                "v0/b800000/n0002-t00003000.m4s",
+                "v0/b800000/n0003-t00006000.m4s",
+            ]
+        );
+        // $Number$/$Time$ recorded on each resolved segment.
+        let numbers: Vec<u64> = resolved.segments.iter().map(|s| s.number.unwrap()).collect();
+        let times: Vec<u64> = resolved.segments.iter().map(|s| s.time.unwrap()).collect();
+        assert_eq!(numbers, vec![1, 2, 3]);
+        assert_eq!(times, vec![0, 3000, 6000]);
+        // init substitutes $RepresentationID$ + $Bandwidth$ (never $Number$/$Time$).
+        assert_eq!(
+            resolved.init.unwrap().url.as_deref(),
+            Some("v0/init-800000.mp4")
+        );
+    }
+
     // ---- SegmentTemplate + SegmentTimeline (Req 3.2) ----------------------
 
     #[test]
