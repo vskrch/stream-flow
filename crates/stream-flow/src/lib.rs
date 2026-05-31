@@ -36,6 +36,7 @@ pub mod proxy;
 pub mod proxylink;
 pub mod resilience;
 pub mod security;
+pub mod store;
 pub mod supervisor;
 pub mod telegram;
 pub mod transcode;
