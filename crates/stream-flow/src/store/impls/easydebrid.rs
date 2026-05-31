@@ -224,3 +224,114 @@ impl Store for EasyDebridStore {
         Ok(GenerateLinkData { link })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> EasyDebridStore {
+        EasyDebridStore::with_base_url(outbound(), "tok".into(), format!("{}/api/v1", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_easydebrid() {
+        assert_eq!(
+            EasyDebridStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::EasyDebrid
+        );
+    }
+
+    #[tokio::test]
+    async fn check_magnet_maps_cached_array() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/link/lookup"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "cached": [true]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnets = vec!["magnet:?xt=urn:btih:ABC123".to_string()];
+        let data = store_for(&mock)
+            .check_magnet(&CheckMagnetParams {
+                ctx: ctx(),
+                magnets: &magnets,
+                client_ip: None,
+                sid: None,
+                local_only: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Cached);
+    }
+
+    #[tokio::test]
+    async fn generate_link_returns_download() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/link/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "download": "https://cdn.ed.example/file.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://host.example/file".into(),
+                client_ip: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.ed.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/user/details"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("bad token"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("easydebrid"));
+    }
+}

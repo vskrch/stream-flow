@@ -281,3 +281,108 @@ impl Store for PikPakStore {
         Ok(GenerateLinkData { link })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> PikPakStore {
+        PikPakStore::with_base_url(outbound(), "tok".into(), mock.uri())
+    }
+
+    #[tokio::test]
+    async fn get_name_is_pikpak() {
+        assert_eq!(
+            PikPakStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::PikPak
+        );
+    }
+
+    #[tokio::test]
+    async fn get_magnet_error_phase_normalizes_to_failed() {
+        // Req 16.14: PikPak reports task phase; an error phase -> Failed.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/drive/v1/tasks/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "name": "movie", "phase": "error", "file_size": "100",
+                "params": {"info_hash": "abc"}
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_resolves_web_content_link() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/drive/v1/files/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "web_content_link": "https://cdn.pikpak.example/file.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "file_id_1".into(),
+                client_ip: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.pikpak.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drive/v1/about"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("unauthenticated"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("pikpak"));
+    }
+}

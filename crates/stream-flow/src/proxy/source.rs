@@ -107,7 +107,7 @@ impl UpstreamBody {
     /// Build an [`UpstreamBody`] from a `reqwest` response, capturing the
     /// header-derived metadata before consuming the response into its
     /// zero-copy byte stream (Req 5.1, 5.2, 5.4).
-    fn from_response(resp: reqwest::Response) -> Self {
+    pub(crate) fn from_response(resp: reqwest::Response) -> Self {
         let status = resp.status().as_u16();
         let headers = resp.headers();
 

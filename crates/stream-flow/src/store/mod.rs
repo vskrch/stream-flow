@@ -29,8 +29,10 @@
 //! types here are deliberately shaped to be extended by those tasks without a
 //! signature change.
 
+pub mod endpoints;
 pub mod error;
 pub mod fallback;
+pub mod link;
 pub mod types;
 pub mod impls;
 

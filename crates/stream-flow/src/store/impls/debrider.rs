@@ -227,3 +227,107 @@ impl Store for DebriderStore {
         Ok(GenerateLinkData { link })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> DebriderStore {
+        DebriderStore::with_base_url(outbound(), "tok".into(), format!("{}/api", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_debrider() {
+        assert_eq!(
+            DebriderStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::Debrider
+        );
+    }
+
+    #[tokio::test]
+    async fn get_magnet_dead_state_normalizes_to_failed() {
+        // Req 16.14.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/api/torrent/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "t1", "name": "movie", "hash": "abc", "size": 100, "status": "dead"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_returns_download() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/unrestrict"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "download": "https://cdn.dr.example/file.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://host.example/file".into(),
+                client_ip: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.dr.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/user"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("invalid token"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("debrider"));
+    }
+}
