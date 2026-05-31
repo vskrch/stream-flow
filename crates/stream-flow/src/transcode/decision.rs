@@ -1,163 +1,137 @@
 //! Remux-vs-transcode decision table (`transcode::decision`) — Req 6.2, 6.3,
-//! 6.4, 6.13.
+//! 6.4, 6.10, 6.13.
 //!
-//! Given a probed [`CodecInfo`], [`decide_mode`] picks the cheapest processing
-//! mode that still yields client-compatible output (design: Components →
-//! Transcode; Property 15):
+//! [`decide_mode`] is the **pure** core of Requirement 6: given the probed
+//! source [`CodecInfo`], it picks the cheapest processing mode that yields
+//! client-compatible output (design: Components → Transcode; Property 15):
 //!
-//! | source video | source audio | mode             | `-c:v` | `-c:a`        |
-//! |--------------|--------------|------------------|--------|---------------|
-//! | H.264        | AAC / none   | [`Remux`]        | `copy` | `copy`/none   |
-//! | H.264        | non-AAC      | [`Remux`]        | `copy` | `aac`         |
-//! | HEVC/VP9/AV1 | AAC / none   | [`TranscodeVideo`]| H.264 | `copy`/none   |
-//! | HEVC/VP9/AV1 | non-AAC      | [`TranscodeVideo`]| H.264 | `aac`         |
-//! | undetermined | any          | [`FullTranscode`]| H.264  | `aac`/`copy`  |
+//! | source video         | source audio | mode                       | video     | audio        |
+//! |----------------------|--------------|----------------------------|-----------|--------------|
+//! | H.264                | AAC / none   | [`Remux`]                  | `copy`    | `copy`       |
+//! | H.264                | non-AAC      | [`TranscodeAudio`]         | `copy`    | → AAC        |
+//! | HEVC / VP9 / AV1 / … | AAC / none   | [`TranscodeVideo`]`{Copy}` | → H.264   | `copy`       |
+//! | HEVC / VP9 / AV1 / … | non-AAC      | [`TranscodeVideo`]`{Tr.}`  | → H.264   | → AAC        |
+//! | *undeterminable*     | *any*        | [`FullTranscode`]          | → H.264   | → AAC        |
 //!
-//! [`Remux`]: ProcessingMode::Remux
-//! [`TranscodeVideo`]: ProcessingMode::TranscodeVideo
-//! [`FullTranscode`]: ProcessingMode::FullTranscode
+//! [`Remux`]: TranscodeMode::Remux
+//! [`TranscodeAudio`]: TranscodeMode::TranscodeAudio
+//! [`TranscodeVideo`]: TranscodeMode::TranscodeVideo
+//! [`FullTranscode`]: TranscodeMode::FullTranscode
 //!
-//! The mode is **video-driven**: H.264 only ever needs the container changed
-//! (`-c:v copy`, Req 6.2); HEVC/VP9/AV1 must be re-encoded to H.264 (Req 6.3);
-//! and an undeterminable source falls back to full transcoding rather than
-//! failing (Req 6.13). Audio is an independent sub-decision — copied when
-//! already AAC (or absent), transcoded to AAC otherwise (Req 6.4) — carried in
-//! the [`TranscodeDecision::audio`] field so the FFmpeg command builder emits
-//! the right `-c:a` flag regardless of the coarse mode.
+//! The decision is intentionally independent of whether transcoding is
+//! *enabled*: [`decide_mode`] always names the ideal mode, and the
+//! configuration gate (Req 6.10 — transcode disabled + incompatible media →
+//! `404`) is the separate [`TranscodeMode::requires_video_reencode`] check the
+//! session builder applies (so the pure table stays trivially testable —
+//! Property 15 validates 6.2/6.3/6.4/6.13 only).
 
-use crate::transcode::codec::{AudioCodec, CodecInfo, VideoCodec};
+use super::codec::{AudioCodec, CodecInfo, VideoCodec};
 
-/// The coarse processing mode chosen for a transcode-or-remux request
-/// (design: Components → Transcode `{Remux, TranscodeVideo, TranscodeAudio,
-/// FullTranscode}`).
+/// What to do with the source audio stream (Req 6.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessingMode {
-    /// Source video is client-compatible (H.264) and only the container is
-    /// wrong: copy the video stream, re-encoding only audio if needed
-    /// (Req 6.2).
+pub enum AudioAction {
+    /// Source audio is already AAC (or absent): pass through (`-c:a copy`).
+    Copy,
+    /// Source audio is not AAC: re-encode to AAC (`-c:a aac`).
+    Transcode,
+}
+
+impl AudioAction {
+    /// The action for a source audio codec: copy AAC, transcode everything
+    /// else; a source with no audio stream copies (a harmless no-op) (Req 6.4).
+    fn for_audio(audio: Option<&AudioCodec>) -> AudioAction {
+        match audio {
+            Some(a) if a.is_client_compatible() => AudioAction::Copy,
+            Some(_) => AudioAction::Transcode,
+            None => AudioAction::Copy,
+        }
+    }
+
+    /// `true` when the audio stream is re-encoded (Req 6.4, 6.9).
+    pub fn is_transcode(self) -> bool {
+        matches!(self, AudioAction::Transcode)
+    }
+}
+
+/// The processing mode chosen by [`decide_mode`] (design: Components →
+/// Transcode; Property 15).
+///
+/// Each variant fully determines both the video and the audio action; use
+/// [`video_reencoded`](TranscodeMode::video_reencoded) /
+/// [`audio_action`](TranscodeMode::audio_action) to drive FFmpeg-argument
+/// construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranscodeMode {
+    /// Container-only change: copy video (`-c:v copy`) and audio (`-c:a copy`).
+    /// Source video is H.264 and audio is AAC / absent (Req 6.2).
     Remux,
-    /// Source video is incompatible (HEVC/VP9/AV1, …): re-encode the video to
-    /// H.264 (Req 6.3).
-    TranscodeVideo,
-    /// Source video is client-compatible (H.264, copied) but the audio must be
-    /// re-encoded to AAC (Req 6.4). The video-driven [`decide_mode`] folds this
-    /// case into [`Remux`](ProcessingMode::Remux) (per Property 15); this
-    /// variant is the fine-grained classification produced by
-    /// [`ProcessingMode::for_actions`] for metrics/logging.
+    /// Copy video (`-c:v copy`), re-encode audio to AAC. Source video is H.264
+    /// but the audio codec is incompatible (Req 6.2, 6.4).
     TranscodeAudio,
-    /// Source codecs could not be determined: fall back to transcoding the
-    /// video to H.264 (and audio to AAC) rather than failing (Req 6.13).
+    /// Re-encode video to H.264; the audio is copied or transcoded per the
+    /// carried [`AudioAction`]. Source video is HEVC/VP9/AV1/other (Req 6.3,
+    /// 6.4).
+    TranscodeVideo {
+        /// What to do with the audio while the video is re-encoded.
+        audio: AudioAction,
+    },
+    /// Re-encode both video (→ H.264) and audio (→ AAC). The source codecs
+    /// could not be determined, so fall back to a full transcode (Req 6.13).
     FullTranscode,
 }
 
-/// What FFmpeg should do with the video stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VideoAction {
-    /// `-c:v copy` — stream-copy the already-compatible H.264 video (Req 6.2).
-    Copy,
-    /// Re-encode the video to H.264 (Req 6.3, 6.13).
-    TranscodeToH264,
-}
-
-/// What FFmpeg should do with the audio stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AudioAction {
-    /// `-c:a copy` — stream-copy the already-compatible AAC audio (Req 6.4).
-    Copy,
-    /// Re-encode the audio to AAC (Req 6.4).
-    TranscodeToAac,
-    /// The source has no audio stream — emit no audio mapping/flags.
-    None,
-}
-
-/// The full decision for a transcode-or-remux request: the coarse
-/// [`ProcessingMode`] plus the per-stream video/audio actions that drive the
-/// FFmpeg `-c:v` / `-c:a` flags (design: Components → Transcode).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TranscodeDecision {
-    /// The coarse, video-driven mode (Req 6.2, 6.3, 6.13; Property 15).
-    pub mode: ProcessingMode,
-    /// What to do with the video stream.
-    pub video: VideoAction,
-    /// What to do with the audio stream.
-    pub audio: AudioAction,
-}
-
-impl TranscodeDecision {
-    /// `true` when neither stream is re-encoded — a pure container remux
-    /// (`-c:v copy -c:a copy`, Req 6.2). The cheapest path.
-    pub fn is_pure_remux(&self) -> bool {
-        matches!(self.video, VideoAction::Copy)
-            && matches!(self.audio, AudioAction::Copy | AudioAction::None)
+impl TranscodeMode {
+    /// `true` when the video stream is re-encoded (`TranscodeVideo` /
+    /// `FullTranscode`) rather than copied (`Remux` / `TranscodeAudio`).
+    ///
+    /// This is the Req 6.10 gate: a mode that re-encodes video is impossible
+    /// when transcoding is disabled, so the transcode-only endpoint answers
+    /// `404` for it (see [`requires_video_reencode`](Self::requires_video_reencode)).
+    pub fn video_reencoded(self) -> bool {
+        matches!(self, TranscodeMode::TranscodeVideo { .. } | TranscodeMode::FullTranscode)
     }
 
-    /// The fine-grained classification of this decision's per-stream actions,
-    /// distinguishing the audio-only re-encode case (Req 6.4) from a pure
-    /// remux for metrics/logging.
-    pub fn effective_mode(&self) -> ProcessingMode {
-        ProcessingMode::for_actions(self.video, self.audio)
+    /// Alias of [`video_reencoded`](Self::video_reencoded) reading naturally at
+    /// the Req 6.10 configuration gate.
+    pub fn requires_video_reencode(self) -> bool {
+        self.video_reencoded()
     }
-}
 
-impl ProcessingMode {
-    /// Classify a `(video, audio)` action pair into the fine-grained mode,
-    /// using all four design variants (the audio-only re-encode becomes
-    /// [`TranscodeAudio`](ProcessingMode::TranscodeAudio)).
-    pub fn for_actions(video: VideoAction, audio: AudioAction) -> Self {
-        let audio_transcode = matches!(audio, AudioAction::TranscodeToAac);
-        match (video, audio_transcode) {
-            (VideoAction::Copy, false) => ProcessingMode::Remux,
-            (VideoAction::Copy, true) => ProcessingMode::TranscodeAudio,
-            (VideoAction::TranscodeToH264, false) => ProcessingMode::TranscodeVideo,
-            (VideoAction::TranscodeToH264, true) => ProcessingMode::FullTranscode,
+    /// What happens to the audio stream under this mode (Req 6.4).
+    pub fn audio_action(self) -> AudioAction {
+        match self {
+            TranscodeMode::Remux => AudioAction::Copy,
+            TranscodeMode::TranscodeAudio => AudioAction::Transcode,
+            TranscodeMode::TranscodeVideo { audio } => audio,
+            TranscodeMode::FullTranscode => AudioAction::Transcode,
         }
     }
 }
 
-/// Decide the processing mode + per-stream actions for a probed source
-/// (Req 6.2, 6.3, 6.4, 6.13; Property 15).
+/// Decide the processing mode purely from the probed source codecs (Req 6.2,
+/// 6.3, 6.4, 6.13) — the pure heart of Property 15.
 ///
-/// Video-driven: an undeterminable video codec falls back to full transcoding
-/// (Req 6.13); a compatible H.264 video is remuxed (`-c:v copy`, Req 6.2); any
-/// other video codec is transcoded to H.264 (Req 6.3). Audio is decided
-/// independently via [`decide_audio`].
-pub fn decide_mode(info: &CodecInfo) -> TranscodeDecision {
-    let audio = decide_audio(&info.audio);
-
-    if info.video.is_undetermined() {
-        // Req 6.13: probe could not determine the codec → full transcode.
-        return TranscodeDecision {
-            mode: ProcessingMode::FullTranscode,
-            video: VideoAction::TranscodeToH264,
-            audio,
-        };
-    }
-
-    if info.video.is_client_compatible() {
-        // Req 6.2: H.264 video → copy video, re-encode audio only if needed.
-        TranscodeDecision {
-            mode: ProcessingMode::Remux,
-            video: VideoAction::Copy,
-            audio,
-        }
-    } else {
-        // Req 6.3: HEVC/VP9/AV1/other → transcode video to H.264.
-        TranscodeDecision {
-            mode: ProcessingMode::TranscodeVideo,
-            video: VideoAction::TranscodeToH264,
-            audio,
-        }
-    }
-}
-
-/// Decide the audio action from the source audio codec (Req 6.4): AAC is
-/// copied, no-audio maps to no action, everything else (including an
-/// undeterminable codec) is transcoded to AAC.
-pub fn decide_audio(audio: &AudioCodec) -> AudioAction {
-    match audio {
-        AudioCodec::Aac => AudioAction::Copy,
-        AudioCodec::None => AudioAction::None,
-        AudioCodec::Other(_) | AudioCodec::Unknown => AudioAction::TranscodeToAac,
+/// * Undeterminable source video → [`FullTranscode`](TranscodeMode::FullTranscode)
+///   (Req 6.13).
+/// * H.264 video → video copied; [`Remux`](TranscodeMode::Remux) when audio is
+///   AAC/absent, [`TranscodeAudio`](TranscodeMode::TranscodeAudio) otherwise
+///   (Req 6.2, 6.4).
+/// * HEVC/VP9/AV1/other video → video re-encoded to H.264 via
+///   [`TranscodeVideo`](TranscodeMode::TranscodeVideo) carrying the audio
+///   action (copy when AAC, transcode otherwise — Req 6.3, 6.4).
+pub fn decide_mode(info: &CodecInfo) -> TranscodeMode {
+    match &info.video {
+        // Req 6.13: codecs undeterminable → full transcode.
+        None => TranscodeMode::FullTranscode,
+        // Req 6.2: client-compatible video (H.264) → copy video, audio per 6.4.
+        Some(VideoCodec::H264) => match AudioAction::for_audio(info.audio.as_ref()) {
+            AudioAction::Copy => TranscodeMode::Remux,
+            AudioAction::Transcode => TranscodeMode::TranscodeAudio,
+        },
+        // Req 6.3: incompatible video → transcode video to H.264, audio per 6.4.
+        Some(_) => TranscodeMode::TranscodeVideo {
+            audio: AudioAction::for_audio(info.audio.as_ref()),
+        },
     }
 }
 
@@ -165,101 +139,97 @@ pub fn decide_audio(audio: &AudioCodec) -> AudioAction {
 mod tests {
     use super::*;
 
-    fn info(video: VideoCodec, audio: AudioCodec) -> CodecInfo {
-        CodecInfo { video, audio }
+    fn info(v: Option<VideoCodec>, a: Option<AudioCodec>) -> CodecInfo {
+        CodecInfo { video: v, audio: a }
+    }
+
+    // -- Req 6.2: H.264 + container-only → remux (audio copy/transcode) ------
+
+    #[test]
+    fn h264_aac_is_remux_both_copy() {
+        let mode = decide_mode(&info(Some(VideoCodec::H264), Some(AudioCodec::Aac)));
+        assert_eq!(mode, TranscodeMode::Remux);
+        assert!(!mode.video_reencoded(), "H.264 video must be copied");
+        assert_eq!(mode.audio_action(), AudioAction::Copy);
     }
 
     #[test]
-    fn h264_aac_remuxes_with_pure_copy() {
-        let d = decide_mode(&info(VideoCodec::H264, AudioCodec::Aac));
-        assert_eq!(d.mode, ProcessingMode::Remux);
-        assert_eq!(d.video, VideoAction::Copy);
-        assert_eq!(d.audio, AudioAction::Copy);
-        assert!(d.is_pure_remux());
+    fn h264_no_audio_is_remux() {
+        let mode = decide_mode(&info(Some(VideoCodec::H264), None));
+        assert_eq!(mode, TranscodeMode::Remux);
+        assert!(!mode.video_reencoded());
     }
 
     #[test]
-    fn h264_no_audio_remuxes() {
-        let d = decide_mode(&info(VideoCodec::H264, AudioCodec::None));
-        assert_eq!(d.mode, ProcessingMode::Remux);
-        assert_eq!(d.video, VideoAction::Copy);
-        assert_eq!(d.audio, AudioAction::None);
-        assert!(d.is_pure_remux());
+    fn h264_nonaac_audio_is_transcode_audio_only() {
+        let mode = decide_mode(&info(
+            Some(VideoCodec::H264),
+            Some(AudioCodec::Other("ac3".into())),
+        ));
+        assert_eq!(mode, TranscodeMode::TranscodeAudio);
+        assert!(!mode.video_reencoded(), "video must still be copied (Req 6.2)");
+        assert_eq!(mode.audio_action(), AudioAction::Transcode);
     }
 
-    #[test]
-    fn h264_non_aac_remuxes_video_but_transcodes_audio() {
-        // Property 15: video H.264 → Remux mode, audio transcoded since non-AAC.
-        let d = decide_mode(&info(VideoCodec::H264, AudioCodec::Other("ac3".into())));
-        assert_eq!(d.mode, ProcessingMode::Remux);
-        assert_eq!(d.video, VideoAction::Copy);
-        assert_eq!(d.audio, AudioAction::TranscodeToAac);
-        assert!(!d.is_pure_remux());
-        // The fine-grained classification distinguishes the audio re-encode.
-        assert_eq!(d.effective_mode(), ProcessingMode::TranscodeAudio);
-    }
+    // -- Req 6.3 / 6.4: incompatible video → transcode video, audio per rule -
 
     #[test]
     fn hevc_aac_transcodes_video_copies_audio() {
-        let d = decide_mode(&info(VideoCodec::Hevc, AudioCodec::Aac));
-        assert_eq!(d.mode, ProcessingMode::TranscodeVideo);
-        assert_eq!(d.video, VideoAction::TranscodeToH264);
-        assert_eq!(d.audio, AudioAction::Copy);
+        let mode = decide_mode(&info(Some(VideoCodec::Hevc), Some(AudioCodec::Aac)));
+        assert_eq!(mode, TranscodeMode::TranscodeVideo { audio: AudioAction::Copy });
+        assert!(mode.video_reencoded());
+        assert_eq!(mode.audio_action(), AudioAction::Copy);
     }
 
     #[test]
-    fn vp9_and_av1_and_other_all_transcode_video() {
-        for v in [
-            VideoCodec::Vp9,
-            VideoCodec::Av1,
-            VideoCodec::Other("mpeg2video".into()),
-        ] {
-            let d = decide_mode(&info(v.clone(), AudioCodec::Other("opus".into())));
-            assert_eq!(d.mode, ProcessingMode::TranscodeVideo, "{v:?}");
-            assert_eq!(d.video, VideoAction::TranscodeToH264);
-            assert_eq!(d.audio, AudioAction::TranscodeToAac);
+    fn vp9_nonaac_transcodes_both() {
+        let mode = decide_mode(&info(
+            Some(VideoCodec::Vp9),
+            Some(AudioCodec::Other("opus".into())),
+        ));
+        assert_eq!(
+            mode,
+            TranscodeMode::TranscodeVideo { audio: AudioAction::Transcode }
+        );
+        assert!(mode.video_reencoded());
+        assert_eq!(mode.audio_action(), AudioAction::Transcode);
+    }
+
+    #[test]
+    fn av1_and_other_video_transcode_video() {
+        for v in [VideoCodec::Av1, VideoCodec::Other("mpeg2video".into())] {
+            let mode = decide_mode(&info(Some(v.clone()), Some(AudioCodec::Aac)));
+            assert!(
+                matches!(mode, TranscodeMode::TranscodeVideo { .. }),
+                "{v:?} must transcode video"
+            );
         }
     }
 
+    // -- Req 6.13: undeterminable codecs → full transcode -------------------
+
     #[test]
-    fn undetermined_codecs_fall_back_to_full_transcode() {
-        // Req 6.13 / Property 15: codecs cannot be determined → FullTranscode.
-        let d = decide_mode(&CodecInfo::undetermined());
-        assert_eq!(d.mode, ProcessingMode::FullTranscode);
-        assert_eq!(d.video, VideoAction::TranscodeToH264);
-        assert_eq!(d.audio, AudioAction::TranscodeToAac);
+    fn undetermined_codecs_full_transcode() {
+        let mode = decide_mode(&CodecInfo::undetermined());
+        assert_eq!(mode, TranscodeMode::FullTranscode);
+        assert!(mode.video_reencoded());
+        assert_eq!(mode.audio_action(), AudioAction::Transcode);
     }
 
     #[test]
-    fn undetermined_video_with_known_aac_audio_still_full_transcodes_video() {
-        let d = decide_mode(&info(VideoCodec::Unknown, AudioCodec::Aac));
-        assert_eq!(d.mode, ProcessingMode::FullTranscode);
-        assert_eq!(d.video, VideoAction::TranscodeToH264);
-        // Known AAC audio is still copied even in the fallback.
-        assert_eq!(d.audio, AudioAction::Copy);
+    fn undetermined_video_with_known_audio_still_full_transcode() {
+        // No recognisable video stream → full transcode regardless of audio.
+        let mode = decide_mode(&info(None, Some(AudioCodec::Aac)));
+        assert_eq!(mode, TranscodeMode::FullTranscode);
     }
 
+    // -- Req 6.10 gate: only video-reencoding modes are blocked when disabled -
+
     #[test]
-    fn for_actions_covers_all_four_modes() {
-        assert_eq!(
-            ProcessingMode::for_actions(VideoAction::Copy, AudioAction::Copy),
-            ProcessingMode::Remux
-        );
-        assert_eq!(
-            ProcessingMode::for_actions(VideoAction::Copy, AudioAction::None),
-            ProcessingMode::Remux
-        );
-        assert_eq!(
-            ProcessingMode::for_actions(VideoAction::Copy, AudioAction::TranscodeToAac),
-            ProcessingMode::TranscodeAudio
-        );
-        assert_eq!(
-            ProcessingMode::for_actions(VideoAction::TranscodeToH264, AudioAction::Copy),
-            ProcessingMode::TranscodeVideo
-        );
-        assert_eq!(
-            ProcessingMode::for_actions(VideoAction::TranscodeToH264, AudioAction::TranscodeToAac),
-            ProcessingMode::FullTranscode
-        );
+    fn requires_video_reencode_matches_video_reencoded() {
+        assert!(!TranscodeMode::Remux.requires_video_reencode());
+        assert!(!TranscodeMode::TranscodeAudio.requires_video_reencode());
+        assert!(TranscodeMode::TranscodeVideo { audio: AudioAction::Copy }.requires_video_reencode());
+        assert!(TranscodeMode::FullTranscode.requires_video_reencode());
     }
 }

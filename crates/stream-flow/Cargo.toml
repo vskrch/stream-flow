@@ -164,6 +164,18 @@ ctr = { workspace = true }
 # failures surfaced as descriptive errors that name the failing element
 # (design: Components -> MPD / DASH->HLS; Req 2.1-2.8).
 quick-xml = { workspace = true }
+# Video extractors (task 19.3): `scraper` parses host HTML pages into a DOM so
+# media URLs can be located with CSS selectors (e.g. Vidoza's `<source src>`),
+# and `regex` unpacks the inline-JS media-link builders that are not
+# expressible as DOM queries (e.g. Streamtape's split+`.substring()` token
+# assembly). The `Extractor` trait, the case-insensitive `ExtractorFactory`
+# registry over the 24 hosts, the two client pools, and the Byparr
+# (FlareSolverr-style) fallback reuse the already-linked `reqwest`/`wreq` (via
+# the single egress seam), `serde_json` (Byparr request/response JSON), and
+# `async-trait` (object-safe async `Extractor` trait) (design: Components ->
+# Extractor (+Byparr); Req 12).
+scraper = { workspace = true }
+regex = { workspace = true }
 # Auth verifiers + credential resolution (task 9.1): secret comparisons
 # (API_Password, Proxy_Auth passwords, tokens) use a constant-time
 # double-HMAC equality so a wrong secret takes the same time as a right one,

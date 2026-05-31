@@ -29,10 +29,13 @@ pub mod http;
 pub mod mpd;
 pub mod observability;
 pub mod persistence;
+pub mod prebuffer;
 pub mod proxy;
 pub mod resilience;
 pub mod security;
 pub mod supervisor;
+pub mod transcode;
+pub mod xtream;
 
 use actix_web::{dev::HttpServiceFactory, web};
 
