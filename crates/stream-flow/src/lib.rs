@@ -17,6 +17,7 @@
 
 pub mod acestream;
 pub mod app;
+pub mod health_score;
 pub mod auth;
 pub mod cache;
 pub mod config;
@@ -32,13 +33,16 @@ pub mod hls;
 pub mod http;
 pub mod meta;
 pub mod mpd;
+pub mod quality;
 pub mod observability;
 pub mod persistence;
 pub mod prebuffer;
 pub mod proxy;
 pub mod proxylink;
+pub mod rate_limit;
 pub mod resilience;
 pub mod security;
+pub mod sse;
 pub mod store;
 pub mod stremio;
 pub mod supervisor;
@@ -65,9 +69,27 @@ use crate::http::PanicBoundary;
 /// registration to [`http::router::configure`], which layers the two disjoint
 /// path namespaces (`mediaflow` + `stremthru`) plus the shared routes onto one
 /// handler set (Req 36.1, 36.2).
+///
+/// When rate limiting is enabled in the config (Req 40), the
+/// [`RateLimiterMiddleware`](rate_limit::RateLimiterMiddleware) is applied to
+/// the scope so every route (except `/health` and `/metrics`, which are exempt
+/// per Req 40.6) is subject to per-user / per-IP token-bucket enforcement.
 pub fn build_app(state: AppState) -> impl HttpServiceFactory {
+    use std::sync::Arc;
+    use rate_limit::{RateLimiter, RateLimiterMiddleware};
+
+    // Build the rate limiter from the config. When disabled, the limiter is
+    // still constructed but the middleware checks `is_exempt` for all paths
+    // (since the config has `enabled: false`, the middleware is a no-op).
+    // We always wrap with the middleware so the return type is uniform.
+    let limiter = Arc::new(RateLimiter::new(
+        &state.config().ratelimit,
+        state.rate_limit_cache(),
+    ));
+
     web::scope("")
         .wrap(PanicBoundary)
+        .wrap(RateLimiterMiddleware::new(limiter))
         .configure(move |cfg| http::router::configure(cfg, &state))
 }
 

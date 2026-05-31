@@ -40,6 +40,7 @@ use crate::config::Config;
 use crate::egress::{HttpIpReflector, OutboundClient};
 use crate::health::{ComponentHealth, HealthProbes, HealthRegistry, LoadState, StoreBreaker};
 use crate::observability::Metrics;
+use crate::sse::SseRegistry;
 
 /// Default liveness-heartbeat staleness bound for the skeleton registry.
 ///
@@ -75,6 +76,8 @@ struct AppStateInner {
     /// obtains an HTTP client for an upstream call, and the source of the
     /// tunnel-observed Egress_IP backing `/proxy/ip` (Req 51.11, task 14.2).
     egress: Arc<OutboundClient>,
+    /// The SSE registry backing `/v0/events` (Req 41.1, task 28.4).
+    sse: SseRegistry,
 }
 
 impl AppState {
@@ -116,6 +119,7 @@ impl AppState {
                 health,
                 metrics: Metrics::new(),
                 egress,
+                sse: SseRegistry::new(),
             }),
         }
     }
@@ -138,6 +142,7 @@ impl AppState {
                 health,
                 metrics: Metrics::new(),
                 egress,
+                sse: SseRegistry::new(),
             }),
         }
     }
@@ -166,6 +171,23 @@ impl AppState {
     /// `Arc`; clone the returned `Arc` when an owned handle is needed.
     pub fn egress(&self) -> &Arc<OutboundClient> {
         &self.inner.egress
+    }
+
+    /// Return the optional Redis-backed [`CacheBackend`] for the rate limiter
+    /// (Req 40.5). When Redis is configured the rate limiter uses this shared
+    /// backend so all replicas share one quota per key; when `None` the limiter
+    /// uses in-process state only.
+    ///
+    /// Currently returns `None` (the Redis cache wiring lands with the full
+    /// cache-layer task); the rate limiter falls back to in-process state.
+    pub fn rate_limit_cache(&self) -> Option<Arc<dyn crate::cache::CacheBackend>> {
+        // TODO(task 4.3): return the FailoverCache when wired into AppState.
+        None
+    }
+
+    /// Borrow the shared SSE registry backing `/v0/events` (Req 41.1).
+    pub fn sse(&self) -> &SseRegistry {
+        &self.inner.sse
     }
 }
 

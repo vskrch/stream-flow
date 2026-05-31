@@ -52,6 +52,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, state: &AppState) {
     // the health module documents for task 11.2 ("wired into the dual-surface
     // router once `AppState` threads the shared registry").
     cfg.app_data(web::Data::new(state.health().clone()));
+    // The SSE registry (task 28.4) is registered as app data so the
+    // `/v0/events` handler can subscribe to per-user broadcast channels and
+    // other handlers can publish events (Req 41.1, 41.4).
+    cfg.app_data(web::Data::new(state.sse().clone()));
 
     mediaflow_surface::configure(cfg); // Req 36.1, 36.5
     stremthru_surface::configure(cfg); // Req 36.2, 36.6
@@ -153,17 +157,18 @@ pub mod shared {
     use super::*;
     use crate::health::health_endpoint;
     use crate::observability::metrics_endpoint;
+    use crate::sse::sse_events_endpoint;
 
     /// Register the shared routes.
     ///
     /// `/health` is backed by its real handler (task 7.3) and `/metrics` by the
     /// observability handler (task 12.1), which renders the Prometheus
-    /// exposition behind the metrics password (Req 32.1, 32.2). `/v0/events` is
-    /// a skeleton placeholder until SSE (task 23) lands. The web UI assets are
-    /// mounted by the web-UI task.
+    /// exposition behind the metrics password (Req 32.1, 32.2). `/v0/events`
+    /// is backed by the real SSE handler (task 28.4, Req 41.1). The web UI
+    /// assets are mounted by the web-UI task.
     pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.route("/health", web::get().to(health_endpoint)) // Req 50.10, 32.4
             .route("/metrics", web::get().to(metrics_endpoint)) // Req 32.1, 32.2
-            .route("/v0/events", web::get().to(not_implemented)); // Req 36.2 (task 23)
+            .route("/v0/events", web::get().to(sse_events_endpoint)); // Req 41.1
     }
 }
