@@ -124,6 +124,16 @@ impl CbcKey {
         key[..copy_len].copy_from_slice(&secret[..copy_len]);
         Self(key)
     }
+
+    /// Borrow the 32-byte derived key material.
+    ///
+    /// Exposed so adjacent key-derivation consumers (notably the stremthru
+    /// token codec in [`crate::proxylink`], which keys an HMAC rather than an
+    /// AES-CBC cipher) can reuse the same `ljust(32)[:32]` derivation without
+    /// re-deriving it. The bytes are secret; call sites must not log them.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
 }
 
 /// Encrypt a [`ProxyPayload`] into a `base64url-no-pad` `d`-parameter token
@@ -343,6 +353,16 @@ mod tests {
         let long = "this_is_a_very_long_password_that_exceeds_32_bytes";
         let key = CbcKey::from_api_password(long);
         assert_eq!(&key.0[..], &long.as_bytes()[..32]);
+    }
+
+    #[test]
+    fn as_bytes_exposes_the_derived_key_material() {
+        // The accessor must return exactly the `ljust(32)[:32]` derivation so
+        // the token codec (which keys an HMAC) reuses identical key material.
+        let key = CbcKey::from_api_password("short");
+        let mut expected = [0x20u8; 32];
+        expected[..5].copy_from_slice(b"short");
+        assert_eq!(key.as_bytes(), &expected);
     }
 
     // -- Req 14.5 / 14.6 helpers (enforcement is done by the caller) ----------

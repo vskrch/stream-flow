@@ -78,12 +78,13 @@ pub mod mediaflow_surface {
 
     /// Register the mediaflow surface's representative routes.
     ///
-    /// The full path set (`/proxy/hls/*`, `/proxy/mpd/*`, `/proxy/epg`,
-    /// `/extractor/video`, `/player_api.php`, `/xmltv.php`, `/get.php`,
-    /// `/proxy/acestream/*`, `/proxy/telegram/*`, `/generate_url`, `/base64/*`,
-    /// `/playlist/builder`, `/speedtest`) is filled in by the tasks that own
-    /// each handler; the skeleton registers the streaming entry points that
-    /// anchor the namespace.
+    /// The streaming-utility paths (`/generate_url`, `/base64/*`,
+    /// `/playlist/builder`, `/speedtest`) are backed by their real handlers
+    /// (task 20.1, [`crate::utils`]). The remaining path set (`/proxy/hls/*`,
+    /// `/proxy/mpd/*`, `/proxy/epg`, `/extractor/video`, `/player_api.php`,
+    /// `/xmltv.php`, `/get.php`, `/proxy/acestream/*`, `/proxy/telegram/*`) is
+    /// filled in by the tasks that own each handler; the skeleton registers the
+    /// streaming entry points that anchor the namespace.
     ///
     /// `/proxy/ip` is backed by its real handler (task 14.2): it returns the
     /// tunnel-observed Egress_IP from the shared egress
@@ -91,7 +92,14 @@ pub mod mediaflow_surface {
     /// 51.11).
     pub fn configure(cfg: &mut web::ServiceConfig) {
         cfg.route("/proxy/stream", web::get().to(not_implemented)) // Req 36.1
-            .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)); // Req 51.10/51.11
+            .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)) // Req 51.10/51.11
+            // Streaming utilities (Req 15) — task 20.1.
+            .route("/base64/encode", web::get().to(crate::utils::base64util::encode_endpoint)) // Req 15.3
+            .route("/base64/decode", web::get().to(crate::utils::base64util::decode_endpoint)) // Req 15.4
+            .route("/base64/check", web::get().to(crate::utils::base64util::check_endpoint)) // Req 15.5
+            .route("/generate_url", web::post().to(crate::utils::generate_url::generate_url_endpoint)) // Req 15.7
+            .route("/playlist/builder", web::post().to(crate::utils::playlist::playlist_builder_endpoint)) // Req 15.1
+            .route("/speedtest", web::get().to(crate::utils::speedtest::speedtest_endpoint)); // Req 15.2
     }
 }
 

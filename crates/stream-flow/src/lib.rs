@@ -33,11 +33,13 @@ pub mod observability;
 pub mod persistence;
 pub mod prebuffer;
 pub mod proxy;
+pub mod proxylink;
 pub mod resilience;
 pub mod security;
 pub mod supervisor;
 pub mod telegram;
 pub mod transcode;
+pub mod utils;
 pub mod xtream;
 
 use actix_web::{dev::HttpServiceFactory, web};
