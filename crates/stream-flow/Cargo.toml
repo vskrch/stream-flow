@@ -68,6 +68,14 @@ wreq = { workspace = true }
 wreq-util = { workspace = true }
 url = { workspace = true }
 
+# HLS manifest parse + full rewriting (task 16.1): `m3u8-rs` parses master and
+# media `.m3u8` playlists into structured `Playlist` values and serializes them
+# back, so every variant / segment / `#EXT-X-KEY` / `#EXT-X-MAP` URL can be
+# rewritten to a `stream-flow` proxy URL after resolving relative URIs against
+# the manifest base, with a parse/serialize round trip preserved (design:
+# Components -> HLS; Technology Choices "HLS parsing"; Req 1.1-1.4, 1.8, 48.4).
+m3u8-rs = { workspace = true }
+
 # Persistence (task 5.1): embedded SQLite via `sqlx::SqlitePool`. The pool is
 # built from `SqliteConnectOptions` configured for WAL journal mode, a 5s
 # busy_timeout, `synchronous=NORMAL`, and `foreign_keys=ON`, with a
@@ -123,6 +131,33 @@ aes = { workspace = true }
 cbc = { workspace = true }
 cipher = { workspace = true }
 base64 = { workspace = true }
+# DRM — MP4 sample-encryption box parser + ClearKey store (task 16.4): `hex`
+# renders a 16-byte CENC key identifier (KID) as a stable hex string both for
+# the unresolved-KID error message (Req 4.8) and for parsing hex-configured
+# ClearKey `KID:key` pairs into the configured key set (Req 4.6). The per-KID
+# resolved-key cache (Req 4.7) reuses `tokio::time::Instant`-free `std::time`
+# deadlines and is bounded by the configured key set, so no extra cache crate
+# is pulled in (design: Components -> DRM).
+hex = { workspace = true }
+# DRM — per-scheme ClearKey decryption (task 16.5): the four CENC schemes
+# decrypt with AES-128 in either counter (`cenc`/`cens`) or cipher-block-
+# chaining (`cbc1`/`cbcs`) mode (design: Components -> DRM; Req 4.2-4.5). `aes`
+# is the block cipher, `ctr` the AES-CTR stream mode (its `apply_keystream`
+# preserves the block counter + partial-block position across subsample runs,
+# which the `cenc`/`cens` schemes rely on), `cbc` the AES-CBC mode, and
+# `cipher` the shared block/stream-cipher traits (`KeyIvInit`,
+# `StreamCipher`, `BlockDecryptMut`). `ctr` is added here (the proxy-link path
+# in task 9.2 only needed `cbc`); `aes`/`cbc`/`cipher` are already linked above.
+ctr = { workspace = true }
+# MPD parsing + DASH->HLS conversion (task 16.2): the MPD/DASH manifest is an
+# XML document parsed into a structured `Mpd { periods, adaptation_sets,
+# representations }` via `quick-xml`'s serde deserializer (the workspace
+# `serialize` feature enables `quick_xml::de`). The parsed tree drives
+# `to_hls_master` (one HLS variant per representation) and `to_hls_media`
+# (VOD = all segments, live = most recent `live_playlist_depth`), with parse
+# failures surfaced as descriptive errors that name the failing element
+# (design: Components -> MPD / DASH->HLS; Req 2.1-2.8).
+quick-xml = { workspace = true }
 # Auth verifiers + credential resolution (task 9.1): secret comparisons
 # (API_Password, Proxy_Auth passwords, tokens) use a constant-time
 # double-HMAC equality so a wrong secret takes the same time as a right one,
