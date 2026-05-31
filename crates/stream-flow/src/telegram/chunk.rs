@@ -119,7 +119,7 @@ impl ChunkCoverage {
         match (self.first_index(), self.last_index()) {
             (Some(first), Some(last)) => first..=last,
             // A canonically-empty inclusive range (start > end) yields nothing.
-            _ => 1..=0,
+            _ => RangeInclusive::new(1, 0),
         }
     }
 

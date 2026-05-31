@@ -15,6 +15,7 @@
 //! Endpoint behaviour is filled in by later tasks; this is the router skeleton
 //! (task 11.2).
 
+pub mod acestream;
 pub mod app;
 pub mod auth;
 pub mod cache;
@@ -23,6 +24,7 @@ pub mod drm;
 pub mod egress;
 pub mod epg;
 pub mod errors;
+pub mod extractor;
 pub mod health;
 pub mod hls;
 pub mod http;
@@ -34,6 +36,7 @@ pub mod proxy;
 pub mod resilience;
 pub mod security;
 pub mod supervisor;
+pub mod telegram;
 pub mod transcode;
 pub mod xtream;
 
