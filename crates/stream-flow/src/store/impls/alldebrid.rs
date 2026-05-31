@@ -30,15 +30,29 @@ const BASE_URL: &str = "https://api.alldebrid.com/v4";
 pub struct AllDebridStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl AllDebridStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}?agent=stream-flow&apikey={}", self.token))
+        Url::parse(&format!("{}{}?agent=stream-flow&apikey={}", self.base_url, path, self.token))
             .expect("valid AllDebrid API URL")
     }
 
@@ -93,7 +107,15 @@ impl AllDebridStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json::<T>().await.map_err(|e| {
+        // AllDebrid signals failures (including auth) with an HTTP 200 plus an
+        // `{"status":"error","error":{...}}` envelope, so a successful HTTP
+        // status alone is not success — inspect the envelope and route any
+        // error through the canonical mapping (Req 16.8, 16.10).
+        let body = resp.text().await.unwrap_or_default();
+        if is_error_envelope(&body) {
+            return Err(Self::map_error(status, &body));
+        }
+        serde_json::from_str::<T>(&body).map_err(|e| {
             AppError::unknown(format!("failed to parse AllDebrid response: {e}"))
                 .with_store("alldebrid")
         })
@@ -108,6 +130,15 @@ struct AdApiResponse {
     error: Option<AdError>,
     #[serde(default)]
     data: Option<serde_json::Value>,
+}
+
+/// Detect an AllDebrid error envelope (`{"status":"error", ...}`) in a 200
+/// response body. AllDebrid reports failures (including auth) with HTTP 200, so
+/// the JSON `status` field is the real success/failure signal (Req 16.8).
+fn is_error_envelope(body: &str) -> bool {
+    serde_json::from_str::<AdApiResponse>(body)
+        .map(|r| r.status.eq_ignore_ascii_case("error") || r.error.is_some())
+        .unwrap_or(false)
 }
 
 #[derive(Deserialize)]
@@ -206,8 +237,8 @@ impl Store for AllDebridStore {
 
         let magnets_param = hashes.join(",");
         let url_str = format!(
-            "{BASE_URL}/magnet/instant?agent=stream-flow&apikey={}&magnets[]={}",
-            self.token, magnets_param
+            "{}/magnet/instant?agent=stream-flow&apikey={}&magnets[]={}",
+            self.base_url, self.token, magnets_param
         );
         let url = Url::parse(&url_str).map_err(|e| AppError::unknown(e.to_string()))?;
 
@@ -289,7 +320,8 @@ impl Store for AllDebridStore {
 
     async fn add_magnet(&self, p: &AddMagnetParams) -> Result<AddMagnetData, AppError> {
         let url_str = format!(
-            "{BASE_URL}/magnet/upload?agent=stream-flow&apikey={}&magnets[]={}",
+            "{}/magnet/upload?agent=stream-flow&apikey={}&magnets[]={}",
+            self.base_url,
             self.token,
             urlencoding::encode(&p.magnet)
         );
@@ -344,7 +376,7 @@ impl Store for AllDebridStore {
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let path = format!("/magnet/status?agent=stream-flow&apikey={}&id={}", self.token, p.id);
-        let url = Url::parse(&format!("{BASE_URL}{path}"))
+        let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
         let resp = self
@@ -407,7 +439,7 @@ impl Store for AllDebridStore {
             "/magnet/status?agent=stream-flow&apikey={}",
             self.token
         );
-        let url = Url::parse(&format!("{BASE_URL}{path}"))
+        let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
         let resp = self
@@ -467,7 +499,7 @@ impl Store for AllDebridStore {
             "/magnet/delete?agent=stream-flow&apikey={}&id={}",
             self.token, p.id
         );
-        let url = Url::parse(&format!("{BASE_URL}{path}"))
+        let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
         let resp = self
@@ -489,7 +521,8 @@ impl Store for AllDebridStore {
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
         // AllDebrid omits IP and must not fail for lack of IP binding (Req 18.4)
         let url_str = format!(
-            "{BASE_URL}/link/unlock?agent=stream-flow&apikey={}&link={}",
+            "{}/link/unlock?agent=stream-flow&apikey={}&link={}",
+            self.base_url,
             self.token,
             urlencoding::encode(&p.link)
         );
@@ -520,5 +553,163 @@ impl Store for AllDebridStore {
             .to_string();
 
         Ok(GenerateLinkData { link })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use wiremock::matchers::{method, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> AllDebridStore {
+        AllDebridStore::with_base_url(outbound(), "tok".into(), format!("{}/v4", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_alldebrid() {
+        assert_eq!(
+            AllDebridStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::AllDebrid
+        );
+    }
+
+    #[tokio::test]
+    async fn check_magnet_cached_returns_files() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v4/magnet/instant.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "data": { "magnets": [ { "instant": true, "files": [ {"n": "movie.mkv", "s": 2048} ] } ] }
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnets = vec!["magnet:?xt=urn:btih:ABC123".to_string()];
+        let data = store_for(&mock)
+            .check_magnet(&CheckMagnetParams {
+                ctx: ctx(),
+                magnets: &magnets,
+                client_ip: None,
+                sid: None,
+                local_only: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Cached);
+        assert_eq!(data.items[0].files.len(), 1);
+        assert_eq!(data.items[0].files[0].name, "movie.mkv");
+        assert_eq!(data.items[0].files[0].size, 2048);
+    }
+
+    #[tokio::test]
+    async fn get_magnet_error_state_normalizes_to_failed() {
+        // Req 16.14.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v4/magnet/status.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "data": { "magnets": { "id": 1, "hash": "abc", "filename": "x", "size": 5, "status": "error", "links": [] } }
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "1".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_omits_ip_and_does_not_fail() {
+        // Req 18.4: AllDebrid does not bind to an IP. Even when an Egress_IP is
+        // supplied the link is generated and the call succeeds.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v4/link/unlock.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "data": { "link": "https://cdn.ad.example/file.mkv" }
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://host.example/file".into(),
+                client_ip: Some("203.0.113.7".parse::<IpAddr>().unwrap()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.ad.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8: AllDebrid uses string error codes in the JSON body.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v4/user.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "error",
+                "error": { "code": "AUTH_BAD_APIKEY", "message": "Invalid API key" }
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("alldebrid"));
+    }
+
+    #[test]
+    fn map_error_has_no_infringing_concept() {
+        // Design: AllDebrid has no infringing concept -> never InfringingContent.
+        let err = AllDebridStore::map_error(
+            200,
+            r#"{"status":"error","error":{"code":"LINK_HOST_UNAVAILABLE","message":"down"}}"#,
+        );
+        assert_eq!(err.category, ErrorCategory::HosterUnavailable);
+        let err = AllDebridStore::map_error(
+            200,
+            r#"{"status":"error","error":{"code":"MAGNET_TOO_MANY_ACTIVE","message":"limit"}}"#,
+        );
+        assert_eq!(err.category, ErrorCategory::StoreLimitExceeded);
     }
 }

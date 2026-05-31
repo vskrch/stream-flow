@@ -31,16 +31,31 @@ const BASE_URL: &str = "https://api.real-debrid.com/rest/1.0";
 pub struct RealDebridStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl RealDebridStore {
     /// Create a new RealDebrid store with the given outbound client and API token.
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    /// Create with a custom base URL (for testing with wiremock).
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid RealDebrid API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid RealDebrid API URL")
     }
 
     fn auth_header(&self) -> (&str, String) {
@@ -494,4 +509,195 @@ fn parse_rd_check_files(variant: &serde_json::Value) -> Vec<MagnetFile> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use wiremock::matchers::{body_string_contains, method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A no-tunnel, fail-open [`OutboundClient`]: the egress decision is "dial
+    /// untunneled", so upstream calls reach the in-process `wiremock` origin
+    /// directly through the real seam (Req 51.1) with no network dependency.
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> RealDebridStore {
+        RealDebridStore::with_base_url(outbound(), "tok".into(), format!("{}/rest/1.0", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_realdebrid() {
+        let store = RealDebridStore::new(outbound(), "tok".into());
+        assert_eq!(store.get_name(), StoreName::RealDebrid);
+        assert_eq!(store.get_name().code(), crate::store::StoreCode::Rd);
+    }
+
+    #[tokio::test]
+    async fn get_user_normalizes_premium() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/rest/1.0/user"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": 42, "email": "a@b.c", "type": "premium"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let user = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap();
+        assert_eq!(user.id, "42");
+        assert_eq!(user.subscription_status, SubscriptionStatus::Premium);
+    }
+
+    #[tokio::test]
+    async fn check_magnet_cached_returns_files() {
+        // Cached hash -> Cached status with the per-file detail RD reports.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/rest/1.0/torrents/instantAvailability/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "abc123": { "rd": [ { "1": { "filename": "movie.mkv", "filesize": 1024 } } ] }
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnets = vec!["magnet:?xt=urn:btih:ABC123".to_string()];
+        let data = store_for(&mock)
+            .check_magnet(&CheckMagnetParams {
+                ctx: ctx(),
+                magnets: &magnets,
+                client_ip: None,
+                sid: None,
+                local_only: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Cached);
+        assert_eq!(data.items[0].files.len(), 1);
+        assert_eq!(data.items[0].files[0].name, "movie.mkv");
+        assert_eq!(data.items[0].files[0].size, 1024);
+    }
+
+    #[tokio::test]
+    async fn get_magnet_dead_torrent_normalizes_to_failed() {
+        // Req 16.14: a dead/errored/virus torrent -> Failed, never Downloading/Unknown.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/rest/1.0/torrents/info/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "t1", "hash": "abc", "filename": "movie.mkv",
+                "bytes": 1024, "status": "dead", "files": [], "links": [], "added": ""
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_forwards_egress_ip() {
+        // Req 18.3: RealDebrid binds the link to the Egress_IP. The body matcher
+        // makes the mock match ONLY when `ip=` is forwarded, so a missing IP
+        // fails the test.
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/rest/1.0/unrestrict/link"))
+            .and(body_string_contains("ip=203.0.113.7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "download": "https://cdn.rd.example/file.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let egress_ip: IpAddr = "203.0.113.7".parse().unwrap();
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://rd.example/dl/123".into(),
+                client_ip: Some(egress_ip),
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.rd.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8: an auth failure surfaces as an Unauthorized error naming the store.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/rest/1.0/user"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "bad_token", "error_code": 8
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("realdebrid"));
+    }
+
+    #[test]
+    fn map_error_covers_rd_numeric_codes() {
+        assert_eq!(
+            RealDebridStore::map_error(403, r#"{"error":"ip_not_allowed","error_code":9}"#).category,
+            ErrorCategory::Forbidden
+        );
+        assert!(
+            RealDebridStore::map_error(403, r#"{"error":"ip_not_allowed","error_code":9}"#)
+                .ip_restricted
+        );
+        assert_eq!(
+            RealDebridStore::map_error(403, r#"{"error":"infringing_file","error_code":35}"#)
+                .category,
+            ErrorCategory::InfringingContent
+        );
+        assert_eq!(
+            RealDebridStore::map_error(
+                503,
+                r#"{"error":"too_many_active_downloads","error_code":34}"#
+            )
+            .category,
+            ErrorCategory::StoreLimitExceeded
+        );
+    }
 }

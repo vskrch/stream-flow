@@ -22,15 +22,30 @@ const BASE_URL: &str = "https://debrid-link.com/api/v2";
 pub struct DebridLinkStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl DebridLinkStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    /// Create with a custom base URL (for testing with wiremock).
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid Debrid-Link API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid Debrid-Link API URL")
     }
 
     pub fn map_error(status: u16, body: &str) -> AppError {

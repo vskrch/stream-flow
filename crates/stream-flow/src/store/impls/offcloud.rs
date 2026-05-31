@@ -18,7 +18,7 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetFile, MagnetStatus, RemoveMagnetData,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
     RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
 };
 
@@ -28,15 +28,29 @@ const BASE_URL: &str = "https://offcloud.com/api";
 pub struct OffcloudStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl OffcloudStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid Offcloud API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid Offcloud API URL")
     }
 
     pub fn map_error(status: u16, body: &str) -> AppError {
@@ -337,5 +351,134 @@ impl Store for OffcloudStore {
         Ok(GenerateLinkData {
             link: p.link.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> OffcloudStore {
+        OffcloudStore::with_base_url(outbound(), "tok".into(), format!("{}/api", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_offcloud() {
+        assert_eq!(
+            OffcloudStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::Offcloud
+        );
+    }
+
+    #[tokio::test]
+    async fn check_magnet_cached_with_empty_file_list_is_valid() {
+        // Req 17.11: Offcloud reports a cached hash WITHOUT per-file detail ->
+        // emit Cached + an empty file list rather than failing.
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/cache"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "cachedItems": ["abc123"]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnets = vec!["magnet:?xt=urn:btih:ABC123".to_string()];
+        let data = store_for(&mock)
+            .check_magnet(&CheckMagnetParams {
+                ctx: ctx(),
+                magnets: &magnets,
+                client_ip: None,
+                sid: None,
+                local_only: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Cached);
+        assert!(data.items[0].files.is_empty(), "Req 17.11: empty file list");
+    }
+
+    #[tokio::test]
+    async fn get_magnet_unknown_size_is_minus_one() {
+        // Req 17.12: unknown size represented as -1.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/cloud/status"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "downloaded", "fileName": "movie.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "req1".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.size, -1);
+        assert_eq!(magnet.status, MagnetStatus::Downloaded);
+    }
+
+    #[tokio::test]
+    async fn generate_link_is_passthrough_and_ignores_ip() {
+        // Req 18.4: Offcloud does not require IP binding — the link is returned
+        // as-is and the call must not fail even when an IP is supplied, and
+        // crucially makes NO upstream call.
+        let data = OffcloudStore::new(outbound(), "tok".into())
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://offcloud.com/dl/abc".into(),
+                client_ip: Some("203.0.113.7".parse::<IpAddr>().unwrap()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://offcloud.com/dl/abc");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/account/stats"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("offcloud"));
     }
 }

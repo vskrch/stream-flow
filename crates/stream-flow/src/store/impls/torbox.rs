@@ -26,15 +26,29 @@ const BASE_URL: &str = "https://api.torbox.app/v1/api";
 pub struct TorBoxStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl TorBoxStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid TorBox API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid TorBox API URL")
     }
 
     pub fn map_error(status: u16, body: &str) -> AppError {
@@ -379,5 +393,143 @@ impl Store for TorBoxStore {
         let link = data.as_str().unwrap_or("").to_string();
 
         Ok(GenerateLinkData { link })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use wiremock::matchers::{body_string_contains, method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> TorBoxStore {
+        TorBoxStore::with_base_url(outbound(), "tok".into(), format!("{}/v1/api", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_torbox() {
+        assert_eq!(
+            TorBoxStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::TorBox
+        );
+    }
+
+    #[tokio::test]
+    async fn list_magnets_drops_trailing_quirk_item() {
+        // Req 17.14: TorBox listings carry one extra trailing item -> dropped so
+        // only genuine magnets remain.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v1/api/torrents/mylist.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true, "detail": "",
+                "data": [
+                    {"id": 1, "hash": "aaa", "name": "Movie A", "size": 100, "download_state": "cached", "files": [], "created_at": ""},
+                    {"id": 2, "hash": "bbb", "name": "Movie B", "size": 200, "download_state": "cached", "files": [], "created_at": ""},
+                    {"id": 3, "hash": "ccc", "name": "TRAILING", "size": 0, "download_state": "cached", "files": [], "created_at": ""}
+                ]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .list_magnets(&ListMagnetsParams::new(ctx(), None, None))
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 2);
+        assert_eq!(data.items[0].name, "Movie A");
+        assert_eq!(data.items[1].name, "Movie B");
+        assert_eq!(data.total_items, 2);
+    }
+
+    #[tokio::test]
+    async fn get_magnet_dead_state_normalizes_to_failed() {
+        // Req 16.14: dead/errored/virus -> Failed.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex("/v1/api/torrents/mylist.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true, "detail": "",
+                "data": {"id": 7, "hash": "abc", "name": "x", "size": 10, "download_state": "dead", "files": [], "created_at": ""}
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnet = store_for(&mock)
+            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "7".into() })
+            .await
+            .unwrap();
+        assert_eq!(magnet.status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_forwards_egress_ip() {
+        // Req 18.3: TorBox binds the link to the Egress_IP (sent in the JSON body).
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/api/torrents/requestdl"))
+            .and(body_string_contains("203.0.113.7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "success": true, "detail": "", "data": "https://cdn.torbox.example/file.mkv"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let egress_ip: IpAddr = "203.0.113.7".parse().unwrap();
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "torrent_id_123".into(),
+                client_ip: Some(egress_ip),
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.torbox.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/api/user/me"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("auth failed: bad api key"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("torbox"));
     }
 }

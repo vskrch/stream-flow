@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetFile, MagnetStatus, RemoveMagnetData,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
     RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
 };
 
@@ -22,15 +22,30 @@ const BASE_URL: &str = "https://www.premiumize.me/api";
 pub struct PremiumizeStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl PremiumizeStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    /// Create with a custom base URL (for testing with wiremock).
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid Premiumize API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid Premiumize API URL")
     }
 
     pub fn map_error(status: u16, body: &str) -> AppError {
@@ -277,5 +292,139 @@ impl Store for PremiumizeStore {
             .to_string();
 
         Ok(GenerateLinkData { link })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EgressPolicy;
+    use crate::errors::ErrorCategory;
+    use crate::store::Ctx;
+    use std::collections::HashMap;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn outbound() -> Arc<OutboundClient> {
+        Arc::new(OutboundClient::new(
+            reqwest::Client::new(),
+            wreq::Client::new(),
+            EgressPolicy::FailOpen,
+            None,
+            None,
+            HashMap::new(),
+        ))
+    }
+
+    fn ctx() -> Ctx {
+        Ctx {
+            request_id: "test-req".into(),
+            client_ip: None,
+            trusted: false,
+        }
+    }
+
+    fn store_for(mock: &MockServer) -> PremiumizeStore {
+        PremiumizeStore::with_base_url(outbound(), "tok".into(), format!("{}/api", mock.uri()))
+    }
+
+    #[tokio::test]
+    async fn get_name_is_premiumize() {
+        assert_eq!(
+            PremiumizeStore::new(outbound(), "tok".into()).get_name(),
+            StoreName::Premiumize
+        );
+    }
+
+    #[tokio::test]
+    async fn check_magnet_maps_cache_check_response() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/cache/check"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success", "response": [true]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let magnets = vec!["magnet:?xt=urn:btih:ABC123".to_string()];
+        let data = store_for(&mock)
+            .check_magnet(&CheckMagnetParams {
+                ctx: ctx(),
+                magnets: &magnets,
+                client_ip: None,
+                sid: None,
+                local_only: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Cached);
+    }
+
+    #[tokio::test]
+    async fn list_magnets_normalizes_error_state_to_failed() {
+        // Req 16.14.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/transfer/list"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "transfers": [ {"id": "a", "name": "x", "hash": "h", "size": 10, "status": "error"} ]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .list_magnets(&ListMagnetsParams::new(ctx(), None, None))
+            .await
+            .unwrap();
+        assert_eq!(data.items.len(), 1);
+        assert_eq!(data.items[0].status, MagnetStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn generate_link_returns_direct_link() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/transfer/directdl"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "success",
+                "content": [ {"link": "https://cdn.pm.example/file.mkv"} ]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .generate_link(&GenerateLinkParams {
+                ctx: ctx(),
+                link: "https://host.example/file".into(),
+                client_ip: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(data.link, "https://cdn.pm.example/file.mkv");
+    }
+
+    #[tokio::test]
+    async fn auth_failure_maps_to_unauthorized_identifying_store() {
+        // Req 16.8.
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/account/info"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("invalid token"))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let err = store_for(&mock)
+            .get_user(&GetUserParams { ctx: ctx() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Unauthorized);
+        assert_eq!(err.store.as_deref(), Some("premiumize"));
     }
 }

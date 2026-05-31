@@ -73,6 +73,7 @@ reqwest = { workspace = true }
 wreq = { workspace = true }
 wreq-util = { workspace = true }
 url = { workspace = true }
+urlencoding = { workspace = true }
 
 # HLS manifest parse + full rewriting (task 16.1): `m3u8-rs` parses master and
 # media `.m3u8` playlists into structured `Playlist` values and serializes them

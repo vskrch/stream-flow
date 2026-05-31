@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetFile, MagnetStatus, RemoveMagnetData,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
     RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
 };
 
@@ -22,15 +22,30 @@ const BASE_URL: &str = "https://easydebrid.com/api/v1";
 pub struct EasyDebridStore {
     client: Arc<OutboundClient>,
     token: String,
+    base_url: String,
 }
 
 impl EasyDebridStore {
     pub fn new(client: Arc<OutboundClient>, token: String) -> Self {
-        Self { client, token }
+        Self {
+            client,
+            token,
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
+    /// Create with a custom base URL (for testing with wiremock).
+    #[cfg(test)]
+    pub fn with_base_url(client: Arc<OutboundClient>, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token,
+            base_url,
+        }
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{BASE_URL}{path}")).expect("valid EasyDebrid API URL")
+        Url::parse(&format!("{}{path}", self.base_url)).expect("valid EasyDebrid API URL")
     }
 
     pub fn map_error(status: u16, body: &str) -> AppError {
