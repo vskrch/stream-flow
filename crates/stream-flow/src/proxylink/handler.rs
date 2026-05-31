@@ -266,8 +266,12 @@ pub fn proxify(
         return Err(AppError::bad_request("no url supplied"));
     }
 
-    // Determine format: present `token` -> stremthru token, else encrypted
-    let use_token_format = req.token.is_some();
+    // Determine format (Req 21.2): an empty/absent `token` selects the
+    // mediaflow encrypted (`d`) format; a present, non-empty `token` selects
+    // the stremthru token format. This mirrors `ProxyCodec::select`, which
+    // treats an empty `token` as absent on the decode side — so the encode and
+    // decode sides agree and links round-trip on the playback path (Req 36.7).
+    let use_token_format = req.token.as_deref().is_some_and(|t| !t.is_empty());
 
     // Parse expiration (Req 21.3)
     let exp = req
@@ -443,24 +447,30 @@ mod tests {
         ("X-StremThru-Authorization", format!("{PROXY_USER}:{PROXY_PASS}"))
     }
 
-    async fn build_app(
-    ) -> impl actix_web::dev::Service<actix_web::http::Request, Response = actix_web::dev::ServiceResponse, Error = actix_web::Error>
-    {
-        let state = AppState::new(test_config());
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/v0/proxy", web::get().to(proxify_get_endpoint))
-                .route("/v0/proxy", web::post().to(proxify_post_endpoint)),
-        )
-        .await
+    // Build the in-memory test service. This is a `macro_rules!` rather than a
+    // helper `fn` because `test::init_service` returns an `impl Service<Request,
+    // ..>` whose `Request` type is `actix_http::Request` — and `actix-http` is
+    // not a direct dependency of this crate, so that type cannot be named in a
+    // function return signature. Expanding inline at each call site sidesteps
+    // naming the un-nameable service type while keeping the setup DRY.
+    macro_rules! build_app {
+        () => {{
+            let state = AppState::new(test_config());
+            test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .route("/v0/proxy", web::get().to(proxify_get_endpoint))
+                    .route("/v0/proxy", web::post().to(proxify_post_endpoint)),
+            )
+            .await
+        }};
     }
 
     // -- Req 21.1: one Proxy_Link per URL + total --
 
     #[actix_web::test]
     async fn returns_one_link_per_url_with_total() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes")
@@ -477,7 +487,7 @@ mod tests {
 
     #[actix_web::test]
     async fn token_present_produces_token_links() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=yes")
@@ -493,7 +503,7 @@ mod tests {
 
     #[actix_web::test]
     async fn token_absent_produces_encrypted_links() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4")
@@ -507,11 +517,31 @@ mod tests {
         assert!(body.items[0].url.contains("d="));
     }
 
+    // Req 21.2: an *empty* `token` parameter selects the encrypted (`d`) format,
+    // matching the decode-side `ProxyCodec::select` (empty token == absent) so
+    // links round-trip on the playback path.
+    #[actix_web::test]
+    async fn empty_token_produces_encrypted_links() {
+        let app = build_app!();
+        let (hdr_name, hdr_val) = auth_header();
+        let req = test::TestRequest::get()
+            .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=")
+            .insert_header((hdr_name, hdr_val))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200);
+        let body: ProxifyResponse = test::read_body_json(resp).await;
+        assert_eq!(body.items.len(), 1);
+        // Empty token -> encrypted `d` link, not a stremthru `token` link.
+        assert!(body.items[0].url.contains("d="));
+        assert!(!body.items[0].url.contains("token="));
+    }
+
     // -- Req 21.3: expiration embedded --
 
     #[actix_web::test]
     async fn expiration_embedded_in_links() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=yes&expiration=3600")
@@ -542,7 +572,7 @@ mod tests {
 
     #[actix_web::test]
     async fn per_index_headers_embedded_in_links() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&req_headers[0]=Referer:https://a.com/&req_headers[1]=Referer:https://b.com/")
@@ -568,7 +598,7 @@ mod tests {
 
     #[actix_web::test]
     async fn shared_headers_fallback() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&req_headers=User-Agent:test-agent")
@@ -593,7 +623,7 @@ mod tests {
 
     #[actix_web::test]
     async fn per_index_filename_embedded() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&filename[0]=movie1.mp4&filename[1]=movie2.mp4")
@@ -619,7 +649,7 @@ mod tests {
 
     #[actix_web::test]
     async fn redirect_with_one_url_returns_302() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=yes&redirect=true")
@@ -636,7 +666,7 @@ mod tests {
 
     #[actix_web::test]
     async fn redirect_with_multiple_urls_returns_400() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&redirect=true")
@@ -650,7 +680,7 @@ mod tests {
 
     #[actix_web::test]
     async fn no_url_returns_400() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?token=yes")
@@ -664,7 +694,7 @@ mod tests {
 
     #[actix_web::test]
     async fn missing_auth_returns_403() {
-        let app = build_app().await;
+        let app = build_app!();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=yes")
             .to_request();
@@ -674,7 +704,7 @@ mod tests {
 
     #[actix_web::test]
     async fn invalid_auth_returns_403() {
-        let app = build_app().await;
+        let app = build_app!();
         let req = test::TestRequest::get()
             .uri("/v0/proxy?url=https://cdn.example.com/v.mp4&token=yes")
             .insert_header(("X-StremThru-Authorization", "wrong:creds"))
@@ -687,7 +717,7 @@ mod tests {
 
     #[actix_web::test]
     async fn output_cardinality_equals_input() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let urls: Vec<String> = (0..5)
             .map(|i| format!("https://cdn.example.com/{i}.mp4"))
@@ -713,7 +743,7 @@ mod tests {
 
     #[actix_web::test]
     async fn post_body_produces_links() {
-        let app = build_app().await;
+        let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let body = serde_json::json!({
             "url": ["https://a.com/1.mp4", "https://b.com/2.mp4"],
@@ -740,20 +770,20 @@ mod tests {
 
     // -- Unit tests for helper functions --
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_headers_basic() {
         let headers = parse_headers("Referer:https://example.com/|User-Agent:test");
         assert_eq!(headers.get("Referer").unwrap(), "https://example.com/");
         assert_eq!(headers.get("User-Agent").unwrap(), "test");
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_headers_empty() {
         let headers = parse_headers("");
         assert!(headers.is_empty());
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_expiration_seconds_from_now() {
         let exp = parse_expiration("3600").unwrap();
         let now = std::time::SystemTime::now()
@@ -763,18 +793,18 @@ mod tests {
         assert!(exp >= now + 3590 && exp <= now + 3610);
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_expiration_empty_returns_none() {
         assert_eq!(parse_expiration(""), None);
         assert_eq!(parse_expiration("  "), None);
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_expiration_zero_returns_none() {
         assert_eq!(parse_expiration("0"), None);
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_query_string_basic() {
         let req = parse_query_string("url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes");
         assert_eq!(req.url.len(), 2);
@@ -783,7 +813,7 @@ mod tests {
         assert_eq!(req.token, Some("yes".to_string()));
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_query_string_indexed_headers() {
         let req = parse_query_string(
             "url=https://a.com&req_headers[0]=Referer:https://a.com/&req_headers[1]=Referer:https://b.com/"
@@ -792,14 +822,14 @@ mod tests {
         assert_eq!(req.req_headers.get(1), Some("Referer:https://b.com/"));
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn parse_query_string_shared_headers_fallback() {
         let req = parse_query_string("url=https://a.com&req_headers=UA:test");
         assert_eq!(req.req_headers.get(0), Some("UA:test"));
         assert_eq!(req.req_headers.get(99), Some("UA:test"));
     }
 
-    #[test]
+    #[::core::prelude::v1::test]
     fn indexed_or_shared_get_prefers_indexed() {
         let ios = IndexedOrShared {
             shared: Some("shared-val".to_string()),

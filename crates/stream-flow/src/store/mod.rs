@@ -29,8 +29,6 @@
 //! types here are deliberately shaped to be extended by those tasks without a
 //! signature change.
 
-// TODO: content_proxy module is WIP from another task, temporarily disabled
-// pub mod content_proxy;
 pub mod endpoints;
 pub mod error;
 pub mod fallback;

@@ -70,12 +70,16 @@ async fn mediaflow_surface_routes_are_registered() {
 }
 
 /// The stremthru namespace is registered: representative stremthru paths route
-/// to a handler (placeholder `501`) rather than `404` (Req 36.2).
+/// to a handler rather than `404` (Req 36.2).
 #[actix_web::test]
 async fn stremthru_surface_routes_are_registered() {
     let state = AppState::new(Config::default());
     let app = test::init_service(App::new().service(build_app(state))).await;
 
+    // `/v0/proxy` is backed by its real proxify-links handler (task 24.4):
+    // an unauthenticated request is rejected by the proxy-auth gate with
+    // `403 Forbidden` (Req 21.9) — registered (not `404`) and no longer the
+    // skeleton `501`.
     let req = test::TestRequest::get().uri("/v0/proxy").to_request();
     let resp = test::call_service(&app, req).await;
     assert_ne!(
@@ -83,7 +87,11 @@ async fn stremthru_surface_routes_are_registered() {
         StatusCode::NOT_FOUND,
         "stremthru route /v0/proxy should be registered"
     );
-    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "/v0/proxy rejects a missing Proxy_Auth with 403 (Req 21.9)"
+    );
 }
 
 /// The two namespaces are **disjoint** and an unrelated path is genuinely

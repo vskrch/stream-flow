@@ -126,12 +126,21 @@ pub mod stremthru_surface {
 
     /// Register the stremthru surface's representative routes.
     ///
-    /// The full path set (`/v0/store/*`, `/v0/meta/id-map/*`, `/stremio/*`) is
-    /// filled in by the tasks that own each handler; the skeleton registers the
-    /// token-proxy entry point that anchors the namespace.
+    /// `/v0/proxy` is backed by its real proxify-links handler (task 24.4,
+    /// [`crate::proxylink::handler`]): both `GET` and `POST` convert the
+    /// supplied upstream URLs into one `Proxy_Link` each, behind the
+    /// `X-StremThru-Authorization` Basic proxy-auth (Req 21.1–21.9). The
+    /// remaining path set (`/v0/store/*`, `/v0/meta/id-map/*`, `/stremio/*`) is
+    /// filled in by the tasks that own each handler.
     pub fn configure(cfg: &mut web::ServiceConfig) {
-        cfg.route("/v0/proxy", web::get().to(not_implemented)) // Req 36.2, 36.6
-            .route("/v0/proxy", web::post().to(not_implemented)); // Req 21.1-21.9
+        cfg.route(
+            "/v0/proxy",
+            web::get().to(crate::proxylink::handler::proxify_get_endpoint),
+        ) // Req 21.1-21.9, 36.2, 36.6
+        .route(
+            "/v0/proxy",
+            web::post().to(crate::proxylink::handler::proxify_post_endpoint),
+        ); // Req 21.1-21.9
         // Store magnet endpoints (task 24.1, Req 17)
         crate::store::endpoints::configure_store_routes(cfg);
         // Meta / ID-map endpoint (task 24.5, Req 22)

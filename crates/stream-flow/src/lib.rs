@@ -20,6 +20,7 @@ pub mod app;
 pub mod auth;
 pub mod cache;
 pub mod config;
+pub mod content_proxy;
 pub mod drm;
 pub mod egress;
 pub mod epg;
