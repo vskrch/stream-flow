@@ -93,9 +93,8 @@ pub fn build_proxy_url(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| AppError::bad_request("missing required `mediaflow_proxy_url`"))?;
 
-    let mut url = Url::parse(base).map_err(|e| {
-        AppError::bad_request(format!("invalid `mediaflow_proxy_url` `{base}`: {e}"))
-    })?;
+    let mut url = Url::parse(base)
+        .map_err(|e| AppError::bad_request(format!("invalid `mediaflow_proxy_url` `{base}`: {e}")))?;
 
     // The generated path is the configured public prefix (Req 31.4) followed by
     // the target endpoint, with the endpoint normalized to a single leading
@@ -236,10 +235,7 @@ mod tests {
         let mut req = base_request();
         req.endpoint = Some("proxy/hls/manifest.m3u8".to_string());
         let url = build_proxy_url(&req, "/p", &key(), 1_000).unwrap();
-        assert_eq!(
-            Url::parse(&url).unwrap().path(),
-            "/p/proxy/hls/manifest.m3u8"
-        );
+        assert_eq!(Url::parse(&url).unwrap().path(), "/p/proxy/hls/manifest.m3u8");
     }
 
     // -- The sealed `d` token round-trips back to the destination params ------
@@ -261,10 +257,7 @@ mod tests {
 
         let payload = decrypt(&token, &key()).expect("d decrypts with the configured key");
         assert_eq!(payload.url, "https://cdn.example.com/movie.mkv");
-        assert_eq!(
-            payload.headers.get("Referer").map(String::as_str),
-            Some("https://ref.example/")
-        );
+        assert_eq!(payload.headers.get("Referer").map(String::as_str), Some("https://ref.example/"));
         assert_eq!(payload.filename.as_deref(), Some("movie.mkv"));
     }
 
@@ -309,11 +302,7 @@ mod tests {
             .query_pairs()
             .find(|(k, _)| k == "api_password")
             .map(|(_, v)| v.into_owned());
-        assert_eq!(
-            got.as_deref(),
-            Some("p@ss word"),
-            "value must round-trip through percent-encoding"
-        );
+        assert_eq!(got.as_deref(), Some("p@ss word"), "value must round-trip through percent-encoding");
     }
 
     // -- Validation errors ----------------------------------------------------

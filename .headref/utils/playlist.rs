@@ -199,10 +199,7 @@ mod tests {
     #[test]
     fn starts_with_extm3u_header() {
         let pl = build_playlist(&request(), "", &key(), 1_000).unwrap();
-        assert!(
-            pl.starts_with("#EXTM3U"),
-            "playlist must start with #EXTM3U"
-        );
+        assert!(pl.starts_with("#EXTM3U"), "playlist must start with #EXTM3U");
     }
 
     #[test]
@@ -245,10 +242,7 @@ mod tests {
                 .map(|(_, v)| v.into_owned())
                 .expect("d token present");
             let payload = decrypt(&token, &key()).expect("d decrypts");
-            assert_eq!(
-                payload.url, channel.url,
-                "the sealed token must carry the origin URL"
-            );
+            assert_eq!(payload.url, channel.url, "the sealed token must carry the origin URL");
         }
     }
 
@@ -290,10 +284,7 @@ mod tests {
             .map(|(_, v)| v.into_owned())
             .unwrap();
         let payload = decrypt(&token, &key()).unwrap();
-        assert_eq!(
-            payload.headers.get("Referer").map(String::as_str),
-            Some("https://ref.example/")
-        );
+        assert_eq!(payload.headers.get("Referer").map(String::as_str), Some("https://ref.example/"));
     }
 
     #[test]

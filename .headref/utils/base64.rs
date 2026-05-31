@@ -23,8 +23,8 @@ use crate::errors::AppError;
 
 // The four common base64 flavours, tried in order by `decode` (standard first
 // so an `encode` output always round-trips through the standard alphabet).
-use ::base64::engine::general_purpose::GeneralPurpose;
 use ::base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+use ::base64::engine::general_purpose::GeneralPurpose;
 use ::base64::Engine as _;
 
 /// Standard-base64-encode `input` (Req 15.3).
@@ -212,10 +212,6 @@ mod tests {
         let huge = "*".repeat(10_000);
         let err = decode(&huge).unwrap_err();
         // The echoed value is truncated, so the message stays small.
-        assert!(
-            err.message.len() < 200,
-            "message must be bounded, got {} chars",
-            err.message.len()
-        );
+        assert!(err.message.len() < 200, "message must be bounded, got {} chars", err.message.len());
     }
 }

@@ -68,7 +68,8 @@ pub fn configure(cfg: &mut web::ServiceConfig, state: &AppState) {
 /// taxonomy (which has no `501` category) — these placeholders are transient
 /// scaffolding, not part of the wire error contract.
 async fn not_implemented() -> HttpResponse {
-    HttpResponse::NotImplemented().body("route registered; handler lands in a later task")
+    HttpResponse::NotImplemented()
+        .body("route registered; handler lands in a later task")
 }
 
 /// The `mediaflow-proxy-light` path namespace (Req 36.1, 36.5).
@@ -93,30 +94,12 @@ pub mod mediaflow_surface {
         cfg.route("/proxy/stream", web::get().to(not_implemented)) // Req 36.1
             .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)) // Req 51.10/51.11
             // Streaming utilities (Req 15) — task 20.1.
-            .route(
-                "/base64/encode",
-                web::get().to(crate::utils::base64::base64_encode_endpoint),
-            ) // Req 15.3
-            .route(
-                "/base64/decode",
-                web::get().to(crate::utils::base64::base64_decode_endpoint),
-            ) // Req 15.4
-            .route(
-                "/base64/check",
-                web::get().to(crate::utils::base64::base64_check_endpoint),
-            ) // Req 15.5
-            .route(
-                "/generate_url",
-                web::post().to(crate::utils::generate_url::generate_url_endpoint),
-            ) // Req 15.7
-            .route(
-                "/playlist/builder",
-                web::post().to(crate::utils::playlist::playlist_builder_endpoint),
-            ) // Req 15.1
-            .route(
-                "/speedtest",
-                web::get().to(crate::utils::speedtest::speedtest_endpoint),
-            ); // Req 15.2
+            .route("/base64/encode", web::get().to(crate::utils::base64util::encode_endpoint)) // Req 15.3
+            .route("/base64/decode", web::get().to(crate::utils::base64util::decode_endpoint)) // Req 15.4
+            .route("/base64/check", web::get().to(crate::utils::base64util::check_endpoint)) // Req 15.5
+            .route("/generate_url", web::post().to(crate::utils::generate_url::generate_url_endpoint)) // Req 15.7
+            .route("/playlist/builder", web::post().to(crate::utils::playlist::playlist_builder_endpoint)) // Req 15.1
+            .route("/speedtest", web::get().to(crate::utils::speedtest::speedtest_endpoint)); // Req 15.2
     }
 }
 

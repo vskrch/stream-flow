@@ -35,14 +35,8 @@ pub struct SpeedtestProvider {
 
 /// The built-in providers a speedtest can run against (Req 15.2).
 pub const PROVIDERS: &[SpeedtestProvider] = &[
-    SpeedtestProvider {
-        name: "cloudflare",
-        url: "https://speed.cloudflare.com/__down?bytes=10000000",
-    },
-    SpeedtestProvider {
-        name: "hetzner",
-        url: "https://speed.hetzner.de/100MB.bin",
-    },
+    SpeedtestProvider { name: "cloudflare", url: "https://speed.cloudflare.com/__down?bytes=10000000" },
+    SpeedtestProvider { name: "hetzner", url: "https://speed.hetzner.de/100MB.bin" },
 ];
 
 /// Resolve a provider by name (case-insensitive); the first provider is the
@@ -53,12 +47,14 @@ pub fn select_provider(name: Option<&str>) -> Result<&'static SpeedtestProvider,
         Some(n) => PROVIDERS
             .iter()
             .find(|p| p.name.eq_ignore_ascii_case(n))
-            .ok_or_else(|| AppError::bad_request(format!("unknown speedtest provider `{n}`"))),
+            .ok_or_else(|| {
+                AppError::bad_request(format!("unknown speedtest provider `{n}`"))
+            }),
     }
 }
 
 /// The measured result of a throughput run (Req 15.2).
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SpeedtestResult {
     /// Total bytes transferred during the measurement.
     pub bytes: u64,
@@ -82,12 +78,7 @@ impl SpeedtestResult {
         let bits = bytes.saturating_mul(8);
         let bits_per_second = (bits as f64 / secs) as u64;
         let megabits_per_second = (bits_per_second as f64) / 1_000_000.0;
-        Self {
-            bytes,
-            elapsed_ms,
-            bits_per_second,
-            megabits_per_second,
-        }
+        Self { bytes, elapsed_ms, bits_per_second, megabits_per_second }
     }
 }
 
@@ -157,10 +148,7 @@ pub async fn speedtest_endpoint(
 ) -> Result<HttpResponse, AppError> {
     let provider = select_provider(query.provider.as_deref())?;
     let url = Url::parse(provider.url).map_err(|e| {
-        AppError::unknown(format!(
-            "invalid built-in provider URL `{}`: {e}",
-            provider.url
-        ))
+        AppError::unknown(format!("invalid built-in provider URL `{}`: {e}", provider.url))
     })?;
     let result = measure_throughput(state.egress(), &url, query.max_bytes).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -211,17 +199,10 @@ mod tests {
             .await
             .expect("speedtest succeeds against the provider");
 
-        assert_eq!(
-            result.bytes,
-            payload.len() as u64,
-            "must count every downloaded byte"
-        );
+        assert_eq!(result.bytes, payload.len() as u64, "must count every downloaded byte");
         assert!(result.elapsed_ms >= 1, "elapsed is floored at 1ms");
         // Throughput is a finite, non-negative figure derived from the measurement.
-        assert!(
-            result.bits_per_second > 0,
-            "non-empty download yields positive throughput"
-        );
+        assert!(result.bits_per_second > 0, "non-empty download yields positive throughput");
     }
 
     #[tokio::test]
@@ -244,10 +225,7 @@ mod tests {
 
         // Stops at-or-after the cap (a final chunk may overshoot), well under 1 MiB.
         assert!(result.bytes >= 100 * 1024, "must read at least the cap");
-        assert!(
-            result.bytes < 1024 * 1024,
-            "must stop before draining the whole body"
-        );
+        assert!(result.bytes < 1024 * 1024, "must stop before draining the whole body");
     }
 
     #[tokio::test]
@@ -289,10 +267,7 @@ mod tests {
     #[test]
     fn select_provider_defaults_and_is_case_insensitive() {
         assert_eq!(select_provider(None).unwrap().name, PROVIDERS[0].name);
-        assert_eq!(
-            select_provider(Some("CloudFlare")).unwrap().name,
-            "cloudflare"
-        );
+        assert_eq!(select_provider(Some("CloudFlare")).unwrap().name, "cloudflare");
     }
 
     #[test]
