@@ -86,9 +86,8 @@ fn arb_password() -> impl Strategy<Value = String> {
 /// `BTreeMap` collapses duplicate usernames the way the verifier's
 /// last-entry-wins `HashMap` would, so the generated table is unambiguous).
 fn arb_creds() -> impl Strategy<Value = BTreeMap<String, String>> {
-    proptest::collection::vec((arb_username(), arb_password()), 1..=6).prop_map(|pairs| {
-        pairs.into_iter().collect::<BTreeMap<String, String>>()
-    })
+    proptest::collection::vec((arb_username(), arb_password()), 1..=6)
+        .prop_map(|pairs| pairs.into_iter().collect::<BTreeMap<String, String>>())
 }
 
 proptest! {

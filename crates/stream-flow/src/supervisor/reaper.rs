@@ -502,7 +502,9 @@ mod tests {
         let idle_ms = 30_000; // 30s inactivity timeout
 
         // SSE subscriptions: one abandoned, one connected.
-        let sse = Arc::new(ReapTable::new("sse-subscription", |s: &SseSub| !s.connected));
+        let sse = Arc::new(ReapTable::new("sse-subscription", |s: &SseSub| {
+            !s.connected
+        }));
         sse.insert("live", SseSub { connected: true });
         sse.insert("abandoned", SseSub { connected: false });
 
@@ -513,8 +515,18 @@ mod tests {
                 clock.now_ms().saturating_sub(p.last_activity_ms) > idle_ms
             })
         });
-        prefetchers.insert("idle", Prefetcher { last_activity_ms: 0 });
-        prefetchers.insert("fresh", Prefetcher { last_activity_ms: 0 });
+        prefetchers.insert(
+            "idle",
+            Prefetcher {
+                last_activity_ms: 0,
+            },
+        );
+        prefetchers.insert(
+            "fresh",
+            Prefetcher {
+                last_activity_ms: 0,
+            },
+        );
 
         // Acestream sessions: one with no clients, one still watched.
         let acestream = Arc::new(ReapTable::new("acestream-session", |a: &AceSession| {
@@ -573,13 +585,19 @@ mod tests {
     /// reaper does not churn live resources.
     #[test]
     fn sweep_is_idempotent_once_stale_entries_are_gone() {
-        let sse = Arc::new(ReapTable::new("sse-subscription", |s: &SseSub| !s.connected));
+        let sse = Arc::new(ReapTable::new("sse-subscription", |s: &SseSub| {
+            !s.connected
+        }));
         sse.insert("live", SseSub { connected: true });
         sse.insert("abandoned", SseSub { connected: false });
 
         let reaper = Reaper::with_targets(Duration::from_secs(10), vec![sse.clone()]);
 
-        assert_eq!(reaper.sweep_once().total(), 1, "first sweep reclaims abandoned");
+        assert_eq!(
+            reaper.sweep_once().total(),
+            1,
+            "first sweep reclaims abandoned"
+        );
         assert_eq!(reaper.sweep_once().total(), 0, "second sweep is a no-op");
         assert_eq!(sse.len(), 1, "the live subscription is untouched");
     }
@@ -600,7 +618,12 @@ mod tests {
                 clock.now_ms().saturating_sub(p.last_activity_ms) > idle.as_millis() as u64
             })
         });
-        table.insert("p", Prefetcher { last_activity_ms: clock.now_ms() });
+        table.insert(
+            "p",
+            Prefetcher {
+                last_activity_ms: clock.now_ms(),
+            },
+        );
 
         let reaper = Reaper::with_targets(Duration::from_secs(5), vec![table.clone()]);
 
@@ -648,7 +671,11 @@ mod tests {
 
         let mut killed = killed.lock().unwrap().clone();
         killed.sort_unstable();
-        assert_eq!(killed, vec![101, 103], "only the exited children are reaped");
+        assert_eq!(
+            killed,
+            vec![101, 103],
+            "only the exited children are reaped"
+        );
         assert!(table.contains(&102), "the running child survives");
     }
 
@@ -667,9 +694,18 @@ mod tests {
         assert_eq!(
             report.reclaimed,
             vec![
-                ReapCount { kind: "a", reclaimed: 2 },
-                ReapCount { kind: "b", reclaimed: 0 },
-                ReapCount { kind: "c", reclaimed: 3 },
+                ReapCount {
+                    kind: "a",
+                    reclaimed: 2
+                },
+                ReapCount {
+                    kind: "b",
+                    reclaimed: 0
+                },
+                ReapCount {
+                    kind: "c",
+                    reclaimed: 3
+                },
             ],
         );
         assert_eq!(report.total(), 5);
@@ -737,7 +773,11 @@ mod tests {
             swept.recv().await.expect("a sweep happens each interval");
             assert_eq!(counter.sweeps(), expected, "one sweep per interval tick");
         }
-        assert_eq!(counter.reclaimed_total(), 3, "reclaimed one resource per sweep");
+        assert_eq!(
+            counter.reclaimed_total(),
+            3,
+            "reclaimed one resource per sweep"
+        );
 
         // Shutdown stops the loop and lets the task drain.
         let _ = stop_tx.send(());
@@ -771,7 +811,10 @@ mod tests {
         // sweep's signal so the count is deterministic on the paused clock.
         for _ in 0..5 {
             tokio::time::advance(Duration::from_secs(2)).await;
-            swept.recv().await.expect("a sweep happens each 2s interval");
+            swept
+                .recv()
+                .await
+                .expect("a sweep happens each 2s interval");
         }
         assert_eq!(counter.sweeps(), 5);
 

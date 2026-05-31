@@ -77,10 +77,7 @@ impl HlsClient {
             .with_upstream_status(status.as_u16()));
         }
 
-        let body = resp
-            .bytes()
-            .await
-            .map_err(|e| map_send_error(url, e))?;
+        let body = resp.bytes().await.map_err(|e| map_send_error(url, e))?;
         if body.len() > MAX_MANIFEST_BYTES {
             return Err(AppError::payload_too_large(format!(
                 "upstream HLS manifest from {url} exceeds {MAX_MANIFEST_BYTES} bytes"
@@ -131,9 +128,8 @@ fn to_header_map(headers: &BTreeMap<String, String>) -> HeaderMap {
 /// Req 1.7), carrying the upstream status when the error surfaced one.
 fn map_send_error(url: &Url, err: reqwest::Error) -> AppError {
     let host = url.host_str().unwrap_or("<unknown>");
-    let app = AppError::upstream_unavailable(format!(
-        "upstream HLS request to {host} failed: {err}"
-    ));
+    let app =
+        AppError::upstream_unavailable(format!("upstream HLS request to {host} failed: {err}"));
     match err.status() {
         Some(status) => app.with_upstream_status(status.as_u16()),
         None => app,
@@ -199,7 +195,11 @@ mod tests {
             .await
             .expect_err("a 404 upstream must surface as an error");
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
-        assert_eq!(err.upstream_status, Some(404), "must carry the upstream status");
+        assert_eq!(
+            err.upstream_status,
+            Some(404),
+            "must carry the upstream status"
+        );
     }
 
     // -- Req 1.6: custom headers forwarded to the manifest fetch -------------
@@ -271,7 +271,10 @@ mod tests {
             .await;
 
         let mut headers = BTreeMap::new();
-        headers.insert("Referer".to_string(), "https://referer.example/".to_string());
+        headers.insert(
+            "Referer".to_string(),
+            "https://referer.example/".to_string(),
+        );
 
         let client = hls_client(EgressPolicy::FailOpen);
         let body = client

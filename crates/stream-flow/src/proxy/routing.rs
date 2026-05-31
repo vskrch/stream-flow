@@ -57,11 +57,15 @@ pub enum PatternError {
     #[error("transport-route pattern contains whitespace or control characters")]
     Whitespace,
     /// The scheme prefix was not one of `http`, `https`, or `all`.
-    #[error("transport-route pattern has an unsupported scheme `{0}` (expected http, https, or all)")]
+    #[error(
+        "transport-route pattern has an unsupported scheme `{0}` (expected http, https, or all)"
+    )]
     UnsupportedScheme(String),
     /// The host contained a `*` somewhere other than a leading `*.` label, or
     /// was otherwise malformed.
-    #[error("transport-route pattern host `{0}` is malformed (use an exact host, `*.suffix`, or `*`)")]
+    #[error(
+        "transport-route pattern host `{0}` is malformed (use an exact host, `*.suffix`, or `*`)"
+    )]
     MalformedHost(String),
 }
 
@@ -358,7 +362,11 @@ pub struct RoutingTable {
 impl RoutingTable {
     /// Assemble a routing table from explicit routes + the default-fallback
     /// policy. Uses the [`DEFAULT_CLIENT_CACHE_CAPACITY`] client LRU.
-    pub fn new(routes: Vec<TransportRoute>, all_proxy: bool, default_proxy: Option<ProxyUrl>) -> Self {
+    pub fn new(
+        routes: Vec<TransportRoute>,
+        all_proxy: bool,
+        default_proxy: Option<ProxyUrl>,
+    ) -> Self {
         Self {
             routes,
             all_proxy,
@@ -376,7 +384,9 @@ impl RoutingTable {
         let mut routes = Vec::with_capacity(cfg.transport_routes.len());
         for (pattern_str, route) in &cfg.transport_routes {
             let pattern = RoutePattern::parse(pattern_str).map_err(|e| {
-                AppError::bad_request(format!("invalid transport-route pattern `{pattern_str}`: {e}"))
+                AppError::bad_request(format!(
+                    "invalid transport-route pattern `{pattern_str}`: {e}"
+                ))
             })?;
             // `proxy: true` requires a proxy URL; `proxy: false` is a direct
             // match (still honoring verify_ssl).
@@ -548,7 +558,11 @@ impl ClientCache {
 
     /// The number of clients currently cached.
     pub fn len(&self) -> usize {
-        self.inner.lock().expect("client-cache mutex poisoned").entries.len()
+        self.inner
+            .lock()
+            .expect("client-cache mutex poisoned")
+            .entries
+            .len()
     }
 
     /// `true` when no clients are cached.
@@ -908,7 +922,11 @@ mod tests {
         let table = RoutingTable::new(routes, true, Some(default));
 
         let sel = table.select_route(&url("https://direct.example.com/x"));
-        assert_eq!(sel.proxy_str(), None, "matched direct route beats all-proxy default");
+        assert_eq!(
+            sel.proxy_str(),
+            None,
+            "matched direct route beats all-proxy default"
+        );
         assert!(sel.matched);
     }
 
@@ -1030,13 +1048,21 @@ mod tests {
         cache.get_or_build(Some("http://a:1"), true).unwrap();
         assert_eq!(cache.builds(), builds_before, "a must still be cached");
         cache.get_or_build(Some("http://b:2"), true).unwrap();
-        assert_eq!(cache.builds(), builds_before + 1, "b must have been evicted");
+        assert_eq!(
+            cache.builds(),
+            builds_before + 1,
+            "b must have been evicted"
+        );
     }
 
     #[test]
     fn routing_table_client_for_caches_per_route() {
         let routes = vec![
-            route("https://api.example.com", Some("http://specific:8080"), true),
+            route(
+                "https://api.example.com",
+                Some("http://specific:8080"),
+                true,
+            ),
             route("insecure.example.com", Some("http://p:8080"), false),
         ];
         let table = RoutingTable::new(routes, false, None);
@@ -1047,7 +1073,9 @@ mod tests {
         assert_eq!(table.cached_client_count(), 1);
 
         // A different route (different proxy + verify) → a second client.
-        table.client_for(&url("https://insecure.example.com/a")).unwrap();
+        table
+            .client_for(&url("https://insecure.example.com/a"))
+            .unwrap();
         assert_eq!(table.cached_client_count(), 2);
 
         // An unmatched direct request → a third (direct) client.

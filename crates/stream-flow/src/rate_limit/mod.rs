@@ -43,11 +43,11 @@
 //! 3. Calls [`RateLimiter::check`] and either passes the request through or
 //!    returns `429` with `Retry-After`.
 
+use dashmap::DashMap;
 use std::future::{ready, Future, Ready};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use dashmap::DashMap;
 use tokio::sync::Mutex;
 
 use actix_web::body::EitherBody;
@@ -217,11 +217,7 @@ impl RateLimiter {
     /// The value is stored as `"{tokens_f64}:{timestamp_ms_u64}"` with a TTL
     /// of `capacity / refill_rate + 1` seconds (the time to fully drain and
     /// refill the bucket).
-    async fn check_redis(
-        &self,
-        key: &str,
-        cache: &dyn CacheBackend,
-    ) -> Result<(), AppError> {
+    async fn check_redis(&self, key: &str, cache: &dyn CacheBackend) -> Result<(), AppError> {
         let redis_key = format!("rl:{key}");
         let ttl = Duration::from_secs_f64(self.cfg.capacity / self.cfg.refill_rate + 1.0);
 
@@ -246,9 +242,7 @@ impl RateLimiter {
         if tokens >= 1.0 {
             tokens -= 1.0;
             let val = format_bucket_value(tokens, now);
-            let _ = cache
-                .set(&redis_key, val.into_bytes().into(), ttl)
-                .await;
+            let _ = cache.set(&redis_key, val.into_bytes().into(), ttl).await;
             Ok(())
         } else {
             let wait_secs = (1.0 - tokens) / self.cfg.refill_rate;
@@ -270,9 +264,7 @@ impl RateLimiter {
     /// Peek at the current token count for a key (in-process only, for tests).
     #[cfg(test)]
     pub fn local_tokens(&self, key: &str) -> Option<f64> {
-        self.local
-            .get(key)
-            .map(|b| b.blocking_lock().tokens)
+        self.local.get(key).map(|b| b.blocking_lock().tokens)
     }
 }
 
@@ -493,7 +485,10 @@ mod tests {
     fn bucket_config_derives_correct_rate_and_capacity() {
         let cfg = BucketConfig::from_config(&cfg_60rpm());
         assert_eq!(cfg.capacity, 60.0);
-        assert!((cfg.refill_rate - 1.0).abs() < 1e-9, "1 token/sec for 60 rpm");
+        assert!(
+            (cfg.refill_rate - 1.0).abs() < 1e-9,
+            "1 token/sec for 60 rpm"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -503,7 +498,10 @@ mod tests {
     #[test]
     fn local_bucket_starts_full() {
         let mut b = LocalBucket::new(5.0);
-        let cfg = BucketConfig { capacity: 5.0, refill_rate: 1.0 };
+        let cfg = BucketConfig {
+            capacity: 5.0,
+            refill_rate: 1.0,
+        };
         // Should be able to consume 5 tokens immediately.
         for _ in 0..5 {
             assert!(b.try_consume(&cfg).is_ok());
@@ -515,8 +513,11 @@ mod tests {
     #[test]
     fn local_bucket_refills_over_time() {
         let mut b = LocalBucket::new(2.0);
-        let cfg = BucketConfig { capacity: 2.0, refill_rate: 2.0 }; // 2 tokens/sec
-        // Drain the bucket.
+        let cfg = BucketConfig {
+            capacity: 2.0,
+            refill_rate: 2.0,
+        }; // 2 tokens/sec
+           // Drain the bucket.
         assert!(b.try_consume(&cfg).is_ok());
         assert!(b.try_consume(&cfg).is_ok());
         assert!(b.try_consume(&cfg).is_err());
@@ -532,7 +533,10 @@ mod tests {
     #[test]
     fn local_bucket_tokens_never_exceed_capacity() {
         let mut b = LocalBucket::new(3.0);
-        let cfg = BucketConfig { capacity: 3.0, refill_rate: 10.0 };
+        let cfg = BucketConfig {
+            capacity: 3.0,
+            refill_rate: 10.0,
+        };
         // Simulate a long time passing.
         b.last_refill = Instant::now() - Duration::from_secs(100);
         // Trigger a refill by trying to consume.
@@ -544,7 +548,10 @@ mod tests {
     #[test]
     fn local_bucket_retry_after_is_positive() {
         let mut b = LocalBucket::new(1.0);
-        let cfg = BucketConfig { capacity: 1.0, refill_rate: 1.0 };
+        let cfg = BucketConfig {
+            capacity: 1.0,
+            refill_rate: 1.0,
+        };
         // Drain.
         assert!(b.try_consume(&cfg).is_ok());
         // Next should fail with a positive retry_after.
@@ -748,12 +755,16 @@ mod tests {
             // Must admit exactly `capacity` requests in the burst.
             prop_assert_eq!(
                 allowed, capacity,
-                "burst allowed {allowed} but capacity is {capacity}"
+                "burst allowed {} but capacity is {}",
+                allowed,
+                capacity
             );
             // The extra requests must all be denied.
             prop_assert_eq!(
                 denied, extra_requests as usize,
-                "expected {extra_requests} denials, got {denied}"
+                "expected {} denials, got {}",
+                extra_requests,
+                denied
             );
         }
 
@@ -784,7 +795,9 @@ mod tests {
             if let Some(tokens) = limiter.local_tokens(key) {
                 prop_assert!(
                     tokens <= rpm as f64,
-                    "tokens {tokens} exceeded capacity {rpm}"
+                    "tokens {} exceeded capacity {}",
+                    tokens,
+                    rpm
                 );
             }
         }

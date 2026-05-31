@@ -115,8 +115,7 @@ fn arb_failed_native() -> impl Strategy<Value = String> {
 
 /// Strategy that generates uppercase variants of known failure natives.
 fn arb_failed_native_upper() -> impl Strategy<Value = String> {
-    prop::sample::select(KNOWN_FAILED_NATIVES)
-        .prop_map(|s| s.to_uppercase())
+    prop::sample::select(KNOWN_FAILED_NATIVES).prop_map(|s| s.to_uppercase())
 }
 
 /// Strategy that generates mixed-case variants of known failure natives.

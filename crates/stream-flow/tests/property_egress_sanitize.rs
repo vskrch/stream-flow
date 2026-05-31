@@ -51,12 +51,17 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use actix_web::http::header::{HeaderMap, HeaderName, HeaderValue};
 use proptest::prelude::*;
-use stream_flow::egress::{sanitize_outbound, is_client_identifying_header, CLIENT_IDENTIFYING_HEADERS};
+use stream_flow::egress::{
+    is_client_identifying_header, sanitize_outbound, CLIENT_IDENTIFYING_HEADERS,
+};
 
 /// The nine forbidden header names, each rendered in a few casings so the
 /// generator covers the case-insensitive match the requirement hinges on.
 fn arb_forbidden_name() -> impl Strategy<Value = String> {
-    let names: Vec<String> = CLIENT_IDENTIFYING_HEADERS.iter().map(|s| s.to_string()).collect();
+    let names: Vec<String> = CLIENT_IDENTIFYING_HEADERS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let len = names.len();
     (0..len, 0..3usize).prop_map(move |(idx, casing)| {
         let canonical = &names[idx];
@@ -113,11 +118,11 @@ fn arb_ip() -> impl Strategy<Value = IpAddr> {
 /// token inside a delimited list, to stress the value-based strip (Req 51.12).
 fn arb_value_with_ip(ip: String) -> impl Strategy<Value = String> {
     prop_oneof![
-        Just(ip.clone()),                                   // bare IP
-        Just(format!("{ip}, 5.6.7.8")),                     // first token of a list
-        Just(format!("10.0.0.1, {ip}")),                    // later token
-        Just(format!("for={ip}")),                          // Forwarded-style key=value
-        Just(format!("edge=a; ip={ip}; node=b")),           // semicolon list
+        Just(ip.clone()),                         // bare IP
+        Just(format!("{ip}, 5.6.7.8")),           // first token of a list
+        Just(format!("10.0.0.1, {ip}")),          // later token
+        Just(format!("for={ip}")),                // Forwarded-style key=value
+        Just(format!("edge=a; ip={ip}; node=b")), // semicolon list
     ]
 }
 
@@ -150,14 +155,12 @@ fn arb_entry(ip: IpAddr) -> impl Strategy<Value = Entry> {
     let ip_str = ip.to_string();
     prop_oneof![
         // A forbidden, client-identifying header with an arbitrary value.
-        (arb_forbidden_name(), arb_plain_value())
-            .prop_map(|(name, value)| Entry { name, value }),
+        (arb_forbidden_name(), arb_plain_value()).prop_map(|(name, value)| Entry { name, value }),
         // A benign header whose value embeds the client IP (defence-in-depth).
         (arb_benign_name(), arb_value_with_ip(ip_str.clone()))
             .prop_map(|(name, value)| Entry { name, value }),
         // A benign header with a value that does not carry the IP.
-        (arb_benign_name(), arb_plain_value())
-            .prop_map(|(name, value)| Entry { name, value }),
+        (arb_benign_name(), arb_plain_value()).prop_map(|(name, value)| Entry { name, value }),
     ]
 }
 

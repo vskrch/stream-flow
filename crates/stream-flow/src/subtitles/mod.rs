@@ -175,10 +175,7 @@ impl SubtitleProxy {
                 .to_string()
         };
 
-        let body = resp
-            .bytes()
-            .await
-            .map_err(|e| map_send_error(&parsed, e))?;
+        let body = resp.bytes().await.map_err(|e| map_send_error(&parsed, e))?;
 
         if body.len() > MAX_SUBTITLE_BYTES {
             return Err(AppError::payload_too_large(format!(
@@ -244,7 +241,10 @@ pub async fn subtitle_proxy_endpoint(
     let result = proxy.fetch(&query.url, &headers).await?;
 
     Ok(HttpResponse::Ok()
-        .insert_header((actix_web::http::header::CONTENT_TYPE, result.content_type.as_str()))
+        .insert_header((
+            actix_web::http::header::CONTENT_TYPE,
+            result.content_type.as_str(),
+        ))
         .body(result.body))
 }
 
@@ -336,7 +336,9 @@ mod tests {
     #[test]
     fn srt_extension_maps_to_application_x_subrip() {
         assert_eq!(
-            format_from_url("https://example.com/sub.srt").unwrap().content_type(),
+            format_from_url("https://example.com/sub.srt")
+                .unwrap()
+                .content_type(),
             "application/x-subrip"
         );
     }
@@ -344,7 +346,9 @@ mod tests {
     #[test]
     fn vtt_extension_maps_to_text_vtt() {
         assert_eq!(
-            format_from_url("https://example.com/sub.vtt").unwrap().content_type(),
+            format_from_url("https://example.com/sub.vtt")
+                .unwrap()
+                .content_type(),
             "text/vtt"
         );
     }
@@ -352,7 +356,9 @@ mod tests {
     #[test]
     fn ass_extension_maps_to_text_x_ssa() {
         assert_eq!(
-            format_from_url("https://example.com/sub.ass").unwrap().content_type(),
+            format_from_url("https://example.com/sub.ass")
+                .unwrap()
+                .content_type(),
             "text/x-ssa"
         );
     }
@@ -360,17 +366,31 @@ mod tests {
     #[test]
     fn ssa_extension_maps_to_text_x_ssa() {
         assert_eq!(
-            format_from_url("https://example.com/sub.ssa").unwrap().content_type(),
+            format_from_url("https://example.com/sub.ssa")
+                .unwrap()
+                .content_type(),
             "text/x-ssa"
         );
     }
 
     #[test]
     fn extension_matching_is_case_insensitive() {
-        assert_eq!(format_from_url("https://x.com/s.SRT").unwrap(), SubtitleFormat::Srt);
-        assert_eq!(format_from_url("https://x.com/s.VTT").unwrap(), SubtitleFormat::Vtt);
-        assert_eq!(format_from_url("https://x.com/s.ASS").unwrap(), SubtitleFormat::AssSsa);
-        assert_eq!(format_from_url("https://x.com/s.SSA").unwrap(), SubtitleFormat::AssSsa);
+        assert_eq!(
+            format_from_url("https://x.com/s.SRT").unwrap(),
+            SubtitleFormat::Srt
+        );
+        assert_eq!(
+            format_from_url("https://x.com/s.VTT").unwrap(),
+            SubtitleFormat::Vtt
+        );
+        assert_eq!(
+            format_from_url("https://x.com/s.ASS").unwrap(),
+            SubtitleFormat::AssSsa
+        );
+        assert_eq!(
+            format_from_url("https://x.com/s.SSA").unwrap(),
+            SubtitleFormat::AssSsa
+        );
     }
 
     #[test]
@@ -418,7 +438,10 @@ mod tests {
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/sub.srt", server.uri());
-        let resp = proxy.fetch(&url, &BTreeMap::new()).await.expect("fetch succeeds");
+        let resp = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect("fetch succeeds");
 
         // URL extension wins over upstream Content-Type (Req 39.4).
         assert_eq!(resp.content_type, "application/x-subrip");
@@ -431,16 +454,16 @@ mod tests {
         let body = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n".to_vec();
         Mock::given(method("GET"))
             .and(path("/sub.vtt"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(body.clone()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
             .mount(&server)
             .await;
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/sub.vtt", server.uri());
-        let resp = proxy.fetch(&url, &BTreeMap::new()).await.expect("fetch succeeds");
+        let resp = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect("fetch succeeds");
 
         assert_eq!(resp.content_type, "text/vtt");
         assert_eq!(&resp.body[..], &body[..]);
@@ -452,16 +475,16 @@ mod tests {
         let body = b"[Script Info]\nTitle: Test\n".to_vec();
         Mock::given(method("GET"))
             .and(path("/sub.ass"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(body.clone()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
             .mount(&server)
             .await;
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/sub.ass", server.uri());
-        let resp = proxy.fetch(&url, &BTreeMap::new()).await.expect("fetch succeeds");
+        let resp = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect("fetch succeeds");
 
         assert_eq!(resp.content_type, "text/x-ssa");
     }
@@ -478,7 +501,10 @@ mod tests {
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/sub.ssa", server.uri());
-        let resp = proxy.fetch(&url, &BTreeMap::new()).await.expect("fetch succeeds");
+        let resp = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect("fetch succeeds");
 
         assert_eq!(resp.content_type, "text/x-ssa");
     }
@@ -491,10 +517,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/sub.vtt"))
             .and(wiremock::matchers::header("x-auth-token", "secret123"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(b"WEBVTT\n".to_vec()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n".to_vec()))
             .mount(&server)
             .await;
 
@@ -503,7 +526,10 @@ mod tests {
         let mut headers = BTreeMap::new();
         headers.insert("x-auth-token".to_string(), "secret123".to_string());
 
-        let resp = proxy.fetch(&url, &headers).await.expect("fetch with headers succeeds");
+        let resp = proxy
+            .fetch(&url, &headers)
+            .await
+            .expect("fetch with headers succeeds");
         assert_eq!(resp.content_type, "text/vtt");
     }
 
@@ -520,7 +546,10 @@ mod tests {
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/missing.srt", server.uri());
-        let err = proxy.fetch(&url, &BTreeMap::new()).await.expect_err("404 must error");
+        let err = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect_err("404 must error");
 
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         assert_eq!(err.upstream_status, Some(404));
@@ -556,7 +585,10 @@ mod tests {
 
         let proxy = SubtitleProxy::new(outbound_fail_open());
         let url = format!("{}/sub.xyz", server.uri());
-        let resp = proxy.fetch(&url, &BTreeMap::new()).await.expect("fetch succeeds");
+        let resp = proxy
+            .fetch(&url, &BTreeMap::new())
+            .await
+            .expect("fetch succeeds");
 
         // No extension match → use upstream Content-Type.
         assert_eq!(resp.content_type, "text/vtt");
@@ -573,8 +605,18 @@ mod tests {
     #[test]
     fn merge_single_list_returns_all_entries() {
         let subs = vec![
-            Subtitle { id: "1".into(), url: "https://a.com/en.srt".into(), lang: "en".into(), ..Default::default() },
-            Subtitle { id: "2".into(), url: "https://a.com/fr.srt".into(), lang: "fr".into(), ..Default::default() },
+            Subtitle {
+                id: "1".into(),
+                url: "https://a.com/en.srt".into(),
+                lang: "en".into(),
+                ..Default::default()
+            },
+            Subtitle {
+                id: "2".into(),
+                url: "https://a.com/fr.srt".into(),
+                lang: "fr".into(),
+                ..Default::default()
+            },
         ];
         let result = merge_subtitles(vec![subs.clone()]);
         assert_eq!(result.len(), 2);
@@ -713,7 +755,10 @@ mod tests {
     #[test]
     fn parse_pipe_headers_basic() {
         let headers = parse_pipe_headers("Referer:https://example.com/|User-Agent:test");
-        assert_eq!(headers.get("Referer").map(String::as_str), Some("https://example.com/"));
+        assert_eq!(
+            headers.get("Referer").map(String::as_str),
+            Some("https://example.com/")
+        );
         assert_eq!(headers.get("User-Agent").map(String::as_str), Some("test"));
     }
 

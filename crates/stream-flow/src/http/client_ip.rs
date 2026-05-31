@@ -148,7 +148,10 @@ mod tests {
     #[test]
     fn ipv6_x_real_ip_is_parsed() {
         let got = resolve_client_ip(Some("2001:db8::1"), None, None);
-        assert_eq!(got, Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))));
+        assert_eq!(
+            got,
+            Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)))
+        );
     }
 
     #[test]
@@ -162,13 +165,21 @@ mod tests {
 
     #[test]
     fn falls_through_to_xff_when_x_real_ip_unparseable() {
-        let got = resolve_client_ip(Some("not-an-ip"), Some("198.51.100.9"), Some(ip("192.0.2.5")));
+        let got = resolve_client_ip(
+            Some("not-an-ip"),
+            Some("198.51.100.9"),
+            Some(ip("192.0.2.5")),
+        );
         assert_eq!(got, Some(ip("198.51.100.9")));
     }
 
     #[test]
     fn falls_through_to_peer_when_headers_unparseable() {
-        let got = resolve_client_ip(Some("garbage"), Some("also, garbage"), Some(ip("192.0.2.5")));
+        let got = resolve_client_ip(
+            Some("garbage"),
+            Some("also, garbage"),
+            Some(ip("192.0.2.5")),
+        );
         assert_eq!(got, Some(ip("192.0.2.5")));
     }
 

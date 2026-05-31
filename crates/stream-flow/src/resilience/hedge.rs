@@ -487,7 +487,11 @@ mod tests {
 
         fn complete(&mut self) {
             self.completed = true;
-            self.tracker.completed.lock().unwrap().push(self.label.clone());
+            self.tracker
+                .completed
+                .lock()
+                .unwrap()
+                .push(self.label.clone());
         }
     }
 
@@ -495,7 +499,11 @@ mod tests {
         fn drop(&mut self) {
             self.tracker.leave(&self.store);
             if !self.completed {
-                self.tracker.cancelled.lock().unwrap().push(self.label.clone());
+                self.tracker
+                    .cancelled
+                    .lock()
+                    .unwrap()
+                    .push(self.label.clone());
             }
         }
     }
@@ -655,8 +663,16 @@ mod tests {
 
         let result = hedged(&cfg, candidates).await;
         assert!(result.is_err(), "all candidates fail");
-        assert!(t.peak() <= 2, "peak concurrency {} exceeded max 2", t.peak());
-        assert!(t.peak() >= 2, "hedging should reach the bound, got {}", t.peak());
+        assert!(
+            t.peak() <= 2,
+            "peak concurrency {} exceeded max 2",
+            t.peak()
+        );
+        assert!(
+            t.peak() >= 2,
+            "hedging should reach the bound, got {}",
+            t.peak()
+        );
     }
 
     // -- never two concurrent attempts on the same store -------------------
@@ -688,7 +704,11 @@ mod tests {
             1,
             "the same store must never have two concurrent attempts",
         );
-        assert_eq!(t.peak(), 1, "deduped same-store candidates run sequentially");
+        assert_eq!(
+            t.peak(),
+            1,
+            "deduped same-store candidates run sequentially"
+        );
         // Both attempts ran, but one after the other.
         assert_eq!(t.started(), vec!["realdebrid", "realdebrid"]);
     }
@@ -767,7 +787,11 @@ mod tests {
         .await;
 
         assert_eq!(result.unwrap(), "healthy");
-        assert_eq!(t.started(), vec!["healthy"], "open-breaker candidate skipped");
+        assert_eq!(
+            t.started(),
+            vec!["healthy"],
+            "open-breaker candidate skipped"
+        );
     }
 
     // -- typed error only when all fail ------------------------------------
@@ -818,7 +842,10 @@ mod tests {
         .await;
 
         let err = result.expect_err("no eligible candidate");
-        assert_eq!(err.category, crate::errors::ErrorCategory::UpstreamUnavailable);
+        assert_eq!(
+            err.category,
+            crate::errors::ErrorCategory::UpstreamUnavailable
+        );
         assert!(t.started().is_empty(), "no operation started");
     }
 
@@ -828,7 +855,10 @@ mod tests {
         let cfg = HedgeConfig::enabled(ms(50), 2);
         let result: Result<&str, AppError> = hedged(&cfg, Vec::new()).await;
         let err = result.expect_err("no candidates");
-        assert_eq!(err.category, crate::errors::ErrorCategory::UpstreamUnavailable);
+        assert_eq!(
+            err.category,
+            crate::errors::ErrorCategory::UpstreamUnavailable
+        );
     }
 
     /// A mid-list failure hands off to a later success across distinct stores

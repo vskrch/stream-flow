@@ -45,7 +45,7 @@ pub use range::{
 };
 pub use resilient::ResilientStream;
 pub use routing::{
-    ClientCache, ProxyScheme, ProxyUrl, PatternError, RoutePattern, RouteSelection, RoutingTable,
+    ClientCache, PatternError, ProxyScheme, ProxyUrl, RoutePattern, RouteSelection, RoutingTable,
     TransportRoute,
 };
 pub use source::{ContentRange, DirectSource, UpstreamBody, UpstreamSource};

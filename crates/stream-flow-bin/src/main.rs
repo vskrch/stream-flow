@@ -6,27 +6,68 @@
 //! [`stream_flow::build_app`] that the integration-test harness uses (Req
 //! 49.6).
 //!
-//! This is the task-11.2 skeleton: it builds an [`AppState`] from the default
-//! configuration and serves the dual-surface routing tree. Real config
-//! loading (task 3), the full `AppState` dependency wiring, and graceful
-//! shutdown are layered in later tasks (config: task 3; graceful shutdown: Req
-//! 49.4).
+//! The binary loads production configuration, builds the shared `AppState`,
+//! starts supervised runtime tasks, and serves the same routing tree as tests.
 
 use actix_web::{App, HttpServer};
+use std::io;
+use std::time::Duration;
 use stream_flow::config::Config;
+use stream_flow::http::degradation::{RssSampler, SysinfoRssReader};
+use stream_flow::observability::{init_logging, Redactor};
 use stream_flow::{build_app, AppState};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // The binary constructs the shared `AppState` once and hands a clone to
-    // each actix worker, so every worker serves the *identical* routing tree
-    // over one shared dependency set (Req 49.6). Config loading replaces the
-    // default here in task 3.
-    let state = AppState::new(Config::default());
+    let config = Config::from_env().map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("failed to load stream-flow config: {err}"),
+        )
+    })?;
 
-    let addr = ("127.0.0.1", 8080);
-    HttpServer::new(move || App::new().service(build_app(state.clone())))
-        .bind(addr)?
-        .run()
-        .await
+    let redactor = Redactor::new();
+    if let Some(secret) = &config.auth.api_password {
+        redactor.register_secret(secret.expose());
+    }
+    if let Some(secret) = &config.auth.metrics_password {
+        redactor.register_secret(secret.expose());
+    }
+    if let Some(secret) = &config.vault_secret {
+        redactor.register_secret(secret.expose());
+    }
+    init_logging("info", redactor);
+
+    let bind_addr = (config.server.host.clone(), config.server.port);
+    let workers = config.server.workers;
+    let state = AppState::new(config);
+
+    let sampler_handle = SysinfoRssReader::new().map(|reader| {
+        tokio::spawn(
+            RssSampler::new(
+                state.load_controller().clone(),
+                reader,
+                Duration::from_secs(5),
+            )
+            .run(),
+        )
+    });
+
+    let mut server = HttpServer::new(move || App::new().service(build_app(state.clone())));
+    if workers > 0 {
+        server = server.workers(workers);
+    }
+    let server = server.bind(bind_addr)?.run();
+    let handle = server.handle();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            handle.stop(true).await;
+        }
+    });
+
+    let result = server.await;
+    if let Some(handle) = sampler_handle {
+        handle.abort();
+    }
+    result
 }

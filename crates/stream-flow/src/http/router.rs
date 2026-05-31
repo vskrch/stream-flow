@@ -21,17 +21,11 @@
 //! share one [`AppState`] (design: "Both run on the same listener, sharing the
 //! same `AppState`").
 //!
-//! ## Scope of this task (11.2)
-//!
-//! This is the **skeleton**: each namespace registers its representative routes
-//! against a placeholder handler that returns `501 Not Implemented` via the
-//! canonical [`AppError`] envelope, so the routing *tree* — the thing the binary
-//! and the test harness must share byte-for-byte (Req 49.6) — is real and
-//! testable now, while each endpoint's behaviour is filled in by its dedicated
-//! later task. `/health` is the one shared route already backed by its real
-//! handler (the [`HealthRegistry`](crate::health) landed in task 7.3).
+//! The router is also the production composition point: endpoint modules own
+//! their behavior, while this module keeps path registration consistent between
+//! the binary, tests, and embedded deployments.
 
-use actix_web::{web, HttpResponse};
+use actix_web::web;
 
 use crate::app::AppState;
 
@@ -62,19 +56,6 @@ pub fn configure(cfg: &mut web::ServiceConfig, state: &AppState) {
     shared::configure(cfg); // /health, /metrics, /v0/events, web UI
 }
 
-/// A skeleton placeholder that answers a registered-but-unimplemented route
-/// with `501 Not Implemented`.
-///
-/// Returning `501` (rather than `404`) lets the smoke tests distinguish "this
-/// route is wired into the tree" from "no such route", and the real handler for
-/// each path replaces this call in its dedicated later task. It deliberately
-/// does **not** use the canonical [`AppError`](crate::errors::AppError)
-/// taxonomy (which has no `501` category) — these placeholders are transient
-/// scaffolding, not part of the wire error contract.
-async fn not_implemented() -> HttpResponse {
-    HttpResponse::NotImplemented().body("route registered; handler lands in a later task")
-}
-
 /// The `mediaflow-proxy-light` path namespace (Req 36.1, 36.5).
 pub mod mediaflow_surface {
     use super::*;
@@ -94,38 +75,45 @@ pub mod mediaflow_surface {
     /// [`OutboundClient`](crate::egress::OutboundClient) (Req 13.7, 51.10,
     /// 51.11).
     pub fn configure(cfg: &mut web::ServiceConfig) {
-        cfg.route("/proxy/stream", web::get().to(not_implemented)) // Req 36.1
-            .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)) // Req 51.10/51.11
-            // Subtitle proxy (Req 39.1, 39.3, 39.4, 39.5) — task 28.2.
-            .route(
-                "/proxy/subtitle",
-                web::get().to(crate::subtitles::subtitle_proxy_endpoint),
-            ) // Req 39.1
-            // Streaming utilities (Req 15) — task 20.1.
-            .route(
-                "/base64/encode",
-                web::get().to(crate::utils::base64::base64_encode_endpoint),
-            ) // Req 15.3
-            .route(
-                "/base64/decode",
-                web::get().to(crate::utils::base64::base64_decode_endpoint),
-            ) // Req 15.4
-            .route(
-                "/base64/check",
-                web::get().to(crate::utils::base64::base64_check_endpoint),
-            ) // Req 15.5
-            .route(
-                "/generate_url",
-                web::post().to(crate::utils::generate_url::generate_url_endpoint),
-            ) // Req 15.7
-            .route(
-                "/playlist/builder",
-                web::post().to(crate::utils::playlist::playlist_builder_endpoint),
-            ) // Req 15.1
-            .route(
-                "/speedtest",
-                web::get().to(crate::utils::speedtest::speedtest_endpoint),
-            ); // Req 15.2
+        cfg.route(
+            "/proxy/stream",
+            web::get().to(crate::content_proxy::content_proxy_endpoint),
+        ) // Req 36.1, 19.1-19.8
+        .route(
+            "/proxy/stream",
+            web::head().to(crate::content_proxy::content_proxy_endpoint),
+        )
+        .route("/proxy/ip", web::get().to(crate::proxy::proxy_ip_endpoint)) // Req 51.10/51.11
+        // Subtitle proxy (Req 39.1, 39.3, 39.4, 39.5) — task 28.2.
+        .route(
+            "/proxy/subtitle",
+            web::get().to(crate::subtitles::subtitle_proxy_endpoint),
+        ) // Req 39.1
+        // Streaming utilities (Req 15) — task 20.1.
+        .route(
+            "/base64/encode",
+            web::get().to(crate::utils::base64::base64_encode_endpoint),
+        ) // Req 15.3
+        .route(
+            "/base64/decode",
+            web::get().to(crate::utils::base64::base64_decode_endpoint),
+        ) // Req 15.4
+        .route(
+            "/base64/check",
+            web::get().to(crate::utils::base64::base64_check_endpoint),
+        ) // Req 15.5
+        .route(
+            "/generate_url",
+            web::post().to(crate::utils::generate_url::generate_url_endpoint),
+        ) // Req 15.7
+        .route(
+            "/playlist/builder",
+            web::post().to(crate::utils::playlist::playlist_builder_endpoint),
+        ) // Req 15.1
+        .route(
+            "/speedtest",
+            web::get().to(crate::utils::speedtest::speedtest_endpoint),
+        ); // Req 15.2
     }
 }
 
@@ -150,10 +138,14 @@ pub mod stremthru_surface {
             "/v0/proxy",
             web::post().to(crate::proxylink::handler::proxify_post_endpoint),
         ); // Req 21.1-21.9
-        // Store magnet endpoints (task 24.1, Req 17)
+           // Store magnet endpoints (task 24.1, Req 17)
         crate::store::endpoints::configure_store_routes(cfg);
         // Meta / ID-map endpoint (task 24.5, Req 22)
         crate::meta::configure_meta_routes(cfg);
+        // Store addon routes (task 26.2, Req 23)
+        crate::stremio::store_addon::configure_store_addon_routes(cfg);
+        // Wrap addon routes (task 26.3, Req 24)
+        crate::stremio::wrap_addon::configure_wrap_addon_routes(cfg);
     }
 }
 
@@ -175,5 +167,6 @@ pub mod shared {
         cfg.route("/health", web::get().to(health_endpoint)) // Req 50.10, 32.4
             .route("/metrics", web::get().to(metrics_endpoint)) // Req 32.1, 32.2
             .route("/v0/events", web::get().to(sse_events_endpoint)); // Req 41.1
+        crate::web_ui::configure_web_routes(cfg);
     }
 }

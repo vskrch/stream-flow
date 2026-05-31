@@ -160,7 +160,12 @@ impl ComponentHealth {
         breaker: Option<BreakerState>,
         detail: Option<String>,
     ) -> Self {
-        Self { name: name.into(), state, breaker, detail }
+        Self {
+            name: name.into(),
+            state,
+            breaker,
+            detail,
+        }
     }
 }
 
@@ -201,7 +206,10 @@ pub struct StoreBreaker {
 impl StoreBreaker {
     /// Convenience constructor.
     pub fn new(name: impl Into<String>, state: BreakerState) -> Self {
-        Self { name: name.into(), state }
+        Self {
+            name: name.into(),
+            state,
+        }
     }
 }
 
@@ -236,8 +244,7 @@ impl HealthInputs {
     /// configured, so a store-less deployment is never marked not-ready on this
     /// account.
     pub fn all_stores_open(&self) -> bool {
-        !self.stores.is_empty()
-            && self.stores.iter().all(|s| s.state == BreakerState::Open)
+        !self.stores.is_empty() && self.stores.iter().all(|s| s.state == BreakerState::Open)
     }
 
     /// Readiness predicate (Req 50.10): ready **iff** migrations applied,
@@ -282,10 +289,7 @@ impl HealthInputs {
     /// Whether any component in the breakdown is degraded or down (used to
     /// distinguish `Ok` from `Degraded` once the instance is ready).
     fn any_component_impaired(&self) -> bool {
-        let store_impaired = self
-            .stores
-            .iter()
-            .any(|s| s.state != BreakerState::Closed);
+        let store_impaired = self.stores.iter().any(|s| s.state != BreakerState::Closed);
         let extra_impaired = self
             .extra
             .iter()
@@ -300,13 +304,21 @@ impl HealthInputs {
 
         out.push(ComponentHealth::new(
             "sqlite",
-            if self.sqlite_reachable { ComponentState::Up } else { ComponentState::Down },
+            if self.sqlite_reachable {
+                ComponentState::Up
+            } else {
+                ComponentState::Down
+            },
             None,
             None,
         ));
         out.push(ComponentHealth::new(
             "load",
-            if self.load.sheds_traffic() { ComponentState::Degraded } else { ComponentState::Up },
+            if self.load.sheds_traffic() {
+                ComponentState::Degraded
+            } else {
+                ComponentState::Up
+            },
             None,
             Some(match self.load {
                 LoadState::Normal => "normal".to_string(),
@@ -329,7 +341,11 @@ impl HealthInputs {
 
     /// The full report body.
     pub fn report(&self) -> HealthReport {
-        HealthReport { status: self.status(), load: self.load, components: self.components() }
+        HealthReport {
+            status: self.status(),
+            load: self.load,
+            components: self.components(),
+        }
     }
 
     /// Evaluate a single probe view, returning whether it is healthy plus the
@@ -340,7 +356,10 @@ impl HealthInputs {
             ProbeKind::Readiness => self.readiness_ready(),
             ProbeKind::Startup => self.startup_complete(),
         };
-        ProbeOutcome { healthy, report: self.report() }
+        ProbeOutcome {
+            healthy,
+            report: self.report(),
+        }
     }
 }
 
@@ -421,7 +440,9 @@ impl HealthRegistry {
     /// Mark migrations as applied (called once the startup migrator finishes,
     /// Req 29.2).
     pub fn set_migrations_applied(&self, applied: bool) {
-        self.inner.migrations_applied.store(applied, Ordering::SeqCst);
+        self.inner
+            .migrations_applied
+            .store(applied, Ordering::SeqCst);
     }
 
     /// Mark configuration validity (Req 31.7); defaults to `true`.
@@ -609,7 +630,10 @@ mod tests {
     fn ready_when_no_stores_configured() {
         let mut i = healthy_inputs();
         i.stores = vec![];
-        assert!(!i.all_stores_open(), "vacuously not all-open with zero stores");
+        assert!(
+            !i.all_stores_open(),
+            "vacuously not all-open with zero stores"
+        );
         assert!(i.readiness_ready());
     }
 
@@ -676,7 +700,12 @@ mod tests {
             StoreBreaker::new("realdebrid", BreakerState::Open),
             StoreBreaker::new("alldebrid", BreakerState::HalfOpen),
         ];
-        i.extra = vec![ComponentHealth::new("redis", ComponentState::Down, None, None)];
+        i.extra = vec![ComponentHealth::new(
+            "redis",
+            ComponentState::Down,
+            None,
+            None,
+        )];
 
         let components = i.components();
         let names: Vec<&str> = components.iter().map(|c| c.name.as_str()).collect();
@@ -686,11 +715,17 @@ mod tests {
         assert!(names.contains(&"store:alldebrid"));
         assert!(names.contains(&"redis"));
 
-        let rd = components.iter().find(|c| c.name == "store:realdebrid").unwrap();
+        let rd = components
+            .iter()
+            .find(|c| c.name == "store:realdebrid")
+            .unwrap();
         assert_eq!(rd.state, ComponentState::Down);
         assert_eq!(rd.breaker, Some(BreakerState::Open));
 
-        let ad = components.iter().find(|c| c.name == "store:alldebrid").unwrap();
+        let ad = components
+            .iter()
+            .find(|c| c.name == "store:alldebrid")
+            .unwrap();
         assert_eq!(ad.state, ComponentState::Degraded);
         assert_eq!(ad.breaker, Some(BreakerState::HalfOpen));
 
@@ -718,10 +753,7 @@ mod tests {
         }
     }
 
-    fn registry_with(
-        probes: FakeProbes,
-        bound: Duration,
-    ) -> (HealthRegistry, Arc<ManualClock>) {
+    fn registry_with(probes: FakeProbes, bound: Duration) -> (HealthRegistry, Arc<ManualClock>) {
         let clock = Arc::new(ManualClock::new());
         let reg = HealthRegistry::with_clock(Arc::new(probes), bound, clock.clone());
         (reg, clock)
@@ -770,7 +802,10 @@ mod tests {
         assert!(reg.liveness_fresh(), "exactly at the bound is still fresh");
 
         clock.advance(Duration::from_millis(1));
-        assert!(!reg.liveness_fresh(), "past the bound is stale (runtime wedged)");
+        assert!(
+            !reg.liveness_fresh(),
+            "past the bound is stale (runtime wedged)"
+        );
         assert!(!reg.probe(ProbeKind::Liveness).healthy);
         // Readiness is unaffected by a stale liveness heartbeat.
         assert!(reg.probe(ProbeKind::Readiness).healthy);
@@ -829,12 +864,16 @@ mod tests {
         )
         .await;
 
-        let req = actix_test::TestRequest::get().uri("/health?probe=readiness").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/health?probe=readiness")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status().as_u16(), 503);
 
         // Liveness stays 200 even though readiness is 503.
-        let req = actix_test::TestRequest::get().uri("/health?probe=liveness").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/health?probe=liveness")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status().as_u16(), 200);
     }
@@ -856,7 +895,9 @@ mod tests {
         )
         .await;
 
-        let req = actix_test::TestRequest::get().uri("/health?probe=readiness").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/health?probe=readiness")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status().as_u16(), 200);
 
@@ -885,7 +926,9 @@ mod tests {
         )
         .await;
 
-        let req = actix_test::TestRequest::get().uri("/health?probe=startup").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/health?probe=startup")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status().as_u16(), 503);
     }

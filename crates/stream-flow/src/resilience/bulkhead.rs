@@ -155,7 +155,9 @@ impl Bulkhead {
     pub async fn acquire(&self) -> Result<OwnedSemaphorePermit, AppError> {
         match Arc::clone(&self.sem).try_acquire_owned() {
             Ok(permit) => Ok(permit),
-            Err(TryAcquireError::NoPermits) | Err(TryAcquireError::Closed) => Err(self.busy_error()),
+            Err(TryAcquireError::NoPermits) | Err(TryAcquireError::Closed) => {
+                Err(self.busy_error())
+            }
         }
     }
 
@@ -316,8 +318,14 @@ mod tests {
 
         // The pool is now saturated: the next acquire fails fast (no block),
         // and the live count is still pinned at the max — never above it.
-        let err = bh.acquire().await.expect_err("saturated pool must fail fast");
-        assert_eq!(err.category, crate::errors::ErrorCategory::UpstreamUnavailable);
+        let err = bh
+            .acquire()
+            .await
+            .expect_err("saturated pool must fail fast");
+        assert_eq!(
+            err.category,
+            crate::errors::ErrorCategory::UpstreamUnavailable
+        );
         assert_eq!(bh.in_flight(), 3);
         assert!(bh.in_flight() <= bh.max_permits());
     }
@@ -372,7 +380,10 @@ mod tests {
         let bh = Bulkhead::new(BulkheadKey::Store("premiumize".into()), 1);
         let _held = bh.acquire().await.unwrap();
         let err = bh.acquire().await.unwrap_err();
-        assert_eq!(err.category, crate::errors::ErrorCategory::UpstreamUnavailable);
+        assert_eq!(
+            err.category,
+            crate::errors::ErrorCategory::UpstreamUnavailable
+        );
         assert_eq!(err.store.as_deref(), Some("premiumize"));
     }
 
@@ -479,9 +490,21 @@ mod tests {
         assert!(store.acquire().await.is_err());
 
         // Every other dependency pool still admits a permit.
-        let _h = registry.host("cdn.example.com", None).acquire().await.expect("host free");
-        let _i = registry.integration("trakt", None).acquire().await.expect("integration free");
-        let _a = registry.acestream().acquire().await.expect("acestream free");
+        let _h = registry
+            .host("cdn.example.com", None)
+            .acquire()
+            .await
+            .expect("host free");
+        let _i = registry
+            .integration("trakt", None)
+            .acquire()
+            .await
+            .expect("integration free");
+        let _a = registry
+            .acestream()
+            .acquire()
+            .await
+            .expect("acestream free");
         let _t = registry.telegram().acquire().await.expect("telegram free");
     }
 
@@ -493,7 +516,11 @@ mod tests {
             acestream_permits: 1,
             ..BulkheadConfig::default()
         });
-        let _held = registry.acestream().acquire().await.expect("first acestream permit");
+        let _held = registry
+            .acestream()
+            .acquire()
+            .await
+            .expect("first acestream permit");
         // A fresh handle to the same singleton sees the saturation.
         assert!(registry.acestream().acquire().await.is_err());
     }
@@ -511,9 +538,15 @@ mod tests {
     /// saturation error messages / metrics).
     #[test]
     fn bulkhead_key_display_is_stable() {
-        assert_eq!(BulkheadKey::Store("realdebrid".into()).to_string(), "store:realdebrid");
+        assert_eq!(
+            BulkheadKey::Store("realdebrid".into()).to_string(),
+            "store:realdebrid"
+        );
         assert_eq!(BulkheadKey::Host("cdn".into()).to_string(), "host:cdn");
-        assert_eq!(BulkheadKey::Integration("trakt".into()).to_string(), "integration:trakt");
+        assert_eq!(
+            BulkheadKey::Integration("trakt".into()).to_string(),
+            "integration:trakt"
+        );
         assert_eq!(BulkheadKey::Acestream.to_string(), "acestream");
         assert_eq!(BulkheadKey::Telegram.to_string(), "telegram");
     }

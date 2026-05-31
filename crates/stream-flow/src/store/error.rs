@@ -19,8 +19,8 @@
 
 use std::time::Duration;
 
-use crate::errors::AppError;
 use super::StoreName;
+use crate::errors::AppError;
 
 /// Maps a native store error (HTTP status + response body) to the canonical
 /// [`AppError`] taxonomy (Req 16.10).
@@ -79,15 +79,15 @@ fn map_realdebrid(store: &str, status: u16, body: &str) -> AppError {
                 if body_contains_ip_hint(body) {
                     AppError::ip_restricted_for(store, format!("{store}: IP not allowed"))
                 } else {
-                    AppError::forbidden(format!("{store}: permission denied"))
-                        .with_store(store)
+                    AppError::forbidden(format!("{store}: permission denied")).with_store(store)
                 }
             }
-            35 => AppError::infringing_content(format!("{store}: infringing file"))
-                .with_store(store),
-            34 | 20 | 21 => AppError::store_limit_exceeded(
-                format!("{store}: active download/traffic/fair-usage limit reached"),
-            )
+            35 => {
+                AppError::infringing_content(format!("{store}: infringing file")).with_store(store)
+            }
+            34 | 20 | 21 => AppError::store_limit_exceeded(format!(
+                "{store}: active download/traffic/fair-usage limit reached"
+            ))
             .with_store(store),
             _ => map_by_status(store, status, body),
         };
@@ -113,30 +113,29 @@ fn map_alldebrid(store: &str, status: u16, body: &str) -> AppError {
     if let Some(code) = extract_ad_error_code(body) {
         let code_upper = code.to_uppercase();
         return match code_upper.as_str() {
-            "AUTH_BAD_APIKEY" | "AUTH_BLOCKED" | "AUTH_USER_BANNED"
-            | "AUTH_MISSING_APIKEY" => {
+            "AUTH_BAD_APIKEY" | "AUTH_BLOCKED" | "AUTH_USER_BANNED" | "AUTH_MISSING_APIKEY" => {
                 AppError::unauthorized_for(store, format!("{store}: {code}"))
             }
-            "MAGNET_TOO_MANY_ACTIVE" | "MAGNET_TOO_MANY"
-            | "FREE_TRIAL_LIMIT_REACHED" | "MUST_BE_PREMIUM" => {
-                AppError::store_limit_exceeded(format!("{store}: {code}"))
-                    .with_store(store)
+            "MAGNET_TOO_MANY_ACTIVE"
+            | "MAGNET_TOO_MANY"
+            | "FREE_TRIAL_LIMIT_REACHED"
+            | "MUST_BE_PREMIUM" => {
+                AppError::store_limit_exceeded(format!("{store}: {code}")).with_store(store)
             }
-            "LINK_HOST_UNAVAILABLE" | "LINK_HOST_NOT_SUPPORTED"
-            | "NO_SERVER" | "LINK_HOST_FULL" => {
-                AppError::hoster_unavailable(format!("{store}: {code}"))
-                    .with_store(store)
+            "LINK_HOST_UNAVAILABLE"
+            | "LINK_HOST_NOT_SUPPORTED"
+            | "NO_SERVER"
+            | "LINK_HOST_FULL" => {
+                AppError::hoster_unavailable(format!("{store}: {code}")).with_store(store)
             }
-            "LINK_DOWN" | "LINK_ERROR" | "LINK_NOT_FOUND"
-            | "MAGNET_INVALID_ID" => {
+            "LINK_DOWN" | "LINK_ERROR" | "LINK_NOT_FOUND" | "MAGNET_INVALID_ID" => {
                 AppError::not_found(format!("{store}: {code}")).with_store(store)
             }
             "LINK_PASS_PROTECTED" => {
                 AppError::forbidden(format!("{store}: {code}")).with_store(store)
             }
             "LINK_TOO_MANY_DOWNLOADS" => {
-                AppError::too_many_requests(format!("{store}: {code}"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: {code}")).with_store(store)
             }
             _ => map_by_status(store, status, body),
         };
@@ -174,21 +173,17 @@ fn map_torbox(store: &str, status: u16, body: &str) -> AppError {
                 || lower.contains("active")
                 || lower.contains("fair usage")
             {
-                AppError::store_limit_exceeded(format!("{store}: limit exceeded"))
-                    .with_store(store)
+                AppError::store_limit_exceeded(format!("{store}: limit exceeded")).with_store(store)
             } else {
-                AppError::too_many_requests(format!("{store}: rate limited"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: rate limited")).with_store(store)
             }
         }
         451 => {
-            AppError::infringing_content(format!("{store}: infringing content"))
-                .with_store(store)
+            AppError::infringing_content(format!("{store}: infringing content")).with_store(store)
         }
         _ => {
             if lower.contains("dmca") || lower.contains("infringing") {
-                AppError::infringing_content(format!("{store}: {body}"))
-                    .with_store(store)
+                AppError::infringing_content(format!("{store}: {body}")).with_store(store)
             } else {
                 map_by_status(store, status, body)
             }
@@ -211,17 +206,13 @@ fn map_premiumize(store: &str, status: u16, body: &str) -> AppError {
                 || lower.contains("limit")
                 || lower.contains("traffic")
             {
-                AppError::store_limit_exceeded(format!("{store}: {body}"))
-                    .with_store(store)
+                AppError::store_limit_exceeded(format!("{store}: {body}")).with_store(store)
             } else {
                 AppError::forbidden(format!("{store}: forbidden")).with_store(store)
             }
         }
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
-        429 => {
-            AppError::too_many_requests(format!("{store}: rate limited"))
-                .with_store(store)
-        }
+        429 => AppError::too_many_requests(format!("{store}: rate limited")).with_store(store),
         _ => map_by_status(store, status, body),
     }
 }
@@ -244,11 +235,9 @@ fn map_debridlink(store: &str, status: u16, body: &str) -> AppError {
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
         429 => {
             if lower.contains("download") || lower.contains("limit") {
-                AppError::store_limit_exceeded(format!("{store}: {body}"))
-                    .with_store(store)
+                AppError::store_limit_exceeded(format!("{store}: {body}")).with_store(store)
             } else {
-                AppError::too_many_requests(format!("{store}: rate limited"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: rate limited")).with_store(store)
             }
         }
         _ => map_by_status(store, status, body),
@@ -271,10 +260,7 @@ fn map_offcloud(store: &str, status: u16, body: &str) -> AppError {
             }
         }
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
-        429 => {
-            AppError::too_many_requests(format!("{store}: rate limited"))
-                .with_store(store)
-        }
+        429 => AppError::too_many_requests(format!("{store}: rate limited")).with_store(store),
         _ => map_by_status(store, status, body),
     }
 }
@@ -297,11 +283,9 @@ fn map_pikpak(store: &str, status: u16, body: &str) -> AppError {
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
         429 => {
             if lower.contains("quota") || lower.contains("limit") {
-                AppError::store_limit_exceeded(format!("{store}: {body}"))
-                    .with_store(store)
+                AppError::store_limit_exceeded(format!("{store}: {body}")).with_store(store)
             } else {
-                AppError::too_many_requests(format!("{store}: rate limited"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: rate limited")).with_store(store)
             }
         }
         _ => map_by_status(store, status, body),
@@ -324,10 +308,7 @@ fn map_debrider(store: &str, status: u16, body: &str) -> AppError {
             }
         }
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
-        429 => {
-            AppError::too_many_requests(format!("{store}: rate limited"))
-                .with_store(store)
-        }
+        429 => AppError::too_many_requests(format!("{store}: rate limited")).with_store(store),
         _ => map_by_status(store, status, body),
     }
 }
@@ -350,11 +331,9 @@ fn map_easydebrid(store: &str, status: u16, body: &str) -> AppError {
         404 => AppError::not_found(format!("{store}: not found")).with_store(store),
         429 => {
             if lower.contains("limit") || lower.contains("active") {
-                AppError::store_limit_exceeded(format!("{store}: {body}"))
-                    .with_store(store)
+                AppError::store_limit_exceeded(format!("{store}: {body}")).with_store(store)
             } else {
-                AppError::too_many_requests(format!("{store}: rate limited"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: rate limited")).with_store(store)
             }
         }
         _ => map_by_status(store, status, body),
@@ -375,22 +354,16 @@ fn map_by_status(store: &str, status: u16, body: &str) -> AppError {
 
     match status {
         401 => AppError::unauthorized_for(store, format!("{store}: {truncated}")),
-        402 => AppError::payment_required(format!("{store}: payment required"))
-            .with_store(store),
+        402 => AppError::payment_required(format!("{store}: payment required")).with_store(store),
         403 => {
             let lower = body.to_ascii_lowercase();
             if lower.contains("ip") {
-                AppError::ip_restricted_for(
-                    store,
-                    format!("{store}: IP not allowed"),
-                )
+                AppError::ip_restricted_for(store, format!("{store}: IP not allowed"))
             } else {
-                AppError::forbidden(format!("{store}: {truncated}"))
-                    .with_store(store)
+                AppError::forbidden(format!("{store}: {truncated}")).with_store(store)
             }
         }
-        404 => AppError::not_found(format!("{store}: {truncated}"))
-            .with_store(store),
+        404 => AppError::not_found(format!("{store}: {truncated}")).with_store(store),
         429 => {
             let lower = body.to_ascii_lowercase();
             if lower.contains("limit")
@@ -402,17 +375,14 @@ fn map_by_status(store: &str, status: u16, body: &str) -> AppError {
                     .with_store(store)
                     .with_retry_after(Duration::from_secs(60))
             } else {
-                AppError::too_many_requests(format!("{store}: {truncated}"))
-                    .with_store(store)
+                AppError::too_many_requests(format!("{store}: {truncated}")).with_store(store)
             }
         }
-        451 => AppError::infringing_content(format!("{store}: {truncated}"))
-            .with_store(store),
+        451 => AppError::infringing_content(format!("{store}: {truncated}")).with_store(store),
         502 | 503 | 504 | 0 => {
             AppError::upstream_unavailable_for(store, format!("{store}: {truncated}"))
         }
-        _ => AppError::unknown(format!("{store}: HTTP {status} — {truncated}"))
-            .with_store(store),
+        _ => AppError::unknown(format!("{store}: HTTP {status} — {truncated}")).with_store(store),
     }
 }
 
@@ -445,17 +415,21 @@ fn extract_rd_error_code(body: &str) -> Option<u32> {
     let after_colon = after_key.trim_start().strip_prefix(':')?;
     let num_start = after_colon.trim_start();
     // Parse the leading digits.
-    let num_str: String = num_start.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let num_str: String = num_start
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     num_str.parse().ok()
 }
 
 /// Check if a RealDebrid error body hints at an IP restriction.
 fn body_contains_ip_hint(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
-    lower.contains("ip") && (lower.contains("not allowed")
-        || lower.contains("not_allowed")
-        || lower.contains("restricted")
-        || lower.contains("forbidden"))
+    lower.contains("ip")
+        && (lower.contains("not allowed")
+            || lower.contains("not_allowed")
+            || lower.contains("restricted")
+            || lower.contains("forbidden"))
 }
 
 /// Extract a string error `code` from an AllDebrid JSON response body.
@@ -502,12 +476,14 @@ mod tests {
 
     #[test]
     fn rd_ip_not_allowed_maps_to_forbidden_with_ip_restricted() {
-        let body =
-            r#"{"error":"ip_not_allowed","error_code":9}"#;
+        let body = r#"{"error":"ip_not_allowed","error_code":9}"#;
         let err = map_store_error(StoreName::RealDebrid, 403, body);
         assert_eq!(err.category, ErrorCategory::Forbidden);
         assert_eq!(err.store.as_deref(), Some("realdebrid"));
-        assert!(err.ip_restricted, "Req 16.13: IP restriction must be flagged");
+        assert!(
+            err.ip_restricted,
+            "Req 16.13: IP restriction must be flagged"
+        );
     }
 
     #[test]
@@ -566,7 +542,8 @@ mod tests {
 
     #[test]
     fn ad_auth_bad_apikey_maps_to_unauthorized() {
-        let body = r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"Invalid API key"}}"#;
+        let body =
+            r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"Invalid API key"}}"#;
         let err = map_store_error(StoreName::AllDebrid, 401, body);
         assert_eq!(err.category, ErrorCategory::Unauthorized);
         assert_eq!(err.store.as_deref(), Some("alldebrid"));
@@ -590,7 +567,8 @@ mod tests {
 
     #[test]
     fn ad_link_host_unavailable_maps_to_hoster_unavailable() {
-        let body = r#"{"status":"error","error":{"code":"LINK_HOST_UNAVAILABLE","message":"Host down"}}"#;
+        let body =
+            r#"{"status":"error","error":{"code":"LINK_HOST_UNAVAILABLE","message":"Host down"}}"#;
         let err = map_store_error(StoreName::AllDebrid, 502, body);
         assert_eq!(err.category, ErrorCategory::HosterUnavailable);
         assert_eq!(err.store.as_deref(), Some("alldebrid"));
@@ -689,11 +667,7 @@ mod tests {
 
     #[test]
     fn pm_403_with_fair_usage_maps_to_store_limit_exceeded() {
-        let err = map_store_error(
-            StoreName::Premiumize,
-            403,
-            "Fair usage limit exceeded",
-        );
+        let err = map_store_error(StoreName::Premiumize, 403, "Fair usage limit exceeded");
         assert_eq!(err.category, ErrorCategory::StoreLimitExceeded);
         assert_eq!(err.store.as_deref(), Some("premiumize"));
     }
@@ -719,11 +693,7 @@ mod tests {
 
     #[test]
     fn dl_429_with_download_limit_maps_to_store_limit_exceeded() {
-        let err = map_store_error(
-            StoreName::DebridLink,
-            429,
-            "Download limit reached",
-        );
+        let err = map_store_error(StoreName::DebridLink, 429, "Download limit reached");
         assert_eq!(err.category, ErrorCategory::StoreLimitExceeded);
         assert_eq!(err.store.as_deref(), Some("debridlink"));
     }
@@ -795,11 +765,7 @@ mod tests {
 
     #[test]
     fn ed_429_with_active_limit_maps_to_store_limit_exceeded() {
-        let err = map_store_error(
-            StoreName::EasyDebrid,
-            429,
-            "Too many active downloads",
-        );
+        let err = map_store_error(StoreName::EasyDebrid, 429, "Too many active downloads");
         assert_eq!(err.category, ErrorCategory::StoreLimitExceeded);
         assert_eq!(err.store.as_deref(), Some("easydebrid"));
     }
@@ -871,7 +837,11 @@ mod tests {
         let err = map_store_error(StoreName::RealDebrid, 503, "down");
         assert_eq!(err.upstream_status, Some(503));
 
-        let err2 = map_store_error(StoreName::AllDebrid, 401, r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"x"}}"#);
+        let err2 = map_store_error(
+            StoreName::AllDebrid,
+            401,
+            r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"x"}}"#,
+        );
         assert_eq!(err2.upstream_status, Some(401));
     }
 
@@ -883,7 +853,10 @@ mod tests {
         // padding with ASCII then a run of 3-byte characters, and exercise
         // every store + a status that flows through `map_by_status`.
         let body = format!("{}{}", "x".repeat(199), "€".repeat(50)); // '€' is 3 bytes
-        assert!(!body.is_char_boundary(200), "test fixture must straddle byte 200");
+        assert!(
+            !body.is_char_boundary(200),
+            "test fixture must straddle byte 200"
+        );
         for store in StoreName::ALL {
             for status in [401u16, 403, 404, 500, 599] {
                 let err = map_store_error(store, status, &body);

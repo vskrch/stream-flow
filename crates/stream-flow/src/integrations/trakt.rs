@@ -155,29 +155,34 @@ impl TraktAdapter {
 
     pub async fn fetch_watchlist(&self, media_type: &str) -> Result<IntegrationList, AppError> {
         let cache_key = format!("trakt:watchlist:{}:{}", self.username, media_type);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let client_id = self.client_id.clone();
-                let access_token = self.access_token.clone();
-                let username = self.username.clone();
-                let media_type = media_type.to_string();
-                async move {
-                    fetch_trakt_watchlist(&client, &client_id, access_token.as_deref(), &username, &media_type).await
-                }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let client_id = self.client_id.clone();
+            let access_token = self.access_token.clone();
+            let username = self.username.clone();
+            let media_type = media_type.to_string();
+            async move {
+                fetch_trakt_watchlist(
+                    &client,
+                    &client_id,
+                    access_token.as_deref(),
+                    &username,
+                    &media_type,
+                )
+                .await
+            }
+        })
         .await?;
         serde_json::from_slice(&data).map_err(|e| {
             AppError::upstream_unavailable(format!("Trakt: failed to parse cached list: {e}"))
         })
     }
 
-    pub async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<TraktTokenResponse, AppError> {
+    pub async fn exchange_code(
+        &self,
+        code: &str,
+        redirect_uri: &str,
+    ) -> Result<TraktTokenResponse, AppError> {
         let url = Url::parse(&format!("{TRAKT_API_BASE}/oauth/token"))
             .map_err(|e| AppError::upstream_unavailable(format!("Trakt: invalid URL: {e}")))?;
         let body = serde_json::json!({
@@ -185,13 +190,20 @@ impl TraktAdapter {
             "client_secret": self.client_secret, "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         });
-        let resp = self.client.upstream(Method::POST, &url)?
+        let resp = self
+            .client
+            .upstream(Method::POST, &url)?
             .header("Content-Type", "application/json")
             .header("trakt-api-version", TRAKT_API_VERSION)
             .header("trakt-api-key", &self.client_id)
-            .json(&body).send().await.map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
         let status = resp.status();
-        if !status.is_success() { return Err(map_http_error(INTEGRATION_TRAKT, status)); }
+        if !status.is_success() {
+            return Err(map_http_error(INTEGRATION_TRAKT, status));
+        }
         resp.json::<TraktTokenResponse>().await.map_err(|e| {
             AppError::upstream_unavailable(format!("Trakt: failed to parse token response: {e}"))
         })
@@ -201,35 +213,51 @@ impl TraktAdapter {
         let url = Url::parse(&format!("{TRAKT_API_BASE}/oauth/device/code"))
             .map_err(|e| AppError::upstream_unavailable(format!("Trakt: invalid URL: {e}")))?;
         let body = serde_json::json!({ "client_id": self.client_id });
-        let resp = self.client.upstream(Method::POST, &url)?
+        let resp = self
+            .client
+            .upstream(Method::POST, &url)?
             .header("Content-Type", "application/json")
-            .json(&body).send().await.map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
             return Err(AppError::upstream_unavailable(format!(
                 "trakt device/code returned {status}: {text}"
-            )).with_upstream_status(status.as_u16()));
+            ))
+            .with_upstream_status(status.as_u16()));
         }
-        resp.json::<DeviceCodeResponse>().await.map_err(|e| {
-            AppError::upstream_unavailable(format!("trakt device/code parse: {e}"))
-        })
+        resp.json::<DeviceCodeResponse>()
+            .await
+            .map_err(|e| AppError::upstream_unavailable(format!("trakt device/code parse: {e}")))
     }
 
-    pub async fn poll_for_token(&self, device: &DeviceCodeResponse) -> Result<TraktToken, PollError> {
+    pub async fn poll_for_token(
+        &self,
+        device: &DeviceCodeResponse,
+    ) -> Result<TraktToken, PollError> {
         let url = Url::parse(&format!("{TRAKT_API_BASE}/oauth/device/token"))
             .map_err(|e| PollError::Upstream(format!("Trakt: invalid URL: {e}")))?;
         let body = serde_json::json!({
             "code": device.device_code, "client_id": self.client_id,
             "client_secret": self.client_secret,
         });
-        let resp = self.client.upstream(Method::POST, &url)
+        let resp = self
+            .client
+            .upstream(Method::POST, &url)
             .map_err(|e| PollError::Upstream(e.to_string()))?
             .header("Content-Type", "application/json")
-            .json(&body).send().await.map_err(|e| PollError::Upstream(format!("trakt device/token: {e}")))?;
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| PollError::Upstream(format!("trakt device/token: {e}")))?;
         match resp.status().as_u16() {
             200 => {
-                let tr: TokenResponse = resp.json().await
+                let tr: TokenResponse = resp
+                    .json()
+                    .await
                     .map_err(|e| PollError::Upstream(format!("trakt device/token parse: {e}")))?;
                 Ok(tr.into_trakt_token())
             }
@@ -238,7 +266,9 @@ impl TraktAdapter {
             418 => Err(PollError::Denied),
             other => {
                 let text = resp.text().await.unwrap_or_default();
-                Err(PollError::Upstream(format!("trakt device/token returned {other}: {text}")))
+                Err(PollError::Upstream(format!(
+                    "trakt device/token returned {other}: {text}"
+                )))
             }
         }
     }
@@ -250,43 +280,72 @@ impl TraktAdapter {
             "refresh_token": refresh_token, "client_id": self.client_id,
             "client_secret": self.client_secret, "grant_type": "refresh_token",
         });
-        let resp = self.client.upstream(Method::POST, &url)?
+        let resp = self
+            .client
+            .upstream(Method::POST, &url)?
             .header("Content-Type", "application/json")
-            .json(&body).send().await.map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
         let status = resp.status();
-        if !status.is_success() { return Err(map_http_error(INTEGRATION_TRAKT, status)); }
+        if !status.is_success() {
+            return Err(map_http_error(INTEGRATION_TRAKT, status));
+        }
         let tr: TokenResponse = resp.json().await.map_err(|e| {
             AppError::upstream_unavailable(format!("trakt token refresh parse: {e}"))
         })?;
         Ok(tr.into_trakt_token())
     }
 
-    pub async fn get_valid_token(&self, username: &str, repos: &Repos, vault: &Vault) -> Result<Option<String>, AppError> {
+    pub async fn get_valid_token(
+        &self,
+        username: &str,
+        repos: &Repos,
+        vault: &Vault,
+    ) -> Result<Option<String>, AppError> {
         let row = repos.get_trakt_token(username).await?;
-        let row = match row { None => return Ok(None), Some(r) => r };
+        let row = match row {
+            None => return Ok(None),
+            Some(r) => r,
+        };
         let now = OffsetDateTime::now_utc();
         let needs_refresh = row.expires_at <= now + Duration::from_secs(REFRESH_AHEAD_SECS);
         if needs_refresh {
             let refresh_bytes = vault.decrypt(&row.refresh_enc)?;
             let refresh_str = String::from_utf8(refresh_bytes).map_err(|e| {
-                AppError::unknown(format!("trakt: stored refresh token is not valid UTF-8: {e}"))
+                AppError::unknown(format!(
+                    "trakt: stored refresh token is not valid UTF-8: {e}"
+                ))
             })?;
             let new_token = self.refresh_token(&refresh_str).await?;
-            self.persist_token(username, &new_token, repos, vault).await?;
+            self.persist_token(username, &new_token, repos, vault)
+                .await?;
             return Ok(Some(new_token.access_token));
         }
         let access_bytes = vault.decrypt(&row.access_enc)?;
         let access_str = String::from_utf8(access_bytes).map_err(|e| {
-            AppError::unknown(format!("trakt: stored access token is not valid UTF-8: {e}"))
+            AppError::unknown(format!(
+                "trakt: stored access token is not valid UTF-8: {e}"
+            ))
         })?;
         Ok(Some(access_str))
     }
 
-    pub async fn persist_token(&self, username: &str, token: &TraktToken, repos: &Repos, vault: &Vault) -> Result<(), AppError> {
+    pub async fn persist_token(
+        &self,
+        username: &str,
+        token: &TraktToken,
+        repos: &Repos,
+        vault: &Vault,
+    ) -> Result<(), AppError> {
         let access_enc = vault.encrypt(token.access_token.as_bytes())?;
         let refresh_enc = vault.encrypt(token.refresh_token.as_bytes())?;
         let row = TraktTokenRow {
-            username: username.to_string(), access_enc, refresh_enc, expires_at: token.expires_at,
+            username: username.to_string(),
+            access_enc,
+            refresh_enc,
+            expires_at: token.expires_at,
         };
         repos.upsert_trakt_token(&row).await
     }
@@ -297,51 +356,97 @@ impl TraktAdapter {
 // ---------------------------------------------------------------------------
 
 async fn fetch_trakt_watchlist(
-    client: &OutboundClient, client_id: &str, access_token: Option<&str>,
-    username: &str, media_type: &str,
+    client: &OutboundClient,
+    client_id: &str,
+    access_token: Option<&str>,
+    username: &str,
+    media_type: &str,
 ) -> Result<Bytes, AppError> {
     let url_str = format!("{TRAKT_API_BASE}/users/{username}/watchlist/{media_type}");
     let url = Url::parse(&url_str)
         .map_err(|e| AppError::upstream_unavailable(format!("Trakt: invalid URL: {e}")))?;
-    let mut builder = client.upstream(Method::GET, &url)?
+    let mut builder = client
+        .upstream(Method::GET, &url)?
         .header("Content-Type", "application/json")
         .header("trakt-api-version", TRAKT_API_VERSION)
         .header("trakt-api-key", client_id);
     if let Some(token) = access_token {
         builder = builder.header("Authorization", format!("Bearer {token}"));
     }
-    let resp = builder.send().await.map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
+    let resp = builder
+        .send()
+        .await
+        .map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
     let status = resp.status();
-    if !status.is_success() { return Err(map_http_error(INTEGRATION_TRAKT, status)); }
-    let body = resp.bytes().await.map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
+    if !status.is_success() {
+        return Err(map_http_error(INTEGRATION_TRAKT, status));
+    }
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|e| map_reqwest_error(INTEGRATION_TRAKT, e))?;
     let list = parse_trakt_watchlist_response(&body, media_type)?;
-    serde_json::to_vec(&list).map(Bytes::from)
+    serde_json::to_vec(&list)
+        .map(Bytes::from)
         .map_err(|e| AppError::upstream_unavailable(format!("Trakt: serialization failed: {e}")))
 }
 
-pub fn parse_trakt_watchlist_response(data: &[u8], _media_type: &str) -> Result<IntegrationList, AppError> {
+pub fn parse_trakt_watchlist_response(
+    data: &[u8],
+    _media_type: &str,
+) -> Result<IntegrationList, AppError> {
     #[derive(Deserialize)]
-    struct WatchlistEntry { movie: Option<TraktMovie>, show: Option<TraktShow> }
+    struct WatchlistEntry {
+        movie: Option<TraktMovie>,
+        show: Option<TraktShow>,
+    }
     #[derive(Deserialize)]
-    struct TraktMovie { title: String, year: Option<u32>, ids: TraktIds }
+    struct TraktMovie {
+        title: String,
+        year: Option<u32>,
+        ids: TraktIds,
+    }
     #[derive(Deserialize)]
-    struct TraktShow { title: String, year: Option<u32>, ids: TraktIds }
+    struct TraktShow {
+        title: String,
+        year: Option<u32>,
+        ids: TraktIds,
+    }
     #[derive(Deserialize)]
-    struct TraktIds { imdb: Option<String>, tmdb: Option<u64> }
+    struct TraktIds {
+        imdb: Option<String>,
+        tmdb: Option<u64>,
+    }
 
     let entries: Vec<WatchlistEntry> = serde_json::from_slice(data).map_err(|e| {
         AppError::upstream_unavailable(format!("Trakt: failed to parse watchlist: {e}"))
     })?;
-    let items = entries.into_iter().filter_map(|entry| {
-        if let Some(movie) = entry.movie {
-            Some(ListItem { title: movie.title, imdb_id: movie.ids.imdb, tmdb_id: movie.ids.tmdb,
-                content_type: "movie".to_string(), year: movie.year })
-        } else {
-            entry.show.map(|show| ListItem { title: show.title, imdb_id: show.ids.imdb,
-                tmdb_id: show.ids.tmdb, content_type: "series".to_string(), year: show.year })
-        }
-    }).collect();
-    Ok(IntegrationList { source: INTEGRATION_TRAKT.to_string(), items })
+    let items = entries
+        .into_iter()
+        .filter_map(|entry| {
+            if let Some(movie) = entry.movie {
+                Some(ListItem {
+                    title: movie.title,
+                    imdb_id: movie.ids.imdb,
+                    tmdb_id: movie.ids.tmdb,
+                    content_type: "movie".to_string(),
+                    year: movie.year,
+                })
+            } else {
+                entry.show.map(|show| ListItem {
+                    title: show.title,
+                    imdb_id: show.ids.imdb,
+                    tmdb_id: show.ids.tmdb,
+                    content_type: "series".to_string(),
+                    year: show.year,
+                })
+            }
+        })
+        .collect();
+    Ok(IntegrationList {
+        source: INTEGRATION_TRAKT.to_string(),
+        items,
+    })
 }
 
 #[cfg(test)]
@@ -357,23 +462,35 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn outbound(policy: EgressPolicy) -> Arc<OutboundClient> {
-        let cfg = EgressConfig { tunnel_mode: EgressTunnelMode::Disabled, policy, ..EgressConfig::default() };
+        let cfg = EgressConfig {
+            tunnel_mode: EgressTunnelMode::Disabled,
+            policy,
+            ..EgressConfig::default()
+        };
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
         Arc::new(OutboundClient::from_config(&cfg, reflector).expect("builds"))
     }
 
-    fn test_cache() -> Arc<dyn CacheBackend> { Arc::new(LocalCache::new("trakt-test")) }
+    fn test_cache() -> Arc<dyn CacheBackend> {
+        Arc::new(LocalCache::new("trakt-test"))
+    }
 
     async fn test_repos() -> (TempDir, Repos) {
         let dir = tempfile::tempdir().expect("temp dir");
         let db_path = dir.path().join("trakt-test.db");
-        let cfg = DbConfig { path: db_path.to_string_lossy().into_owned(), busy_timeout_secs: 5, max_connections: 5 };
+        let cfg = DbConfig {
+            path: db_path.to_string_lossy().into_owned(),
+            busy_timeout_secs: 5,
+            max_connections: 5,
+        };
         let pool = build_pool(&cfg).await.expect("pool");
         run_migrations(&pool).await.expect("migrate");
         (dir, Repos::new(pool, 5))
     }
 
-    fn test_vault() -> Vault { Vault::enabled_from_bytes(b"trakt-test-vault-secret") }
+    fn test_vault() -> Vault {
+        Vault::enabled_from_bytes(b"trakt-test-vault-secret")
+    }
 
     fn sample_watchlist() -> serde_json::Value {
         serde_json::json!([
@@ -384,10 +501,14 @@ mod tests {
 
     fn make_adapter(policy: EgressPolicy) -> TraktAdapter {
         TraktAdapter {
-            client: outbound(policy), cache: test_cache(), ttl: Duration::from_secs(3600),
+            client: outbound(policy),
+            cache: test_cache(),
+            ttl: Duration::from_secs(3600),
             breaker: Arc::new(integration_breaker(INTEGRATION_TRAKT)),
-            client_id: "test-client-id".to_string(), client_secret: "test-client-secret".to_string(),
-            access_token: None, username: "testuser".to_string(),
+            client_id: "test-client-id".to_string(),
+            client_secret: "test-client-secret".to_string(),
+            access_token: None,
+            username: "testuser".to_string(),
         }
     }
 
@@ -417,16 +538,32 @@ mod tests {
         let cache = test_cache();
         let list = IntegrationList {
             source: INTEGRATION_TRAKT.to_string(),
-            items: vec![ListItem { title: "Cached Movie".to_string(), imdb_id: Some("tt1234567".to_string()),
-                tmdb_id: None, content_type: "movie".to_string(), year: Some(2020) }],
+            items: vec![ListItem {
+                title: "Cached Movie".to_string(),
+                imdb_id: Some("tt1234567".to_string()),
+                tmdb_id: None,
+                content_type: "movie".to_string(),
+                year: Some(2020),
+            }],
         };
         let data = Bytes::from(serde_json::to_vec(&list).unwrap());
-        cache.set("trakt:watchlist:testuser:movies", data, Duration::from_secs(3600)).await.unwrap();
+        cache
+            .set(
+                "trakt:watchlist:testuser:movies",
+                data,
+                Duration::from_secs(3600),
+            )
+            .await
+            .unwrap();
         let adapter = TraktAdapter {
-            client: outbound(EgressPolicy::FailClosed), cache, ttl: Duration::from_secs(3600),
+            client: outbound(EgressPolicy::FailClosed),
+            cache,
+            ttl: Duration::from_secs(3600),
             breaker: Arc::new(integration_breaker(INTEGRATION_TRAKT)),
-            client_id: "testclient".to_string(), client_secret: "testsecret".to_string(),
-            access_token: None, username: "testuser".to_string(),
+            client_id: "testclient".to_string(),
+            client_secret: "testsecret".to_string(),
+            access_token: None,
+            username: "testuser".to_string(),
         };
         let result = adapter.fetch_watchlist("movies").await.unwrap();
         assert_eq!(result.items[0].title, "Cached Movie");
@@ -511,8 +648,10 @@ mod tests {
     #[test]
     fn initiate_device_code_upstream_error_maps_correctly() {
         let status = reqwest::StatusCode::INTERNAL_SERVER_ERROR;
-        let err = AppError::upstream_unavailable(format!("trakt device/code returned {status}: internal error"))
-            .with_upstream_status(status.as_u16());
+        let err = AppError::upstream_unavailable(format!(
+            "trakt device/code returned {status}: internal error"
+        ))
+        .with_upstream_status(status.as_u16());
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         assert_eq!(err.upstream_status, Some(500));
     }
@@ -525,15 +664,26 @@ mod tests {
         let vault = test_vault();
         let adapter = make_adapter(EgressPolicy::FailOpen);
         let token = TraktToken {
-            access_token: "access-tok".into(), refresh_token: "refresh-tok".into(),
+            access_token: "access-tok".into(),
+            refresh_token: "refresh-tok".into(),
             expires_at: OffsetDateTime::now_utc() + Duration::from_secs(3600),
         };
-        adapter.persist_token("alice", &token, &repos, &vault).await.expect("persist");
-        let row = repos.get_trakt_token("alice").await.expect("get").expect("row present");
+        adapter
+            .persist_token("alice", &token, &repos, &vault)
+            .await
+            .expect("persist");
+        let row = repos
+            .get_trakt_token("alice")
+            .await
+            .expect("get")
+            .expect("row present");
         assert_ne!(row.access_enc, b"access-tok");
         assert_ne!(row.refresh_enc, b"refresh-tok");
         assert_eq!(vault.decrypt(&row.access_enc).expect("dec"), b"access-tok");
-        assert_eq!(vault.decrypt(&row.refresh_enc).expect("dec"), b"refresh-tok");
+        assert_eq!(
+            vault.decrypt(&row.refresh_enc).expect("dec"),
+            b"refresh-tok"
+        );
     }
 
     #[tokio::test]
@@ -541,7 +691,10 @@ mod tests {
         let (_dir, repos) = test_repos().await;
         let vault = test_vault();
         let adapter = make_adapter(EgressPolicy::FailOpen);
-        let result = adapter.get_valid_token("nobody", &repos, &vault).await.expect("no error");
+        let result = adapter
+            .get_valid_token("nobody", &repos, &vault)
+            .await
+            .expect("no error");
         assert!(result.is_none());
     }
 
@@ -551,11 +704,18 @@ mod tests {
         let vault = test_vault();
         let adapter = make_adapter(EgressPolicy::FailOpen);
         let token = TraktToken {
-            access_token: "fresh-access".into(), refresh_token: "fresh-refresh".into(),
+            access_token: "fresh-access".into(),
+            refresh_token: "fresh-refresh".into(),
             expires_at: OffsetDateTime::now_utc() + Duration::from_secs(7200),
         };
-        adapter.persist_token("bob", &token, &repos, &vault).await.expect("persist");
-        let result = adapter.get_valid_token("bob", &repos, &vault).await.expect("get");
+        adapter
+            .persist_token("bob", &token, &repos, &vault)
+            .await
+            .expect("persist");
+        let result = adapter
+            .get_valid_token("bob", &repos, &vault)
+            .await
+            .expect("get");
         assert_eq!(result, Some("fresh-access".to_string()));
     }
 
@@ -570,10 +730,16 @@ mod tests {
             expires_at: OffsetDateTime::now_utc() - Duration::from_secs(60),
         };
         repos.upsert_trakt_token(&row).await.expect("upsert");
-        let fetched = repos.get_trakt_token("carol").await.expect("get").expect("present");
+        let fetched = repos
+            .get_trakt_token("carol")
+            .await
+            .expect("get")
+            .expect("present");
         let now = OffsetDateTime::now_utc();
-        assert!(fetched.expires_at <= now + Duration::from_secs(REFRESH_AHEAD_SECS),
-            "expired token should be detected as needing refresh");
+        assert!(
+            fetched.expires_at <= now + Duration::from_secs(REFRESH_AHEAD_SECS),
+            "expired token should be detected as needing refresh"
+        );
     }
 
     #[tokio::test]
@@ -587,10 +753,16 @@ mod tests {
             expires_at: OffsetDateTime::now_utc() + Duration::from_secs(60),
         };
         repos.upsert_trakt_token(&row).await.expect("upsert");
-        let fetched = repos.get_trakt_token("dave").await.expect("get").expect("present");
+        let fetched = repos
+            .get_trakt_token("dave")
+            .await
+            .expect("get")
+            .expect("present");
         let now = OffsetDateTime::now_utc();
-        assert!(fetched.expires_at <= now + Duration::from_secs(REFRESH_AHEAD_SECS),
-            "token within refresh-ahead window should be detected as needing refresh");
+        assert!(
+            fetched.expires_at <= now + Duration::from_secs(REFRESH_AHEAD_SECS),
+            "token within refresh-ahead window should be detected as needing refresh"
+        );
     }
 
     // -- OAuth token response parsing (Req 27.2) -----------------------------
@@ -600,7 +772,8 @@ mod tests {
         let token_bytes = serde_json::to_vec(&serde_json::json!({
             "access_token": "test-access-token", "token_type": "Bearer",
             "expires_in": 7776000u64, "refresh_token": "test-refresh-token", "scope": "public"
-        })).unwrap();
+        }))
+        .unwrap();
         let token: TraktTokenResponse = serde_json::from_slice(&token_bytes).unwrap();
         assert_eq!(token.access_token, "test-access-token");
         assert_eq!(token.refresh_token, "test-refresh-token");

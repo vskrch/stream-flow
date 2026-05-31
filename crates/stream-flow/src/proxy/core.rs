@@ -156,8 +156,7 @@ pub fn build_response(
         return Err(map_upstream_status(body.status));
     }
 
-    let status = StatusCode::from_u16(body.status)
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let status = StatusCode::from_u16(body.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let mut builder = HttpResponse::build(status);
 
     // Preserve the upstream content type (Req 37.13, 1.5).
@@ -216,7 +215,9 @@ fn map_upstream_status(status: u16) -> AppError {
         s if (500..=599).contains(&s) => {
             AppError::upstream_unavailable(format!("upstream returned status {status}"))
         }
-        _ => AppError::upstream_unavailable(format!("upstream returned unexpected status {status}")),
+        _ => {
+            AppError::upstream_unavailable(format!("upstream returned unexpected status {status}"))
+        }
     };
     err.with_upstream_status(status)
 }
@@ -258,7 +259,8 @@ mod tests {
 
     use actix_web::body::to_bytes;
     use bytes::Bytes;
-    use futures::stream;    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use futures::stream;
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use url::Url;
@@ -335,7 +337,14 @@ mod tests {
             .chunks(37)
             .map(|c| Ok(Bytes::copy_from_slice(c)))
             .collect();
-        let body = body_from(200, Some(payload.len() as u64), None, Some("video/mp4"), true, chunks);
+        let body = body_from(
+            200,
+            Some(payload.len() as u64),
+            None,
+            Some("video/mp4"),
+            true,
+            chunks,
+        );
 
         let buffer = AdaptiveJitterBuffer::from_config(&prebuffer);
         let out = collect(relay_stream(body, buffer)).await.expect("relay ok");
@@ -408,7 +417,9 @@ mod tests {
         let chunks: Vec<Result<Bytes, AppError>> = vec![
             Ok(Bytes::from_static(b"first-")),
             Ok(Bytes::from_static(b"second-")),
-            Err(AppError::upstream_unavailable("connection reset mid-stream")),
+            Err(AppError::upstream_unavailable(
+                "connection reset mid-stream",
+            )),
             // Anything after the error must never be delivered.
             Ok(Bytes::from_static(b"NEVER")),
         ];
@@ -434,7 +445,10 @@ mod tests {
         assert_eq!(&delivered, b"first-second-");
         let err = terminating_err.expect("relay must terminate with the upstream error");
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
-        assert!(relay.next().await.is_none(), "no bytes after a mid-stream drop");
+        assert!(
+            relay.next().await.is_none(),
+            "no bytes after a mid-stream drop"
+        );
     }
 
     // -- Full body (no Range) → 200 + Content-Length (Req 5.1, 5.4) ---------
@@ -469,7 +483,9 @@ mod tests {
             payload.len().to_string().as_str(),
         );
         assert_eq!(
-            resp.headers().get(header::ACCEPT_RANGES).map(|v| v.to_str().unwrap()),
+            resp.headers()
+                .get(header::ACCEPT_RANGES)
+                .map(|v| v.to_str().unwrap()),
             Some("bytes"),
         );
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -505,7 +521,11 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::PARTIAL_CONTENT);
         assert_eq!(
-            resp.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_RANGE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes 100-199/1000",
         );
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -530,8 +550,11 @@ mod tests {
             HeaderValue::from_static("secret-token"),
         );
         let source: Arc<dyn UpstreamSource> = Arc::new(
-            DirectSource::new(outbound_fail_open(), url(&format!("{}/secured", server.uri())))
-                .with_headers(headers),
+            DirectSource::new(
+                outbound_fail_open(),
+                url(&format!("{}/secured", server.uri())),
+            )
+            .with_headers(headers),
         );
         let resp = serve(source, RangeSpec::Full, false, &PREBUFFER())
             .await
@@ -555,12 +578,11 @@ mod tests {
         );
         let resp = build_response(body, true, &PREBUFFER()).expect("head ok");
         assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers().get(header::CONTENT_LENGTH).unwrap(), "1000",);
         assert_eq!(
-            resp.headers().get(header::CONTENT_LENGTH).unwrap(),
-            "1000",
-        );
-        assert_eq!(
-            resp.headers().get(header::ACCEPT_RANGES).map(|v| v.to_str().unwrap()),
+            resp.headers()
+                .get(header::ACCEPT_RANGES)
+                .map(|v| v.to_str().unwrap()),
             Some("bytes"),
         );
     }
@@ -584,8 +606,14 @@ mod tests {
 
     /// An `OutboundClient` whose resolver has verified a leak-free Egress_IP.
     async fn outbound_with_verified_egress(egress: &str, host: &str) -> Arc<OutboundClient> {
-        let tunnel = Tunnel::proxy("http://proxy:8888", Arc::new(MockReflector::isolated(egress, host)));
-        let resolver = Arc::new(EgressResolver::new(Arc::new(tunnel), Duration::from_secs(3600)));
+        let tunnel = Tunnel::proxy(
+            "http://proxy:8888",
+            Arc::new(MockReflector::isolated(egress, host)),
+        );
+        let resolver = Arc::new(EgressResolver::new(
+            Arc::new(tunnel),
+            Duration::from_secs(3600),
+        ));
         resolver.refresh().await; // populate the leak-verified cache
         let (tunneled, impersonate) = (
             reqwest::Client::builder().no_proxy().build().unwrap(),

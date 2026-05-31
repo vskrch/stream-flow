@@ -274,7 +274,8 @@ impl AppError {
     /// `ResilientStream` state machine can recognise it and skip pointless
     /// link-renewal attempts rather than treating it as a transient failure.
     pub fn not_renewable() -> Self {
-        Self::upstream_unavailable("upstream source does not support link renewal").into_not_renewable()
+        Self::upstream_unavailable("upstream source does not support link renewal")
+            .into_not_renewable()
     }
 
     // -- Store-identifying constructors -------------------------------------
@@ -292,7 +293,9 @@ impl AppError {
     /// `403` identifying the store and flagging the IP-restriction cause
     /// (Req 16.13).
     pub fn ip_restricted_for(store: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::forbidden(message).with_store(store).with_ip_restricted()
+        Self::forbidden(message)
+            .with_store(store)
+            .with_ip_restricted()
     }
 
     // -- Chainable markers ---------------------------------------------------
@@ -531,14 +534,29 @@ mod tests {
         assert_eq!(ErrorCategory::Forbidden.code(), "forbidden");
         assert_eq!(ErrorCategory::PaymentRequired.code(), "payment-required");
         assert_eq!(ErrorCategory::NotFound.code(), "not-found");
-        assert_eq!(ErrorCategory::StoreLimitExceeded.code(), "store-limit-exceeded");
-        assert_eq!(ErrorCategory::InfringingContent.code(), "infringing-content");
-        assert_eq!(ErrorCategory::HosterUnavailable.code(), "hoster-unavailable");
+        assert_eq!(
+            ErrorCategory::StoreLimitExceeded.code(),
+            "store-limit-exceeded"
+        );
+        assert_eq!(
+            ErrorCategory::InfringingContent.code(),
+            "infringing-content"
+        );
+        assert_eq!(
+            ErrorCategory::HosterUnavailable.code(),
+            "hoster-unavailable"
+        );
         assert_eq!(ErrorCategory::TooManyRequests.code(), "too-many-requests");
-        assert_eq!(ErrorCategory::UpstreamUnavailable.code(), "upstream-unavailable");
+        assert_eq!(
+            ErrorCategory::UpstreamUnavailable.code(),
+            "upstream-unavailable"
+        );
         assert_eq!(ErrorCategory::BadRequest.code(), "bad-request");
         assert_eq!(ErrorCategory::PayloadTooLarge.code(), "payload-too-large");
-        assert_eq!(ErrorCategory::RangeNotSatisfiable.code(), "range-not-satisfiable");
+        assert_eq!(
+            ErrorCategory::RangeNotSatisfiable.code(),
+            "range-not-satisfiable"
+        );
         assert_eq!(ErrorCategory::Unknown.code(), "unknown");
     }
 
@@ -562,7 +580,10 @@ mod tests {
         assert_eq!(body["message"], "bad sid");
         // store + upstream_status omitted when absent (omitempty).
         let obj = body.as_object().unwrap();
-        assert!(!obj.contains_key("store"), "store must be omitted when None");
+        assert!(
+            !obj.contains_key("store"),
+            "store must be omitted when None"
+        );
         assert!(
             !obj.contains_key("upstream_status"),
             "upstream_status must be omitted when None",
@@ -620,7 +641,8 @@ mod tests {
 
     #[test]
     fn circuit_open_marker_is_set_without_changing_status() {
-        let err = AppError::upstream_unavailable_for("realdebrid", "breaker open").with_circuit_open();
+        let err =
+            AppError::upstream_unavailable_for("realdebrid", "breaker open").with_circuit_open();
         assert!(err.circuit_open);
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         // The marker is for metrics/logs only — status is unchanged (503).
@@ -638,7 +660,8 @@ mod tests {
 
     #[test]
     fn retry_after_marker_is_carried() {
-        let err = AppError::too_many_requests("rate limited").with_retry_after(Duration::from_secs(5));
+        let err =
+            AppError::too_many_requests("rate limited").with_retry_after(Duration::from_secs(5));
         assert_eq!(err.retry_after, Some(Duration::from_secs(5)));
         assert_eq!(err.http_status(), StatusCode::TOO_MANY_REQUESTS);
     }
@@ -785,7 +808,10 @@ mod response_error_tests {
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default();
-        assert!(ct.starts_with("application/json"), "got content-type {ct:?}");
+        assert!(
+            ct.starts_with("application/json"),
+            "got content-type {ct:?}"
+        );
     }
 
     #[test]

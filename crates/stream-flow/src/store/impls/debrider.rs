@@ -12,8 +12,8 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
-    RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store,
+    StoreName, SubscriptionStatus, User,
 };
 
 const BASE_URL: &str = "https://www.debrider.com/api";
@@ -91,9 +91,9 @@ impl DebriderStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("debrider")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("debrider"))
     }
 }
 
@@ -111,11 +111,22 @@ impl Store for DebriderStore {
 
     async fn get_user(&self, _p: &GetUserParams) -> Result<User, AppError> {
         let data = self.api_get("/user").await?;
-        let email = data.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let is_premium = data.get("premium").and_then(|v| v.as_bool()).unwrap_or(false);
+        let email = data
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let is_premium = data
+            .get("premium")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         Ok(User {
-            id: data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            id: data
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             email,
             subscription_status: if is_premium {
                 SubscriptionStatus::Premium
@@ -161,12 +172,23 @@ impl Store for DebriderStore {
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let data = self.api_get(&format!("/torrent/{}", p.id)).await?;
-        let native_status = data.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let native_status = data
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
 
         Ok(GetMagnetData {
             id: p.id.clone(),
-            name: data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            hash: data.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: data
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            hash: data
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             size: data.get("size").and_then(|v| v.as_i64()).unwrap_or(-1),
             status: MagnetStatus::from_native(native_status),
             files: vec![],
@@ -183,11 +205,26 @@ impl Store for DebriderStore {
             .map(|a| {
                 a.iter()
                     .map(|t| {
-                        let native_status = t.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let native_status = t
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
                         crate::store::ListMagnetItem {
-                            id: t.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            hash: t.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            id: t
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            name: t
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            hash: t
+                                .get("hash")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             size: t.get("size").and_then(|v| v.as_i64()).unwrap_or(-1),
                             status: MagnetStatus::from_native(native_status),
                         }
@@ -197,9 +234,16 @@ impl Store for DebriderStore {
             .unwrap_or_default();
 
         let total = all_items.len() as i64;
-        let items = all_items.into_iter().skip(p.offset as usize).take(p.limit as usize).collect();
+        let items = all_items
+            .into_iter()
+            .skip(p.offset as usize)
+            .take(p.limit as usize)
+            .collect();
 
-        Ok(ListMagnetsData { items, total_items: total })
+        Ok(ListMagnetsData {
+            items,
+            total_items: total,
+        })
     }
 
     async fn remove_magnet(&self, p: &RemoveMagnetParams) -> Result<RemoveMagnetData, AppError> {
@@ -221,8 +265,17 @@ impl Store for DebriderStore {
     }
 
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
-        let data = self.api_get(&format!("/unrestrict?link={}", urlencoding::encode(&p.link))).await?;
-        let link = data.get("download").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let data = self
+            .api_get(&format!(
+                "/unrestrict?link={}",
+                urlencoding::encode(&p.link)
+            ))
+            .await?;
+        let link = data
+            .get("download")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         Ok(GenerateLinkData { link })
     }
@@ -283,7 +336,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "t1".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.status, MagnetStatus::Failed);

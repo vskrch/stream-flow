@@ -208,9 +208,16 @@ mod tests {
     #[test]
     fn registers_all_twenty_four_supported_hosts() {
         let factory = factory();
-        assert_eq!(factory.len(), 24, "all 24 supported hosts must be registered");
+        assert_eq!(
+            factory.len(),
+            24,
+            "all 24 supported hosts must be registered"
+        );
         for host in SUPPORTED_HOSTS {
-            assert!(factory.is_supported(host), "host `{host}` must be registered");
+            assert!(
+                factory.is_supported(host),
+                "host `{host}` must be registered"
+            );
         }
     }
 
@@ -218,7 +225,10 @@ mod tests {
     fn supported_hosts_list_has_no_duplicates() {
         let mut seen = std::collections::HashSet::new();
         for host in SUPPORTED_HOSTS {
-            assert!(seen.insert(host), "duplicate host in SUPPORTED_HOSTS: {host}");
+            assert!(
+                seen.insert(host),
+                "duplicate host in SUPPORTED_HOSTS: {host}"
+            );
         }
     }
 
@@ -257,7 +267,10 @@ mod tests {
     #[test]
     fn concrete_extractors_declare_their_pools() {
         let factory = factory();
-        assert_eq!(factory.get("vidoza").unwrap().client_pool(), ClientPool::Default);
+        assert_eq!(
+            factory.get("vidoza").unwrap().client_pool(),
+            ClientPool::Default
+        );
         assert_eq!(
             factory.get("streamtape").unwrap().client_pool(),
             ClientPool::Impersonate
@@ -325,9 +338,10 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/watch"))
             .and(wiremock::matchers::header("x-token", "abc"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(
-                r#"<video><source src="https://cdn.example/v.mp4"></video>"#,
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"<video><source src="https://cdn.example/v.mp4"></video>"#),
+            )
             .mount(&server)
             .await;
 

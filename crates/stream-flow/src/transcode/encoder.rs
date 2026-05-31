@@ -197,7 +197,10 @@ Encoders:
         let found = parse_available_encoders(text);
         assert!(found.contains(&"h264_nvenc".to_string()));
         assert!(found.contains(&"h264_videotoolbox".to_string()));
-        assert!(!found.contains(&"libx264".to_string()), "sw encoder is not 'hardware'");
+        assert!(
+            !found.contains(&"libx264".to_string()),
+            "sw encoder is not 'hardware'"
+        );
     }
 
     #[test]
@@ -219,10 +222,13 @@ Encoders:
         assert_eq!(c.format_name(), "mp4");
         assert_eq!(c.content_type(), "video/mp4");
         let args = c.muxer_args();
-        assert_eq!(args, vec![
-            "-movflags".to_string(),
-            "+frag_keyframe+empty_moov+default_base_moof".to_string(),
-        ]);
+        assert_eq!(
+            args,
+            vec![
+                "-movflags".to_string(),
+                "+frag_keyframe+empty_moov+default_base_moof".to_string(),
+            ]
+        );
     }
 
     #[test]

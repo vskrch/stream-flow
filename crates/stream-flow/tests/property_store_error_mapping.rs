@@ -64,7 +64,9 @@ fn arb_body() -> impl Strategy<Value = String> {
         Just(r#"{"error":"something","error_code":999}"#.to_string()),
         Just(r#"{"error":"ip_not_allowed","error_code":9}"#.to_string()),
         // JSON-like bodies that exercise AllDebrid string code parsing
-        Just(r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"bad"}}"#.to_string()),
+        Just(
+            r#"{"status":"error","error":{"code":"AUTH_BAD_APIKEY","message":"bad"}}"#.to_string()
+        ),
         Just(r#"{"status":"error","error":{"code":"UNKNOWN_CODE","message":"?"}}"#.to_string()),
         // Bodies with keywords that trigger specific mappings
         Just("download limit reached".to_string()),

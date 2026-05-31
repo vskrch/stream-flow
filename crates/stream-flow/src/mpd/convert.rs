@@ -193,12 +193,8 @@ pub fn to_hls_media(segments: &[MediaSegment], opts: &HlsMediaOptions) -> String
 pub fn init_segment_ref(rep: &Representation) -> Option<String> {
     match &rep.segment_addressing {
         SegmentAddressing::Template(t) => t.initialization.clone(),
-        SegmentAddressing::List(l) => {
-            l.initialization.as_ref().and_then(|i| i.source_url.clone())
-        }
-        SegmentAddressing::Base(b) => {
-            b.initialization.as_ref().and_then(|i| i.source_url.clone())
-        }
+        SegmentAddressing::List(l) => l.initialization.as_ref().and_then(|i| i.source_url.clone()),
+        SegmentAddressing::Base(b) => b.initialization.as_ref().and_then(|i| i.source_url.clone()),
         SegmentAddressing::None => None,
     }
 }
@@ -369,7 +365,10 @@ mod tests {
             init_segment_url: Some("init.mp4".into()),
         };
         let playlist = to_hls_media(&segments, &opts);
-        assert!(!playlist.contains("#EXT-X-MAP"), "no init map for TS output");
+        assert!(
+            !playlist.contains("#EXT-X-MAP"),
+            "no init map for TS output"
+        );
         assert!(playlist.contains("seg-0.ts"));
         assert_eq!(playlist.matches("#EXTINF").count(), 2);
     }

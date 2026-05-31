@@ -88,7 +88,10 @@ impl TranscodeMode {
     /// when transcoding is disabled, so the transcode-only endpoint answers
     /// `404` for it (see [`requires_video_reencode`](Self::requires_video_reencode)).
     pub fn video_reencoded(self) -> bool {
-        matches!(self, TranscodeMode::TranscodeVideo { .. } | TranscodeMode::FullTranscode)
+        matches!(
+            self,
+            TranscodeMode::TranscodeVideo { .. } | TranscodeMode::FullTranscode
+        )
     }
 
     /// Alias of [`video_reencoded`](Self::video_reencoded) reading naturally at
@@ -167,7 +170,10 @@ mod tests {
             Some(AudioCodec::Other("ac3".into())),
         ));
         assert_eq!(mode, TranscodeMode::TranscodeAudio);
-        assert!(!mode.video_reencoded(), "video must still be copied (Req 6.2)");
+        assert!(
+            !mode.video_reencoded(),
+            "video must still be copied (Req 6.2)"
+        );
         assert_eq!(mode.audio_action(), AudioAction::Transcode);
     }
 
@@ -176,7 +182,12 @@ mod tests {
     #[test]
     fn hevc_aac_transcodes_video_copies_audio() {
         let mode = decide_mode(&info(Some(VideoCodec::Hevc), Some(AudioCodec::Aac)));
-        assert_eq!(mode, TranscodeMode::TranscodeVideo { audio: AudioAction::Copy });
+        assert_eq!(
+            mode,
+            TranscodeMode::TranscodeVideo {
+                audio: AudioAction::Copy
+            }
+        );
         assert!(mode.video_reencoded());
         assert_eq!(mode.audio_action(), AudioAction::Copy);
     }
@@ -189,7 +200,9 @@ mod tests {
         ));
         assert_eq!(
             mode,
-            TranscodeMode::TranscodeVideo { audio: AudioAction::Transcode }
+            TranscodeMode::TranscodeVideo {
+                audio: AudioAction::Transcode
+            }
         );
         assert!(mode.video_reencoded());
         assert_eq!(mode.audio_action(), AudioAction::Transcode);
@@ -229,7 +242,10 @@ mod tests {
     fn requires_video_reencode_matches_video_reencoded() {
         assert!(!TranscodeMode::Remux.requires_video_reencode());
         assert!(!TranscodeMode::TranscodeAudio.requires_video_reencode());
-        assert!(TranscodeMode::TranscodeVideo { audio: AudioAction::Copy }.requires_video_reencode());
+        assert!(TranscodeMode::TranscodeVideo {
+            audio: AudioAction::Copy
+        }
+        .requires_video_reencode());
         assert!(TranscodeMode::FullTranscode.requires_video_reencode());
     }
 }

@@ -196,7 +196,11 @@ fn oracle(xreal: &Source, xff: &Xff, peer: Option<IpAddr>) -> Option<IpAddr> {
     if let Source::Valid(ip, _) = xreal {
         return Some(*ip);
     }
-    if let Xff::Present { first: Entry::Valid(ip, _), .. } = xff {
+    if let Xff::Present {
+        first: Entry::Valid(ip, _),
+        ..
+    } = xff
+    {
         return Some(*ip);
     }
     peer

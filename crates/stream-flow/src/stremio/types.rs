@@ -502,10 +502,18 @@ pub struct Catalog {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub genres: Vec<String>,
     /// Legacy: supported extra names (`omitempty`).
-    #[serde(default, rename = "extraSupported", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "extraSupported",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub extra_supported: Vec<String>,
     /// Legacy: required extra names (`omitempty`).
-    #[serde(default, rename = "extraRequired", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "extraRequired",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub extra_required: Vec<String>,
 }
 
@@ -527,7 +535,11 @@ pub struct BehaviorHints {
     #[serde(default, skip_serializing_if = "is_false")]
     pub configurable: bool,
     /// Configuration is required before use (`omitempty`).
-    #[serde(default, rename = "configurationRequired", skip_serializing_if = "is_false")]
+    #[serde(
+        default,
+        rename = "configurationRequired",
+        skip_serializing_if = "is_false"
+    )]
     pub configuration_required: bool,
     /// Undocumented: new-episode notifications (`omitempty`).
     #[serde(
@@ -567,7 +579,11 @@ pub struct Manifest {
     pub id_prefixes: Vec<String>,
 
     /// Addon catalogs served as an `addon_catalog` resource (`omitempty`).
-    #[serde(default, rename = "addonCatalogs", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "addonCatalogs",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub addon_catalogs: Vec<Catalog>,
     /// Declared catalogs. Always present.
     #[serde(default, deserialize_with = "de_null_default")]
@@ -580,7 +596,11 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub logo: String,
     /// Contact email (`omitempty`).
-    #[serde(default, rename = "contactEmail", skip_serializing_if = "String::is_empty")]
+    #[serde(
+        default,
+        rename = "contactEmail",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub contact_email: String,
     /// Manifest-level behavior hints (`omitempty`).
     #[serde(
@@ -650,16 +670,28 @@ pub struct ProxyHeaders {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StreamBehaviorHints {
     /// Country allowlist for the stream (`omitempty`).
-    #[serde(default, rename = "countryWhitelist", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "countryWhitelist",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub country_whitelist: Vec<String>,
     /// Whether the stream is not directly web-playable (`omitempty`).
     #[serde(default, rename = "notWebReady", skip_serializing_if = "is_false")]
     pub not_web_ready: bool,
     /// Binge-group key for "play next" grouping (`omitempty`).
-    #[serde(default, rename = "bingeGroup", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "bingeGroup",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub binge_group: Option<String>,
     /// Proxy header overrides (`omitempty`).
-    #[serde(default, rename = "proxyHeaders", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "proxyHeaders",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub proxy_headers: Option<ProxyHeaders>,
     /// OpenSubtitles-style video hash (`omitempty`).
     #[serde(default, rename = "videoHash", skip_serializing_if = "Option::is_none")]
@@ -694,7 +726,11 @@ pub struct Stream {
     #[serde(default, rename = "fileIdx", skip_serializing_if = "Option::is_none")]
     pub file_index: Option<i32>,
     /// External URL (opened outside the player) (`omitempty`).
-    #[serde(default, rename = "externalUrl", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "externalUrl",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub external_url: Option<String>,
 
     /// Stream name (the addon/source label) (`omitempty`).
@@ -713,7 +749,11 @@ pub struct Stream {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<String>,
     /// Per-stream behavior hints (`omitempty`).
-    #[serde(default, rename = "behaviorHints", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "behaviorHints",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub behavior_hints: Option<StreamBehaviorHints>,
 }
 
@@ -733,7 +773,11 @@ pub struct Subtitle {
     pub lang: String,
 
     /// Undocumented: source character encoding (`omitempty`).
-    #[serde(default, rename = "SubEncoding", skip_serializing_if = "String::is_empty")]
+    #[serde(
+        default,
+        rename = "SubEncoding",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub sub_encoding: String,
     /// Undocumented `m` field (`omitempty`).
     #[serde(default, rename = "m", skip_serializing_if = "String::is_empty")]
@@ -772,10 +816,18 @@ pub struct MetaLink {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetaBehaviorHints {
     /// Default video id to play (`omitempty`).
-    #[serde(default, rename = "defaultVideoId", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "defaultVideoId",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub default_video_id: Option<String>,
     /// Undocumented: has scheduled videos (`omitempty`).
-    #[serde(default, rename = "hasScheduledVideos", skip_serializing_if = "is_false")]
+    #[serde(
+        default,
+        rename = "hasScheduledVideos",
+        skip_serializing_if = "is_false"
+    )]
     pub has_scheduled_videos: bool,
 }
 
@@ -851,7 +903,11 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poster: Option<String>,
     /// Poster shape (`square`/`poster`/`landscape`) (`omitempty`).
-    #[serde(default, rename = "posterShape", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "posterShape",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub poster_shape: Option<String>,
     /// Background image URL (`omitempty`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -863,10 +919,18 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Release info string (e.g. `1994` or `2008-2013`) (`omitempty`).
-    #[serde(default, rename = "releaseInfo", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "releaseInfo",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub release_info: Option<String>,
     /// IMDb rating string (`omitempty`).
-    #[serde(default, rename = "imdbRating", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "imdbRating",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub imdb_rating: Option<String>,
     /// Release timestamp (RFC 3339) (`omitempty`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -890,7 +954,11 @@ pub struct Meta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub website: Option<String>,
     /// Meta behavior hints (`omitempty`).
-    #[serde(default, rename = "behaviorHints", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "behaviorHints",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub behavior_hints: Option<MetaBehaviorHints>,
 }
 
@@ -909,16 +977,28 @@ pub struct MetaPreview {
     /// Poster image URL (always present, matching Go's non-`omitempty` tag).
     pub poster: String,
     /// Poster shape (`omitempty`).
-    #[serde(default, rename = "posterShape", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "posterShape",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub poster_shape: Option<String>,
     /// Genres (legacy) (`omitempty`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub genres: Vec<String>,
     /// IMDb rating (`omitempty`).
-    #[serde(default, rename = "imdbRating", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "imdbRating",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub imdb_rating: Option<String>,
     /// Release info (`omitempty`).
-    #[serde(default, rename = "releaseInfo", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "releaseInfo",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub release_info: Option<String>,
     /// Links (`omitempty`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1065,7 +1145,10 @@ mod tests {
         // `types` still serializes as `[]` in the object.
         let r = Resource::full(ResourceName::meta(), vec![], vec!["tt".into()]);
         let v = serde_json::to_value(&r).unwrap();
-        assert_eq!(v, json!({ "name": "meta", "types": [], "idPrefixes": ["tt"] }));
+        assert_eq!(
+            v,
+            json!({ "name": "meta", "types": [], "idPrefixes": ["tt"] })
+        );
     }
 
     #[test]
@@ -1209,7 +1292,10 @@ mod tests {
             ..Default::default()
         };
         let v = serde_json::to_value(&catalog).unwrap();
-        assert_eq!(v, json!({ "type": "movie", "id": "st-store", "name": "Store" }));
+        assert_eq!(
+            v,
+            json!({ "type": "movie", "id": "st-store", "name": "Store" })
+        );
         assert_round_trip(&catalog);
     }
 
@@ -1229,7 +1315,10 @@ mod tests {
             ..Default::default()
         };
         let v = serde_json::to_value(&bh).unwrap();
-        assert_eq!(v, json!({ "configurable": true, "configurationRequired": true }));
+        assert_eq!(
+            v,
+            json!({ "configurable": true, "configurationRequired": true })
+        );
         assert_round_trip(&bh);
     }
 
@@ -1255,7 +1344,10 @@ mod tests {
         assert_eq!(v["countryWhitelist"], json!(["US", "CA"]));
         assert_eq!(v["notWebReady"], json!(true));
         assert_eq!(v["bingeGroup"], json!("grp"));
-        assert_eq!(v["proxyHeaders"], json!({ "request": { "Authorization": "Bearer x" } }));
+        assert_eq!(
+            v["proxyHeaders"],
+            json!({ "request": { "Authorization": "Bearer x" } })
+        );
         assert_eq!(v["videoHash"], json!("abc"));
         assert_eq!(v["videoSize"], json!(123_456));
         assert_eq!(v["filename"], json!("movie.mkv"));
@@ -1319,7 +1411,10 @@ mod tests {
             ..Default::default()
         };
         let v = serde_json::to_value(&sub).unwrap();
-        assert_eq!(v, json!({ "id": "1", "url": "https://x/sub.srt", "lang": "eng" }));
+        assert_eq!(
+            v,
+            json!({ "id": "1", "url": "https://x/sub.srt", "lang": "eng" })
+        );
         assert_round_trip(&sub);
     }
 
@@ -1467,7 +1562,10 @@ mod tests {
         let m = sample_manifest();
         // All six canonical content types declared (Req 26.4).
         let types: Vec<&str> = m.types.iter().map(|t| t.as_str()).collect();
-        assert_eq!(types, vec!["anime", "movie", "series", "channel", "tv", "other"]);
+        assert_eq!(
+            types,
+            vec!["anime", "movie", "series", "channel", "tv", "other"]
+        );
         // Id prefixes declared (Req 26.4).
         assert_eq!(m.id_prefixes, vec!["tt".to_string(), "kitsu:".to_string()]);
     }
@@ -1579,7 +1677,10 @@ mod tests {
     #[test]
     fn streams_response_empty_list_is_valid() {
         let resp = StreamsResponse::default();
-        assert_eq!(serde_json::to_value(&resp).unwrap(), json!({ "streams": [] }));
+        assert_eq!(
+            serde_json::to_value(&resp).unwrap(),
+            json!({ "streams": [] })
+        );
         assert_round_trip(&resp);
     }
 
@@ -1616,14 +1717,20 @@ mod tests {
 
     #[test]
     fn content_type_serializes_as_bare_string() {
-        assert_eq!(serde_json::to_value(ContentType::movie()).unwrap(), json!("movie"));
+        assert_eq!(
+            serde_json::to_value(ContentType::movie()).unwrap(),
+            json!("movie")
+        );
         let ct: ContentType = serde_json::from_value(json!("anime")).unwrap();
         assert_eq!(ct, ContentType::anime());
     }
 
     #[test]
     fn resource_name_serializes_as_bare_string() {
-        assert_eq!(serde_json::to_value(ResourceName::stream()).unwrap(), json!("stream"));
+        assert_eq!(
+            serde_json::to_value(ResourceName::stream()).unwrap(),
+            json!("stream")
+        );
         let rn: ResourceName = serde_json::from_value(json!("addon_catalog")).unwrap();
         assert_eq!(rn.as_str(), ResourceName::ADDON_CATALOG);
     }

@@ -32,9 +32,9 @@
 pub mod endpoints;
 pub mod error;
 pub mod fallback;
+pub mod impls;
 pub mod link;
 pub mod types;
-pub mod impls;
 
 pub use error::map_store_error;
 pub use types::{

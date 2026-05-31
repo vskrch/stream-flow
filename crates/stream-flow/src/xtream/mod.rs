@@ -195,10 +195,9 @@ impl XtreamProxy {
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| AppError::upstream_unavailable(format!("failed reading Xtream upstream body: {e}")))?;
+        let bytes = resp.bytes().await.map_err(|e| {
+            AppError::upstream_unavailable(format!("failed reading Xtream upstream body: {e}"))
+        })?;
         let mut body = bytes.to_vec();
 
         // get.php enumerates stream URLs → rewrite them through the proxy
@@ -250,7 +249,8 @@ impl XtreamProxy {
 /// the upstream status when the error surfaced one.
 fn map_send_error(url: &Url, err: reqwest::Error) -> AppError {
     let host = url.host_str().unwrap_or("<unknown>");
-    let app = AppError::upstream_unavailable(format!("Xtream upstream request to {host} failed: {err}"));
+    let app =
+        AppError::upstream_unavailable(format!("Xtream upstream request to {host} failed: {err}"));
     match err.status() {
         Some(status) => app.with_upstream_status(status.as_u16()),
         None => app,
@@ -288,7 +288,9 @@ pub async fn player_api_endpoint(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let proxy = proxy_from_state(&state)?;
-    let resp = proxy.forward_api(ApiEndpoint::PlayerApi, req.query_string()).await?;
+    let resp = proxy
+        .forward_api(ApiEndpoint::PlayerApi, req.query_string())
+        .await?;
     Ok(resp.into_http_response())
 }
 
@@ -299,7 +301,9 @@ pub async fn xmltv_endpoint(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let proxy = proxy_from_state(&state)?;
-    let resp = proxy.forward_api(ApiEndpoint::Xmltv, req.query_string()).await?;
+    let resp = proxy
+        .forward_api(ApiEndpoint::Xmltv, req.query_string())
+        .await?;
     Ok(resp.into_http_response())
 }
 
@@ -310,7 +314,9 @@ pub async fn get_endpoint(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let proxy = proxy_from_state(&state)?;
-    let resp = proxy.forward_api(ApiEndpoint::Get, req.query_string()).await?;
+    let resp = proxy
+        .forward_api(ApiEndpoint::Get, req.query_string())
+        .await?;
     Ok(resp.into_http_response())
 }
 
@@ -328,12 +334,7 @@ pub async fn stream_endpoint(
     )?;
     let is_head = req.method() == actix_web::http::Method::HEAD;
     proxy
-        .serve_stream(
-            req.path(),
-            range,
-            is_head,
-            &state.config().prebuffer,
-        )
+        .serve_stream(req.path(), range, is_head, &state.config().prebuffer)
         .await
 }
 
@@ -374,10 +375,10 @@ mod tests {
             .and(path("/player_api.php"))
             .and(query_param("username", "u1"))
             .and(query_param("password", "p1"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(r#"{"user_info":{"auth":1}}"#.as_bytes().to_vec(), "application/json"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                r#"{"user_info":{"auth":1}}"#.as_bytes().to_vec(),
+                "application/json",
+            ))
             .mount(&server)
             .await;
 
@@ -401,8 +402,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/xmltv.php"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(xml.as_bytes().to_vec(), "application/xml"),
+                ResponseTemplate::new(200).set_body_raw(xml.as_bytes().to_vec(), "application/xml"),
             )
             .mount(&server)
             .await;
@@ -518,7 +518,11 @@ mod tests {
 
         assert_eq!(resp.status(), actix_web::http::StatusCode::PARTIAL_CONTENT);
         assert_eq!(
-            resp.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_RANGE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes 10-99/1000"
         );
     }
@@ -590,7 +594,10 @@ mod tests {
 
         // Status and body propagated verbatim (Req 9.7).
         assert_eq!(resp.status, 401);
-        assert_eq!(resp.body, br#"{"user_info":{"auth":0,"status":"Disabled"}}"#.to_vec());
+        assert_eq!(
+            resp.body,
+            br#"{"user_info":{"auth":0,"status":"Disabled"}}"#.to_vec()
+        );
 
         // And the rendered HttpResponse carries the upstream 401 + body.
         let http = resp.into_http_response();
@@ -644,7 +651,9 @@ mod tests {
     #[test]
     fn from_config_is_none_without_base_url() {
         let cfg = XtreamConfig::default();
-        assert!(XtreamProxy::from_config(&cfg, "https://proxy.example", outbound_fail_open()).is_none());
+        assert!(
+            XtreamProxy::from_config(&cfg, "https://proxy.example", outbound_fail_open()).is_none()
+        );
     }
 
     #[test]
@@ -653,6 +662,8 @@ mod tests {
             base_url: Some("http://origin:8080".into()),
             ..XtreamConfig::default()
         };
-        assert!(XtreamProxy::from_config(&cfg, "https://proxy.example", outbound_fail_open()).is_some());
+        assert!(
+            XtreamProxy::from_config(&cfg, "https://proxy.example", outbound_fail_open()).is_some()
+        );
     }
 }

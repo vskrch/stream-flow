@@ -69,7 +69,8 @@ impl TokenKey {
 
     /// HMAC-SHA256 of `msg` under this key, returning the 32-byte tag.
     fn tag(&self, msg: &[u8]) -> [u8; TAG_LEN] {
-        let mut mac = HmacSha256::new_from_slice(&self.0).expect("HMAC accepts a key of any length");
+        let mut mac =
+            HmacSha256::new_from_slice(&self.0).expect("HMAC accepts a key of any length");
         mac.update(msg);
         mac.finalize().into_bytes().into()
     }
@@ -114,12 +115,12 @@ impl TokenCodec {
             .rsplit_once(SEP)
             .ok_or_else(|| AppError::forbidden("malformed stremthru token: missing signature"))?;
 
-        let json = URL_SAFE_NO_PAD
-            .decode(body_b64)
-            .map_err(|e| AppError::forbidden(format!("invalid stremthru token body encoding: {e}")))?;
-        let presented_tag = URL_SAFE_NO_PAD
-            .decode(tag_b64)
-            .map_err(|e| AppError::forbidden(format!("invalid stremthru token signature encoding: {e}")))?;
+        let json = URL_SAFE_NO_PAD.decode(body_b64).map_err(|e| {
+            AppError::forbidden(format!("invalid stremthru token body encoding: {e}"))
+        })?;
+        let presented_tag = URL_SAFE_NO_PAD.decode(tag_b64).map_err(|e| {
+            AppError::forbidden(format!("invalid stremthru token signature encoding: {e}"))
+        })?;
 
         // Recompute the tag over the body JSON and compare in constant time.
         // A wrong-length presented tag can never match the fixed 32-byte tag.

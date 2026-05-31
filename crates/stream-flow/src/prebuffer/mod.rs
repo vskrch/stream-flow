@@ -217,8 +217,14 @@ mod tests {
         let cfg = PrebufferRuntimeConfig::from_hls(&hls, true, DEFAULT_BANDWIDTH_CEILING);
         assert_eq!(cfg.prebuffer_segments, hls.prebuffer_segments);
         assert_eq!(cfg.prebuffer_cache_size, hls.prebuffer_cache_size);
-        assert_eq!(cfg.segment_cache_ttl, Duration::from_secs(hls.segment_cache_ttl_secs));
-        assert_eq!(cfg.inactivity_timeout, Duration::from_secs(hls.inactivity_timeout_secs));
+        assert_eq!(
+            cfg.segment_cache_ttl,
+            Duration::from_secs(hls.segment_cache_ttl_secs)
+        );
+        assert_eq!(
+            cfg.inactivity_timeout,
+            Duration::from_secs(hls.inactivity_timeout_secs)
+        );
     }
 
     #[test]
@@ -239,7 +245,10 @@ mod tests {
         let base = Url::parse("https://cdn.example/v/media.m3u8").unwrap();
         let a = pb.prefetcher_for(&base, Default::default());
         let b = pb.prefetcher_for(&base, Default::default());
-        assert!(Arc::ptr_eq(&a, &b), "the same playlist reuses its prefetcher");
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "the same playlist reuses its prefetcher"
+        );
         assert_eq!(pb.manager().len(), 1);
     }
 
@@ -252,8 +261,14 @@ mod tests {
                 CachedSegment::new(bytes::Bytes::from_static(b"v"), None),
             )
             .await;
-        assert!(pb.serve_cached_segment("https://cdn.example/seg.ts").await.is_some());
-        assert!(pb.serve_cached_segment("https://cdn.example/missing.ts").await.is_none());
+        assert!(pb
+            .serve_cached_segment("https://cdn.example/seg.ts")
+            .await
+            .is_some());
+        assert!(pb
+            .serve_cached_segment("https://cdn.example/missing.ts")
+            .await
+            .is_none());
     }
 
     #[test]

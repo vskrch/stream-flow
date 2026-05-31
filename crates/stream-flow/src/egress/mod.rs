@@ -300,11 +300,7 @@ impl OutboundClient {
     /// JA3/JA4) request for a browser-TLS upstream (extractor hosts behind
     /// Cloudflare — Req 35.5), subject to the same fail-closed gate as
     /// [`upstream`](OutboundClient::upstream) (Req 51.8).
-    pub fn impersonate(
-        &self,
-        method: Method,
-        url: &Url,
-    ) -> Result<wreq::RequestBuilder, AppError> {
+    pub fn impersonate(&self, method: Method, url: &Url) -> Result<wreq::RequestBuilder, AppError> {
         self.authorize_dial(url)?;
         // `wreq`'s `IntoUri` is implemented for `&str`/`String`/`Uri` (not
         // `url::Url`), so hand it the already-validated URL's string form.
@@ -404,7 +400,9 @@ fn build_tunneled_reqwest(endpoint: Option<&str>) -> Result<reqwest::Client, App
 
     if let Some(proxy_url) = endpoint {
         let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| {
-            AppError::unknown(format!("invalid egress tunnel proxy URL `{proxy_url}`: {e}"))
+            AppError::unknown(format!(
+                "invalid egress tunnel proxy URL `{proxy_url}`: {e}"
+            ))
         })?;
         builder = builder.proxy(proxy);
     } else {
@@ -438,7 +436,9 @@ fn build_tunneled_impersonate(endpoint: Option<&str>) -> Result<wreq::Client, Ap
     }
 
     builder.build().map_err(|e| {
-        AppError::unknown(format!("failed to build tunneled impersonation client: {e}"))
+        AppError::unknown(format!(
+            "failed to build tunneled impersonation client: {e}"
+        ))
     })
 }
 
@@ -469,12 +469,16 @@ mod tests {
 
     /// An [`OutboundClient`] with the given policy and resolver state, no
     /// tunnel endpoint configured.
-    fn client_with(
-        policy: EgressPolicy,
-        resolver: Option<Arc<EgressResolver>>,
-    ) -> OutboundClient {
+    fn client_with(policy: EgressPolicy, resolver: Option<Arc<EgressResolver>>) -> OutboundClient {
         let (tunneled, impersonate) = test_clients();
-        OutboundClient::new(tunneled, impersonate, policy, resolver, None, HashMap::new())
+        OutboundClient::new(
+            tunneled,
+            impersonate,
+            policy,
+            resolver,
+            None,
+            HashMap::new(),
+        )
     }
 
     /// A resolver over a proxy tunnel with the given mock reflector and a long
@@ -708,7 +712,10 @@ mod tests {
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
         let client = OutboundClient::from_config(&cfg, reflector).expect("builds");
 
-        let resolver = client.resolver().expect("proxy mode yields a resolver").clone();
+        let resolver = client
+            .resolver()
+            .expect("proxy mode yields a resolver")
+            .clone();
         // Before the first probe: unverified -> fail-closed refuses.
         assert!(client
             .upstream(Method::GET, &url("https://api.real-debrid.com/"))

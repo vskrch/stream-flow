@@ -130,11 +130,7 @@ impl HlsRewriter {
 
     // -- Master playlist -----------------------------------------------------
 
-    fn rewrite_master(
-        &self,
-        mut pl: MasterPlaylist,
-        base: &Url,
-    ) -> Result<String, AppError> {
+    fn rewrite_master(&self, mut pl: MasterPlaylist, base: &Url) -> Result<String, AppError> {
         // Variant sub-playlists (#EXT-X-STREAM-INF / #EXT-X-I-FRAME-STREAM-INF).
         for variant in &mut pl.variants {
             variant.uri = self.proxy_uri(&variant.uri, base, Endpoint::Manifest)?;
@@ -366,7 +362,8 @@ mod tests {
         assert_eq!(err.category, crate::errors::ErrorCategory::BadRequest);
         // Descriptive: names the manifest URL.
         assert!(
-            err.message.contains("https://cdn.example.com/playlist.m3u8"),
+            err.message
+                .contains("https://cdn.example.com/playlist.m3u8"),
             "parse error must name the manifest URL, got: {}",
             err.message
         );
@@ -430,17 +427,32 @@ mod tests {
             .collect();
         assert_eq!(seg_lines.len(), 2);
         assert!(seg_lines[0].starts_with(&format!("{prefix}segment?d=")));
-        assert_eq!(token_url(seg_lines[0]), "https://cdn.example.com/v/seg001.ts");
+        assert_eq!(
+            token_url(seg_lines[0]),
+            "https://cdn.example.com/v/seg001.ts"
+        );
 
         // #EXT-X-MAP URI → segment proxy URL (resolved).
         let map_line = out.lines().find(|l| l.starts_with("#EXT-X-MAP")).unwrap();
-        let map_uri = map_line.split_once("URI=\"").unwrap().1.split('"').next().unwrap();
+        let map_uri = map_line
+            .split_once("URI=\"")
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap();
         assert!(map_uri.starts_with(&format!("{prefix}segment?d=")));
         assert_eq!(token_url(map_uri), "https://cdn.example.com/v/init.mp4");
 
         // #EXT-X-KEY URI → key proxy URL (already absolute, preserved).
         let key_line = out.lines().find(|l| l.starts_with("#EXT-X-KEY")).unwrap();
-        let key_uri = key_line.split_once("URI=\"").unwrap().1.split('"').next().unwrap();
+        let key_uri = key_line
+            .split_once("URI=\"")
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap();
         assert!(key_uri.starts_with(&format!("{prefix}key?d=")));
         assert_eq!(token_url(key_uri), "https://keys.example.com/k1.bin");
     }
@@ -495,7 +507,10 @@ mod tests {
     #[test]
     fn custom_headers_embedded_in_derived_proxy_urls() {
         let mut headers = BTreeMap::new();
-        headers.insert("Referer".to_string(), "https://referer.example/".to_string());
+        headers.insert(
+            "Referer".to_string(),
+            "https://referer.example/".to_string(),
+        );
         headers.insert("User-Agent".to_string(), "stream-flow/test".to_string());
         let r = rewriter().with_headers(headers.clone());
 
@@ -511,7 +526,10 @@ mod tests {
 
         let payload = token_payload(seg);
         assert_eq!(payload.url, "https://cdn.example.com/seg001.ts");
-        assert_eq!(payload.headers, headers, "headers must be forwarded to derived requests");
+        assert_eq!(
+            payload.headers, headers,
+            "headers must be forwarded to derived requests"
+        );
     }
 
     // -- EXT-X-MEDIA renditions (alternatives) rewritten to manifest URLs ----
@@ -528,7 +546,13 @@ mod tests {
         let prefix = r.proxy_prefix();
 
         let media_line = out.lines().find(|l| l.starts_with("#EXT-X-MEDIA")).unwrap();
-        let uri = media_line.split_once("URI=\"").unwrap().1.split('"').next().unwrap();
+        let uri = media_line
+            .split_once("URI=\"")
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap();
         assert!(uri.starts_with(&format!("{prefix}manifest?d=")));
         assert_eq!(token_url(uri), "https://cdn.example.com/audio/eng.m3u8");
     }
@@ -543,7 +567,10 @@ mod tests {
         let parsed = m3u8_rs::parse_playlist_res(m3u8).expect("parses");
         let serialized = serialize(&parsed).expect("serializes");
         let reparsed = m3u8_rs::parse_playlist_res(serialized.as_bytes()).expect("re-parses");
-        assert_eq!(parsed, reparsed, "parse→serialize→parse must be a fixed point");
+        assert_eq!(
+            parsed, reparsed,
+            "parse→serialize→parse must be a fixed point"
+        );
     }
 
     // -- proxy_base trailing slash is normalized -----------------------------

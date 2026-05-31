@@ -249,12 +249,18 @@ fn breaker_in_state(name: String, state: BreakerState) -> CircuitBreaker {
             let permit = breaker.acquire().expect("closed breaker admits");
             breaker.on_failure(permit, &AppError::upstream_unavailable("trip"));
             clock.advance(Duration::from_secs(10)); // elapse cooldown
-            // Admitting (then dropping) a probe transitions Open → HalfOpen and
-            // releases the slot; the observed state stays HalfOpen.
-            let _probe = breaker.acquire().expect("cooldown elapsed → probe admitted");
+                                                    // Admitting (then dropping) a probe transitions Open → HalfOpen and
+                                                    // releases the slot; the observed state stays HalfOpen.
+            let _probe = breaker
+                .acquire()
+                .expect("cooldown elapsed → probe admitted");
         }
     }
-    assert_eq!(breaker.state(), state, "breaker must be in the requested state");
+    assert_eq!(
+        breaker.state(),
+        state,
+        "breaker must be in the requested state"
+    );
     breaker
 }
 

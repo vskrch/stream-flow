@@ -12,8 +12,8 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
-    RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store,
+    StoreName, SubscriptionStatus, User,
 };
 
 const BASE_URL: &str = "https://easydebrid.com/api/v1";
@@ -96,9 +96,9 @@ impl EasyDebridStore {
             let body_text = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body_text));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("easydebrid")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("easydebrid"))
     }
 }
 
@@ -118,9 +118,20 @@ impl Store for EasyDebridStore {
         let data = self
             .api_post("/user/details", &serde_json::json!({}))
             .await?;
-        let id = data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let email = data.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let is_premium = data.get("isPremium").and_then(|v| v.as_bool()).unwrap_or(false);
+        let id = data
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let email = data
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let is_premium = data
+            .get("isPremium")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         Ok(User {
             id,
@@ -142,10 +153,7 @@ impl Store for EasyDebridStore {
             .collect();
 
         let data = self
-            .api_post(
-                "/link/lookup",
-                &serde_json::json!({ "urls": hashes }),
-            )
+            .api_post("/link/lookup", &serde_json::json!({ "urls": hashes }))
             .await?;
 
         let cached = data.get("cached").and_then(|v| v.as_array());
@@ -164,7 +172,11 @@ impl Store for EasyDebridStore {
                 CheckMagnetItem {
                     hash,
                     magnet: magnet.clone(),
-                    status: if is_cached { MagnetStatus::Cached } else { MagnetStatus::Unknown },
+                    status: if is_cached {
+                        MagnetStatus::Cached
+                    } else {
+                        MagnetStatus::Unknown
+                    },
                     files: vec![],
                 }
             })
@@ -214,12 +226,13 @@ impl Store for EasyDebridStore {
 
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
         let data = self
-            .api_post(
-                "/link/generate",
-                &serde_json::json!({ "url": p.link }),
-            )
+            .api_post("/link/generate", &serde_json::json!({ "url": p.link }))
             .await?;
-        let link = data.get("download").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let link = data
+            .get("download")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         Ok(GenerateLinkData { link })
     }

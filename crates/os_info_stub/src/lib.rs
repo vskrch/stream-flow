@@ -22,9 +22,13 @@ impl Info {
 
     pub fn bitness(&self) -> Bitness {
         #[cfg(target_pointer_width = "64")]
-        { Bitness::X64 }
+        {
+            Bitness::X64
+        }
         #[cfg(target_pointer_width = "32")]
-        { Bitness::X32 }
+        {
+            Bitness::X32
+        }
     }
 
     pub fn version(&self) -> Version {
@@ -37,13 +41,23 @@ pub struct Type;
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        #[cfg(target_os = "ios")]       return f.write_str("iOS");
-        #[cfg(target_os = "macos")]     return f.write_str("macOS");
-        #[cfg(target_os = "android")]   return f.write_str("Android");
-        #[cfg(target_os = "linux")]     return f.write_str("Linux");
-        #[cfg(target_os = "windows")]   return f.write_str("Windows");
-        #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android",
-                      target_os = "linux", target_os = "windows")))]
+        #[cfg(target_os = "ios")]
+        return f.write_str("iOS");
+        #[cfg(target_os = "macos")]
+        return f.write_str("macOS");
+        #[cfg(target_os = "android")]
+        return f.write_str("Android");
+        #[cfg(target_os = "linux")]
+        return f.write_str("Linux");
+        #[cfg(target_os = "windows")]
+        return f.write_str("Windows");
+        #[cfg(not(any(
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "android",
+            target_os = "linux",
+            target_os = "windows"
+        )))]
         f.write_str("Unknown")
     }
 }

@@ -186,7 +186,12 @@ fn decrypt_ctr(
         // Clear bytes [pos, start) are left unchanged.
         let protected = &mut out[start..end];
         if pattern {
-            ctr_pattern(&mut cipher, protected, track.crypt_byte_block, track.skip_byte_block);
+            ctr_pattern(
+                &mut cipher,
+                protected,
+                track.crypt_byte_block,
+                track.skip_byte_block,
+            );
         } else {
             cipher.apply_keystream(protected);
         }
@@ -290,7 +295,12 @@ fn decrypt_cbcs(
         let (start, end) = protected_span(&out, pos, sub)?;
         // The CBC IV resets to the sample IV for each subsample.
         let mut dec = new_cbc_dec(key, iv)?;
-        cbc_pattern(&mut dec, &mut out[start..end], track.crypt_byte_block, track.skip_byte_block);
+        cbc_pattern(
+            &mut dec,
+            &mut out[start..end],
+            track.crypt_byte_block,
+            track.skip_byte_block,
+        );
         pos = end;
     }
     Ok(out)
@@ -402,14 +412,22 @@ mod tests {
         }
     }
 
-    fn info(iv: Vec<u8>, subs: Vec<super::super::mp4_atom::SubsampleRange>) -> SampleEncryptionInfo {
-        SampleEncryptionInfo { iv, subsamples: subs }
+    fn info(
+        iv: Vec<u8>,
+        subs: Vec<super::super::mp4_atom::SubsampleRange>,
+    ) -> SampleEncryptionInfo {
+        SampleEncryptionInfo {
+            iv,
+            subsamples: subs,
+        }
     }
 
     /// Deterministic pseudo-plaintext of `n` bytes (not all-zero, so a missed
     /// decryption is visible).
     fn plaintext(n: usize) -> Vec<u8> {
-        (0..n).map(|i| (i as u8).wrapping_mul(31).wrapping_add(7)).collect()
+        (0..n)
+            .map(|i| (i as u8).wrapping_mul(31).wrapping_add(7))
+            .collect()
     }
 
     // -- Reference encryptors (mirror the scheme rules, used to build inputs) --
@@ -436,7 +454,12 @@ mod tests {
             let start = pos + s.clear_bytes as usize;
             let end = start + s.protected_bytes as usize;
             if pattern {
-                ctr_pattern(&mut cipher, &mut out[start..end], track.crypt_byte_block, track.skip_byte_block);
+                ctr_pattern(
+                    &mut cipher,
+                    &mut out[start..end],
+                    track.crypt_byte_block,
+                    track.skip_byte_block,
+                );
             } else {
                 cipher.apply_keystream(&mut out[start..end]);
             }
@@ -454,11 +477,7 @@ mod tests {
 
     /// `cbc1` reference encryptor: one continuous CBC chain over the protected
     /// runs.
-    fn cbc1_encrypt(
-        key: &[u8; 16],
-        info: &SampleEncryptionInfo,
-        plain: &[u8],
-    ) -> Vec<u8> {
+    fn cbc1_encrypt(key: &[u8; 16], info: &SampleEncryptionInfo, plain: &[u8]) -> Vec<u8> {
         let iv = resolve_iv(&track(0, 0, 16, None), info);
         let mut enc = Aes128CbcEnc::new_from_slices(key, &iv).unwrap();
         let mut out = plain.to_vec();
@@ -580,7 +599,11 @@ mod tests {
 
         // Clear regions are byte-identical in the ciphertext.
         assert_eq!(&ct[0..10], &pt[0..10], "leading clear bytes unchanged");
-        assert_eq!(&ct[58..64], &pt[58..64], "inter-subsample clear bytes unchanged");
+        assert_eq!(
+            &ct[58..64],
+            &pt[58..64],
+            "inter-subsample clear bytes unchanged"
+        );
         // Protected regions are altered.
         assert_ne!(&ct[10..58], &pt[10..58]);
 
@@ -610,7 +633,11 @@ mod tests {
         }
         for blk in [0usize, 3, 6] {
             let s = 4 + blk * 16;
-            assert_ne!(&ct[s..s + 16], &pt[s..s + 16], "cens crypt block {blk} must be encrypted");
+            assert_ne!(
+                &ct[s..s + 16],
+                &pt[s..s + 16],
+                "cens crypt block {blk} must be encrypted"
+            );
         }
 
         let got = decrypt_sample(CencScheme::Cens, &NIST_KEY, &tk, &inf, &ct).unwrap();
@@ -635,7 +662,10 @@ mod tests {
         // Treating it as plain CTR (cenc) does not — the skipped blocks get
         // XORed with keystream that was never applied during encryption.
         let plain_ctr = decrypt_sample(CencScheme::Cenc, &NIST_KEY, &tk, &inf, &ct).unwrap();
-        assert_ne!(plain_ctr, pt, "plain CTR must NOT recover cens content (the source bug)");
+        assert_ne!(
+            plain_ctr, pt,
+            "plain CTR must NOT recover cens content (the source bug)"
+        );
     }
 
     #[test]
@@ -662,7 +692,11 @@ mod tests {
         let ct = cbc1_encrypt(&NIST_KEY, &inf, &pt);
 
         assert_eq!(&ct[0..5], &pt[0..5], "leading clear bytes unchanged");
-        assert_eq!(&ct[37..44], &pt[37..44], "inter-subsample clear bytes unchanged");
+        assert_eq!(
+            &ct[37..44],
+            &pt[37..44],
+            "inter-subsample clear bytes unchanged"
+        );
 
         let got = decrypt_sample(CencScheme::Cbc1, &NIST_KEY, &tk, &inf, &ct).unwrap();
         assert_eq!(got, pt);
@@ -686,13 +720,25 @@ mod tests {
         // skip 4,5; then 4 bytes remain (< 1 crypt block) -> left clear.
         for blk in [1usize, 2, 4, 5] {
             let s = 2 + blk * 16;
-            assert_eq!(&ct[s..s + 16], &pt[s..s + 16], "cbcs skip block {blk} unchanged");
+            assert_eq!(
+                &ct[s..s + 16],
+                &pt[s..s + 16],
+                "cbcs skip block {blk} unchanged"
+            );
         }
         // Trailing 4-byte partial (bytes 98..102) left clear.
-        assert_eq!(&ct[98..102], &pt[98..102], "cbcs trailing partial block left clear");
+        assert_eq!(
+            &ct[98..102],
+            &pt[98..102],
+            "cbcs trailing partial block left clear"
+        );
         for blk in [0usize, 3] {
             let s = 2 + blk * 16;
-            assert_ne!(&ct[s..s + 16], &pt[s..s + 16], "cbcs crypt block {blk} encrypted");
+            assert_ne!(
+                &ct[s..s + 16],
+                &pt[s..s + 16],
+                "cbcs crypt block {blk} encrypted"
+            );
         }
 
         let got = decrypt_sample(CencScheme::Cbcs, &NIST_KEY, &tk, &inf, &ct).unwrap();
@@ -753,7 +799,11 @@ mod tests {
         let sample = plaintext(32);
         let err = decrypt_sample(CencScheme::Cenc, &NIST_KEY, &tk, &inf, &sample).unwrap_err();
         assert_eq!(err.category, crate::errors::ErrorCategory::BadRequest);
-        assert!(err.message.contains("subsample"), "error names the cause: {}", err.message);
+        assert!(
+            err.message.contains("subsample"),
+            "error names the cause: {}",
+            err.message
+        );
     }
 
     /// Helper: `cens` ciphertext (CTR pattern encryption == decryption).

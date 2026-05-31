@@ -168,7 +168,12 @@ impl FailoverCache<RedisCache> {
     /// Build a **local-only** cache: no Redis is configured, so every operation
     /// is served by the local tier (Req 30.2 — "no Redis URL → Local_Cache").
     pub fn local_only(local: LocalCache) -> Self {
-        Self::from_parts(local, None, default_redis_breaker(), FailoverConfig::default())
+        Self::from_parts(
+            local,
+            None,
+            default_redis_breaker(),
+            FailoverConfig::default(),
+        )
     }
 }
 
@@ -306,7 +311,8 @@ impl<R: CacheBackend + 'static> CacheBackend for FailoverCache<R> {
         // copy to fall back to during a Redis outage (Req 30.5).
         self.shared.local.set(key, val.clone(), ttl).await?;
         if let Some(redis) = self.shared.redis.load_full() {
-            if let Err(err) = guarded(&self.shared.breaker, || redis.set(key, val.clone(), ttl)).await
+            if let Err(err) =
+                guarded(&self.shared.breaker, || redis.set(key, val.clone(), ttl)).await
             {
                 self.on_redis_error(&err);
             }
@@ -438,12 +444,16 @@ mod tests {
     /// loop idle so tests can drive `attempt_reattach` deterministically.
     fn test_cache(ns: &str) -> (FailoverCache<ToggleBackend>, ToggleBackend) {
         let backend = ToggleBackend::new(ns);
-        let breaker = CircuitBreaker::new(BreakerKey::Redis, BreakerConfig::new(1000, Duration::from_millis(1)));
+        let breaker = CircuitBreaker::new(
+            BreakerKey::Redis,
+            BreakerConfig::new(1000, Duration::from_millis(1)),
+        );
         let config = FailoverConfig {
             probe_interval: Duration::from_secs(3600),
             probe_key: "__probe__".to_string(),
         };
-        let cache = FailoverCache::with_redis(LocalCache::new(ns), backend.clone(), breaker, config);
+        let cache =
+            FailoverCache::with_redis(LocalCache::new(ns), backend.clone(), breaker, config);
         (cache, backend)
     }
 
@@ -459,7 +469,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(cache.get("k").await.unwrap(), Some(Bytes::from_static(b"v")));
+        assert_eq!(
+            cache.get("k").await.unwrap(),
+            Some(Bytes::from_static(b"v"))
+        );
         assert!(cache.redis_attached());
         // Write-through reached Redis under the shared namespace (Req 30.3).
         assert!(backend.contains("sf:k"));
@@ -476,7 +489,11 @@ mod tests {
 
         // Warm both tiers while Redis is healthy.
         cache
-            .set("k", Bytes::from_static(b"local-copy"), Duration::from_secs(60))
+            .set(
+                "k",
+                Bytes::from_static(b"local-copy"),
+                Duration::from_secs(60),
+            )
             .await
             .unwrap();
         assert!(cache.redis_attached());
@@ -510,7 +527,11 @@ mod tests {
 
         // First op detaches Redis but still succeeds via local.
         cache
-            .set("k", Bytes::from_static(b"written-while-down"), Duration::from_secs(60))
+            .set(
+                "k",
+                Bytes::from_static(b"written-while-down"),
+                Duration::from_secs(60),
+            )
             .await
             .unwrap();
         assert!(!cache.redis_attached());
@@ -567,7 +588,10 @@ mod tests {
     #[tokio::test]
     async fn background_loop_reattaches_automatically() {
         let backend = ToggleBackend::new("sf");
-        let breaker = CircuitBreaker::new(BreakerKey::Redis, BreakerConfig::new(1000, Duration::from_millis(1)));
+        let breaker = CircuitBreaker::new(
+            BreakerKey::Redis,
+            BreakerConfig::new(1000, Duration::from_millis(1)),
+        );
         let config = FailoverConfig {
             probe_interval: Duration::from_millis(20),
             probe_key: "__probe__".to_string(),
@@ -591,7 +615,10 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        assert!(reattached, "supervised loop must reattach Redis automatically");
+        assert!(
+            reattached,
+            "supervised loop must reattach Redis automatically"
+        );
     }
 
     // -- Req 50.5: in-flight requests never fail due to a Redis blip --------
@@ -621,8 +648,14 @@ mod tests {
                         .set(&key, Bytes::from_static(b"x"), Duration::from_secs(60))
                         .await
                         .expect("set never fails on a Redis blip");
-                    cache.get(&key).await.expect("get never fails on a Redis blip");
-                    cache.get("seed").await.expect("get never fails on a Redis blip");
+                    cache
+                        .get(&key)
+                        .await
+                        .expect("get never fails on a Redis blip");
+                    cache
+                        .get("seed")
+                        .await
+                        .expect("get never fails on a Redis blip");
                 }
             }));
         }
@@ -659,7 +692,10 @@ mod tests {
             .set("k", Bytes::from_static(b"v"), Duration::from_secs(60))
             .await
             .unwrap();
-        assert_eq!(cache.get("k").await.unwrap(), Some(Bytes::from_static(b"v")));
+        assert_eq!(
+            cache.get("k").await.unwrap(),
+            Some(Bytes::from_static(b"v"))
+        );
 
         // Nothing to reattach.
         assert!(!cache.attempt_reattach().await);

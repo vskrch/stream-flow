@@ -45,7 +45,6 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::CacheBackend;
-use crate::egress::OutboundClient;
 use crate::errors::AppError;
 use crate::resilience::breaker::{BreakerKey, CircuitBreaker};
 
@@ -158,9 +157,8 @@ pub fn integration_breaker(name: &str) -> CircuitBreaker {
 /// Map a `reqwest` send error onto the canonical taxonomy for integration
 /// adapters: a connect / timeout / reset is `UpstreamUnavailable` (503).
 pub fn map_reqwest_error(integration: &str, err: reqwest::Error) -> AppError {
-    let app = AppError::upstream_unavailable(format!(
-        "{integration} integration request failed: {err}"
-    ));
+    let app =
+        AppError::upstream_unavailable(format!("{integration} integration request failed: {err}"));
     match err.status() {
         Some(status) => app.with_upstream_status(status.as_u16()),
         None => app,
@@ -176,7 +174,7 @@ pub fn map_http_error(integration: &str, status: reqwest::StatusCode) -> AppErro
         403 => AppError::forbidden(msg).with_upstream_status(code),
         404 => AppError::not_found(msg).with_upstream_status(code),
         429 => AppError::too_many_requests(msg).with_upstream_status(code),
-        502 | 503 | 504 => AppError::upstream_unavailable(msg).with_upstream_status(code),
+        502..=504 => AppError::upstream_unavailable(msg).with_upstream_status(code),
         _ => AppError::upstream_unavailable(msg).with_upstream_status(code),
     }
 }
@@ -216,13 +214,19 @@ mod tests {
             .unwrap();
 
         let count_clone = call_count.clone();
-        let result = fetch_with_cache(&cache, "test-key", Duration::from_secs(3600), &breaker, || {
-            let c = count_clone.clone();
-            async move {
-                c.fetch_add(1, Ordering::SeqCst);
-                Ok(Bytes::from_static(b"upstream-data"))
-            }
-        })
+        let result = fetch_with_cache(
+            &cache,
+            "test-key",
+            Duration::from_secs(3600),
+            &breaker,
+            || {
+                let c = count_clone.clone();
+                async move {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    Ok(Bytes::from_static(b"upstream-data"))
+                }
+            },
+        )
         .await
         .unwrap();
 
@@ -304,7 +308,10 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_err(), "upstream error must propagate when no cache");
+        assert!(
+            result.is_err(),
+            "upstream error must propagate when no cache"
+        );
     }
 
     // -- Circuit breaker wraps adapter calls (Req 50.2) ----------------------

@@ -101,7 +101,11 @@ impl Sidekick {
             DEFAULT_ID,
             name,
             "Stremio utilities (account, library, and catalog helpers).",
-            vec![Resource::full(ResourceName::catalog(), ContentType::all(), vec![])],
+            vec![Resource::full(
+                ResourceName::catalog(),
+                ContentType::all(),
+                vec![],
+            )],
             ContentType::all(),
             Vec::new(),
             Vec::new(),
@@ -254,7 +258,11 @@ mod tests {
     #[::core::prelude::v1::test]
     fn manifest_round_trips_through_json() {
         let sk = sidekick_with(vec![
-            Resource::full(ResourceName::catalog(), ContentType::all(), vec!["tt".into()]),
+            Resource::full(
+                ResourceName::catalog(),
+                ContentType::all(),
+                vec!["tt".into()],
+            ),
             Resource::bare("meta"),
         ]);
         let manifest = sk.manifest();

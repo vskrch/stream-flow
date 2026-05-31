@@ -471,9 +471,9 @@ impl AcestreamProxy {
     /// the last one leaves either keeps the session alive (increment wins) or
     /// starts a fresh one (removal wins), never a torn state.
     async fn release_inner(&self, key: &SessionKey) {
-        let removed = self
-            .sessions
-            .remove_if(key, |_, entry| entry.clients.fetch_sub(1, Ordering::SeqCst) == 1);
+        let removed = self.sessions.remove_if(key, |_, entry| {
+            entry.clients.fetch_sub(1, Ordering::SeqCst) == 1
+        });
 
         if let Some((_, entry)) = removed {
             // Last client gone → stop the upstream session (Req 10.6). Only an
@@ -596,9 +596,9 @@ impl Drop for LeaseGuard {
             Err(_) => {
                 // No runtime to drive the async stop: at least keep the
                 // client-count accurate so a later sweep/acquire is correct.
-                proxy
-                    .sessions
-                    .remove_if(&key, |_, entry| entry.clients.fetch_sub(1, Ordering::SeqCst) == 1);
+                proxy.sessions.remove_if(&key, |_, entry| {
+                    entry.clients.fetch_sub(1, Ordering::SeqCst) == 1
+                });
             }
         }
     }
@@ -631,9 +631,8 @@ where
 /// error surfaced one.
 fn map_send_error(url: &Url, err: reqwest::Error) -> AppError {
     let host = url.host_str().unwrap_or("<unknown>");
-    let app = AppError::upstream_unavailable(format!(
-        "Acestream engine at {host} is unavailable: {err}"
-    ));
+    let app =
+        AppError::upstream_unavailable(format!("Acestream engine at {host} is unavailable: {err}"));
     match err.status() {
         Some(status) => app.with_upstream_status(status.as_u16()),
         None => app,
@@ -681,7 +680,13 @@ pub async fn acestream_endpoint(
 
     let proxy = proxy.get_ref().clone();
     proxy
-        .serve_content(content_id, format, range, is_head, &PrebufferConfig::default())
+        .serve_content(
+            content_id,
+            format,
+            range,
+            is_head,
+            &PrebufferConfig::default(),
+        )
         .await
 }
 
@@ -774,7 +779,9 @@ mod tests {
         ) -> Result<EngineSession, AppError> {
             self.starts.fetch_add(1, Ordering::SeqCst);
             if self.fail {
-                return Err(AppError::upstream_unavailable("Acestream engine is unavailable"));
+                return Err(AppError::upstream_unavailable(
+                    "Acestream engine is unavailable",
+                ));
             }
             Ok(EngineSession {
                 playback_url: format!("{}?id={content_id}", self.playback_base),
@@ -807,7 +814,10 @@ mod tests {
             .expect("acquire starts the engine session");
 
         assert_eq!(engine.starts(), 1, "first client starts the engine session");
-        assert_eq!(lease.playback_url(), "http://engine.local/playback?id=CONTENT");
+        assert_eq!(
+            lease.playback_url(),
+            "http://engine.local/playback?id=CONTENT"
+        );
         assert_eq!(proxy.client_count("CONTENT", OutputFormat::MpegTs), 1);
         assert_eq!(proxy.active_sessions(), 1);
     }
@@ -829,7 +839,11 @@ mod tests {
 
         // A single upstream session was started and both share its playback URL
         // (Req 10.4).
-        assert_eq!(engine.starts(), 1, "concurrent first-clients start ONE session");
+        assert_eq!(
+            engine.starts(),
+            1,
+            "concurrent first-clients start ONE session"
+        );
         assert_eq!(l1.playback_url(), l2.playback_url());
         assert_eq!(proxy.client_count("LIVE", OutputFormat::MpegTs), 2);
         assert_eq!(proxy.active_sessions(), 1, "one multiplexed session");
@@ -863,14 +877,22 @@ mod tests {
 
         // First client leaves: session stays alive (still one watcher).
         proxy.release(l1).await;
-        assert_eq!(engine.stops(), 0, "session must NOT stop while a client remains");
+        assert_eq!(
+            engine.stops(),
+            0,
+            "session must NOT stop while a client remains"
+        );
         assert_eq!(proxy.client_count("CID", OutputFormat::MpegTs), 1);
         assert_eq!(proxy.active_sessions(), 1);
 
         // Last client leaves: upstream session is stopped and resources freed
         // (Req 10.6).
         proxy.release(l2).await;
-        assert_eq!(engine.stops(), 1, "last client disconnect stops the session");
+        assert_eq!(
+            engine.stops(),
+            1,
+            "last client disconnect stops the session"
+        );
         assert_eq!(proxy.client_count("CID", OutputFormat::MpegTs), 0);
         assert_eq!(proxy.active_sessions(), 0, "session entry removed");
     }
@@ -887,7 +909,11 @@ mod tests {
         // Same content id but a different output format is a different session.
         let a_hls = proxy.acquire("A", OutputFormat::Hls).await.unwrap();
 
-        assert_eq!(engine.starts(), 3, "each distinct (id,format) starts its own session");
+        assert_eq!(
+            engine.starts(),
+            3,
+            "each distinct (id,format) starts its own session"
+        );
         assert_eq!(proxy.active_sessions(), 3);
         assert_ne!(a.playback_url(), b.playback_url());
 
@@ -913,7 +939,11 @@ mod tests {
 
         // The reservation was rolled back: no lingering session/clients, and
         // nothing was stopped (the session never started).
-        assert_eq!(proxy.active_sessions(), 0, "failed acquire must not leak a session");
+        assert_eq!(
+            proxy.active_sessions(),
+            0,
+            "failed acquire must not leak a session"
+        );
         assert_eq!(proxy.client_count("CID", OutputFormat::MpegTs), 0);
         assert_eq!(engine.stops(), 0);
     }
@@ -966,10 +996,10 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/ace/getstream"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(r#"{"response":null,"error":"unknown content id"}"#.as_bytes().to_vec(), "application/json"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                r#"{"response":null,"error":"unknown content id"}"#.as_bytes().to_vec(),
+                "application/json",
+            ))
             .mount(&server)
             .await;
 
@@ -991,11 +1021,16 @@ mod tests {
             .and(path("/ace/getstream"))
             .and(query_param("id", "CID"))
             .and(query_param("access_token", "secret-token"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(
-                format!(r#"{{"response":{{"playback_url":"{}/play"}},"error":null}}"#, server.uri())
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(
+                    format!(
+                        r#"{{"response":{{"playback_url":"{}/play"}},"error":null}}"#,
+                        server.uri()
+                    )
                     .into_bytes(),
-                "application/json",
-            ))
+                    "application/json",
+                ),
+            )
             .mount(&server)
             .await;
 
@@ -1089,13 +1124,23 @@ mod tests {
 
         let proxy = Arc::new(AcestreamProxy::from_config_engine(server.uri()));
         let resp = proxy
-            .serve_content("CID", OutputFormat::MpegTs, RangeSpec::Full, false, &PrebufferConfig::default())
+            .serve_content(
+                "CID",
+                OutputFormat::MpegTs,
+                RangeSpec::Full,
+                false,
+                &PrebufferConfig::default(),
+            )
             .await
             .expect("serve ok");
 
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
         assert_eq!(
-            resp.headers().get(header::CONTENT_TYPE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "video/mp2t",
             "MPEG-TS output delivered as MPEG-TS (Req 10.3)",
         );
@@ -1120,10 +1165,10 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/playback/hls.m3u8"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(manifest.as_bytes().to_vec(), "application/vnd.apple.mpegurl"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                manifest.as_bytes().to_vec(),
+                "application/vnd.apple.mpegurl",
+            ))
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -1134,13 +1179,23 @@ mod tests {
 
         let proxy = Arc::new(AcestreamProxy::from_config_engine(server.uri()));
         let resp = proxy
-            .serve_content("CID", OutputFormat::Hls, RangeSpec::Full, false, &PrebufferConfig::default())
+            .serve_content(
+                "CID",
+                OutputFormat::Hls,
+                RangeSpec::Full,
+                false,
+                &PrebufferConfig::default(),
+            )
             .await
             .expect("serve ok");
 
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
         assert_eq!(
-            resp.headers().get(header::CONTENT_TYPE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "application/vnd.apple.mpegurl",
             "HLS output delivered as HLS (Req 10.2)",
         );
@@ -1152,7 +1207,8 @@ mod tests {
 
     #[tokio::test]
     async fn engine_call_is_gated_by_fail_closed_egress() {
-        let engine = HttpAcestreamEngine::new(outbound_fail_closed(), "http://engine.local:6878", None);
+        let engine =
+            HttpAcestreamEngine::new(outbound_fail_closed(), "http://engine.local:6878", None);
         let err = engine
             .start_session("CID", OutputFormat::MpegTs)
             .await

@@ -111,12 +111,12 @@ mod tests {
     /// A variant whose bandwidth is exactly the ceiling is eligible (≤, not <).
     #[test]
     fn variant_exactly_at_ceiling_is_selected() {
-        let variants = vec![
-            variant("a.m3u8", 800_000),
-            variant("b.m3u8", 1_000_000),
-        ];
+        let variants = vec![variant("a.m3u8", 800_000), variant("b.m3u8", 1_000_000)];
         let selected = select_prebuffer_variant(&variants, 1_000_000).unwrap();
-        assert_eq!(selected.uri, "b.m3u8", "a variant at the ceiling must be eligible");
+        assert_eq!(
+            selected.uri, "b.m3u8",
+            "a variant at the ceiling must be eligible"
+        );
     }
 
     // -- Req 7.2: all exceed the ceiling → lowest bandwidth ------------------
@@ -186,7 +186,10 @@ mod tests {
         ];
         // No normal variant exists → select among the I-frame variants.
         let selected = select_prebuffer_variant(&variants, 5_000_000).unwrap();
-        assert_eq!(selected.uri, "a.m3u8", "highest under ceiling among i-frame variants");
+        assert_eq!(
+            selected.uri, "a.m3u8",
+            "highest under ceiling among i-frame variants"
+        );
     }
 
     /// A single-variant master always selects that variant, ceiling or not.

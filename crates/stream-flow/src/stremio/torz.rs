@@ -94,11 +94,7 @@ impl TorrentEntry {
 #[async_trait]
 pub trait TorrentIndex: Send + Sync {
     /// Fetch the torrent entries for one content id, on demand (Req 25.4).
-    async fn pull(
-        &self,
-        content_type: &str,
-        id: &str,
-    ) -> Result<Vec<TorrentEntry>, AppError>;
+    async fn pull(&self, content_type: &str, id: &str) -> Result<Vec<TorrentEntry>, AppError>;
 
     /// The entire pre-fetched index (used only when lazy-pull is disabled).
     async fn full(&self) -> Result<Vec<TorrentEntry>, AppError>;
@@ -301,7 +297,11 @@ fn build_stream(
     let video_size = best
         .map(|f| f.size)
         .filter(|s| *s > 0)
-        .or(if entry.size > 0 { Some(entry.size) } else { None });
+        .or(if entry.size > 0 {
+            Some(entry.size)
+        } else {
+            None
+        });
 
     let behavior_hints = if video_size.is_some() || filename.is_some() {
         Some(StreamBehaviorHints {
@@ -348,7 +348,10 @@ mod tests {
     }
 
     impl FakeIndex {
-        fn new(per_content: HashMap<String, Vec<TorrentEntry>>, full_set: Vec<TorrentEntry>) -> Self {
+        fn new(
+            per_content: HashMap<String, Vec<TorrentEntry>>,
+            full_set: Vec<TorrentEntry>,
+        ) -> Self {
             Self {
                 per_content,
                 full_set,
@@ -360,11 +363,7 @@ mod tests {
 
     #[async_trait]
     impl TorrentIndex for FakeIndex {
-        async fn pull(
-            &self,
-            _content_type: &str,
-            id: &str,
-        ) -> Result<Vec<TorrentEntry>, AppError> {
+        async fn pull(&self, _content_type: &str, id: &str) -> Result<Vec<TorrentEntry>, AppError> {
             self.pull_calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.per_content.get(id).cloned().unwrap_or_default())
         }
@@ -470,10 +469,7 @@ mod tests {
             })
         }
 
-        async fn list_magnets(
-            &self,
-            _p: &ListMagnetsParams,
-        ) -> Result<ListMagnetsData, AppError> {
+        async fn list_magnets(&self, _p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
             Ok(ListMagnetsData {
                 items: vec![],
                 total_items: 0,
@@ -648,8 +644,7 @@ mod tests {
     #[tokio::test]
     async fn lazy_pull_queries_index_on_demand_and_never_pulls_full() {
         let id = "tt0111161";
-        let per_content =
-            HashMap::from([(id.to_string(), vec![entry("aaa", "M", 100, id)])]);
+        let per_content = HashMap::from([(id.to_string(), vec![entry("aaa", "M", 100, id)])]);
         let index = FakeIndex::new(per_content, vec![entry("zzz", "Z", 1, "other")]);
         let store = FakeStore::new(HashMap::from([(
             "aaa".to_string(),
@@ -681,8 +676,14 @@ mod tests {
         ];
         let index = FakeIndex::new(HashMap::new(), full);
         let store = FakeStore::new(HashMap::from([
-            ("aaa".to_string(), (MagnetStatus::Cached, vec![file(0, "m.mkv", 100)])),
-            ("zzz".to_string(), (MagnetStatus::Cached, vec![file(0, "z.mkv", 1)])),
+            (
+                "aaa".to_string(),
+                (MagnetStatus::Cached, vec![file(0, "m.mkv", 100)]),
+            ),
+            (
+                "zzz".to_string(),
+                (MagnetStatus::Cached, vec![file(0, "z.mkv", 1)]),
+            ),
         ]));
 
         let resp = torz_lazy(false)
@@ -712,7 +713,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(resp.streams.is_empty(), "no matches -> empty list (Req 25.5)");
+        assert!(
+            resp.streams.is_empty(),
+            "no matches -> empty list (Req 25.5)"
+        );
         // No magnets matched, so the store was never consulted.
         assert!(store.checked.lock().unwrap().is_empty());
     }
@@ -736,7 +740,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(resp.streams.is_empty(), "no cached matches -> empty (Req 25.5)");
+        assert!(
+            resp.streams.is_empty(),
+            "no cached matches -> empty (Req 25.5)"
+        );
         // The store WAS consulted (the entries matched the content).
         assert_eq!(store.checked.lock().unwrap().len(), 2);
     }
@@ -746,8 +753,7 @@ mod tests {
     #[tokio::test]
     async fn produced_streams_round_trip_through_json() {
         let id = "tt1";
-        let per_content =
-            HashMap::from([(id.to_string(), vec![entry("aaa", "Title", 500, id)])]);
+        let per_content = HashMap::from([(id.to_string(), vec![entry("aaa", "Title", 500, id)])]);
         let index = FakeIndex::new(per_content, vec![]);
         let store = FakeStore::new(HashMap::from([(
             "aaa".to_string(),

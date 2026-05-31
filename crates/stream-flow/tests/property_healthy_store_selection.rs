@@ -36,13 +36,13 @@ use proptest::prelude::*;
 use stream_flow::errors::{AppError, ErrorCategory};
 use stream_flow::resilience::breaker::{BreakerConfig, BreakerState};
 use stream_flow::store::fallback::{StoreBreakerSet, StoreFallbackChain};
+use stream_flow::store::StoreName;
 use stream_flow::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetParams, GenerateLinkData,
     GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams, ListMagnetsData,
     ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, SubscriptionStatus,
     User,
 };
-use stream_flow::store::StoreName;
 
 use async_trait::async_trait;
 
@@ -188,7 +188,10 @@ fn is_healthy_ref(breaker_state: BreakerState, cooldown_state: CooldownState) ->
 /// same order as `states`.
 fn build_chain(
     states: &[StoreState],
-) -> (Arc<StoreBreakerSet>, Vec<(StoreName, Arc<dyn stream_flow::store::Store>)>) {
+) -> (
+    Arc<StoreBreakerSet>,
+    Vec<(StoreName, Arc<dyn stream_flow::store::Store>)>,
+) {
     // Use a breaker config with threshold=1 so we can trip it with a single failure.
     let breaker_config = BreakerConfig::new(1, Duration::from_secs(60));
     let cooldown_duration = Duration::from_secs(300);

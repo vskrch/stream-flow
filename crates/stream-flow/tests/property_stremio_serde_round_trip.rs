@@ -190,17 +190,24 @@ fn arb_catalog() -> impl Strategy<Value = Catalog> {
 // ---------------------------------------------------------------------------
 
 fn arb_behavior_hints() -> impl Strategy<Value = BehaviorHints> {
-    (any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
-        |(adult, p2p, configurable, configuration_required, new_episode_notifications)| {
-            BehaviorHints {
-                adult,
-                p2p,
-                configurable,
-                configuration_required,
-                new_episode_notifications,
-            }
-        },
+    (
+        any::<bool>(),
+        any::<bool>(),
+        any::<bool>(),
+        any::<bool>(),
+        any::<bool>(),
     )
+        .prop_map(
+            |(adult, p2p, configurable, configuration_required, new_episode_notifications)| {
+                BehaviorHints {
+                    adult,
+                    p2p,
+                    configurable,
+                    configuration_required,
+                    new_episode_notifications,
+                }
+            },
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -380,8 +387,30 @@ fn arb_meta() -> impl Strategy<Value = Meta> {
         arb_opt_string(),
     )
         .prop_flat_map(
-            |(id, r#type, name, genres, poster, poster_shape, background, logo, description, release_info)| {
-                let base = (id, r#type, name, genres, poster, poster_shape, background, logo, description, release_info);
+            |(
+                id,
+                r#type,
+                name,
+                genres,
+                poster,
+                poster_shape,
+                background,
+                logo,
+                description,
+                release_info,
+            )| {
+                let base = (
+                    id,
+                    r#type,
+                    name,
+                    genres,
+                    poster,
+                    poster_shape,
+                    background,
+                    logo,
+                    description,
+                    release_info,
+                );
                 (
                     Just(base),
                     arb_opt_string(),
@@ -398,7 +427,18 @@ fn arb_meta() -> impl Strategy<Value = Meta> {
         )
         .prop_map(
             |(
-                (id, r#type, name, genres, poster, poster_shape, background, logo, description, release_info),
+                (
+                    id,
+                    r#type,
+                    name,
+                    genres,
+                    poster,
+                    poster_shape,
+                    background,
+                    logo,
+                    description,
+                    release_info,
+                ),
                 imdb_rating,
                 released,
                 links,
@@ -446,7 +486,18 @@ fn arb_meta_preview() -> impl Strategy<Value = MetaPreview> {
         arb_opt_string(),
     )
         .prop_map(
-            |(id, r#type, name, poster, poster_shape, genres, imdb_rating, release_info, links, description)| {
+            |(
+                id,
+                r#type,
+                name,
+                poster,
+                poster_shape,
+                genres,
+                imdb_rating,
+                release_info,
+                links,
+                description,
+            )| {
                 MetaPreview {
                     id,
                     r#type,
@@ -484,17 +535,53 @@ fn arb_manifest() -> impl Strategy<Value = Manifest> {
         arb_string(),
     )
         .prop_flat_map(
-            |(id, name, description, version, resources, types, id_prefixes, addon_catalogs, catalogs, background, logo, contact_email)| {
-                let base = (id, name, description, version, resources, types, id_prefixes, addon_catalogs, catalogs, background, logo, contact_email);
-                (
-                    Just(base),
-                    proptest::option::of(arb_behavior_hints()),
-                )
+            |(
+                id,
+                name,
+                description,
+                version,
+                resources,
+                types,
+                id_prefixes,
+                addon_catalogs,
+                catalogs,
+                background,
+                logo,
+                contact_email,
+            )| {
+                let base = (
+                    id,
+                    name,
+                    description,
+                    version,
+                    resources,
+                    types,
+                    id_prefixes,
+                    addon_catalogs,
+                    catalogs,
+                    background,
+                    logo,
+                    contact_email,
+                );
+                (Just(base), proptest::option::of(arb_behavior_hints()))
             },
         )
         .prop_map(
             |(
-                (id, name, description, version, resources, types, id_prefixes, addon_catalogs, catalogs, background, logo, contact_email),
+                (
+                    id,
+                    name,
+                    description,
+                    version,
+                    resources,
+                    types,
+                    id_prefixes,
+                    addon_catalogs,
+                    catalogs,
+                    background,
+                    logo,
+                    contact_email,
+                ),
                 behavior_hints,
             )| Manifest {
                 id,

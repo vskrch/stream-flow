@@ -24,16 +24,46 @@
 //! All upstream HTTP goes through the single egress seam
 //! ([`OutboundClient`](crate::egress::OutboundClient)) so upstream addons see
 //! only the Egress_IP (Req 51).
+//!
+//! ## Transformer pipeline
+//!
+//! The module ships four named concrete [`Transformer`] implementations that
+//! can be composed into an ordered pipeline via [`ComposedTransformer`]:
+//!
+//! * [`ProxyLinkTransformer`] — rewrites every stream URL to a stream-flow
+//!   proxy link (the core rewrite, Req 24.4). This is the default transformer
+//!   applied by [`WrapAddon::rewrite_stream`]; the named type lets callers
+//!   compose it explicitly in a pipeline.
+//! * [`HeaderInjectionTransformer`] — injects a fixed set of request headers
+//!   into every stream's proxy payload (Req 24.4 header injection).
+//! * [`DrmKeyTransformer`] — appends ClearKey `key_id`/`key` pairs to every
+//!   stream's proxy URL so the engine decrypts on playback (Req 24.4 DRM).
+//! * [`QualityFilterTransformer`] — filters the stream list to those whose
+//!   release-name quality tokens satisfy the configured constraints (Req 24.3).
+//!
+//! Compose them with [`ComposedTransformer::new`]:
+//!
+//! ```rust,ignore
+//! let pipeline = ComposedTransformer::new(vec![
+//!     Arc::new(HeaderInjectionTransformer::new(headers)),
+//!     Arc::new(DrmKeyTransformer::new(keys)),
+//!     Arc::new(QualityFilterTransformer::new(prefs)),
+//! ]);
+//! let wrap = wrap_addon.with_transformer(Arc::new(pipeline));
+//! ```
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use actix_web::{web, HttpRequest, HttpResponse};
 use reqwest::{Method, Url};
 use serde::de::DeserializeOwned;
 
+use crate::app::AppState;
 use crate::auth::encryption::ProxyPayload;
 use crate::egress::OutboundClient;
 use crate::proxylink::{ProxyCodec, ProxyLink};
+use crate::quality::{QualityPrefs, QualityRanker, RankedFile};
 
 use super::types::{
     Manifest, Meta, MetaPreview, MetaResponse, MetasResponse, Resource, Stream, StreamsResponse,
@@ -111,7 +141,10 @@ impl UpstreamAddon {
                 "{}/{}/{}/{}/{}.json",
                 self.base_url, resource, content_type, id, extra
             ),
-            _ => format!("{}/{}/{}/{}.json", self.base_url, resource, content_type, id),
+            _ => format!(
+                "{}/{}/{}/{}.json",
+                self.base_url, resource, content_type, id
+            ),
         }
     }
 }
@@ -381,41 +414,7 @@ impl WrapAddon {
     /// resulting `/proxy/stream` link advertises the configured transcode flag
     /// and DRM keys.
     pub fn rewrite_stream(&self, stream: Stream) -> Stream {
-        let upstream_url = match stream.url.as_deref() {
-            Some(u) if !u.is_empty() => u.to_string(),
-            // No proxyable URL (infoHash/ytId/externalUrl): leave it untouched.
-            _ => return stream,
-        };
-
-        let mut payload = ProxyPayload::new(upstream_url);
-        // Configured header injection (Req 24.4) ...
-        for (name, value) in &self.rewrite.inject_headers {
-            payload.headers.insert(name.clone(), value.clone());
-        }
-        // ... augmented by the stream's own request proxyHeaders so the engine
-        // replays them upstream (the hints themselves are preserved below).
-        if let Some(hints) = &stream.behavior_hints {
-            if let Some(proxy_headers) = &hints.proxy_headers {
-                for (name, value) in &proxy_headers.request {
-                    payload.headers.insert(name.clone(), value.clone());
-                }
-            }
-        }
-
-        // Encryption (Req 24.4): seal the payload into an AES-CBC `d` link.
-        let proxy_url = match self.codec.encode_mediaflow(&payload) {
-            Ok(link) => self.rewrite.build_proxy_url(&link),
-            // Fail-safe: an encode error must not drop the stream; keep the
-            // original (the engine/proxy-link layer will reject a bad link).
-            Err(_) => return stream,
-        };
-
-        // Req 24.5: every other field — crucially `behavior_hints` — is carried
-        // over unchanged; only the URL is rewritten.
-        Stream {
-            url: Some(proxy_url),
-            ..stream
-        }
+        rewrite_stream_with(&self.codec, &self.rewrite, stream)
     }
 
     /// `GET` a JSON resource through the egress seam, returning `None` on any
@@ -430,6 +429,451 @@ impl WrapAddon {
         }
         response.json::<T>().await.ok()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Concrete transformer implementations (Req 24.3, 24.4)
+// ---------------------------------------------------------------------------
+
+/// A transformer that rewrites every stream URL to a stream-flow proxy link
+/// (Req 24.4).
+///
+/// This is the named, composable form of the rewrite that [`WrapAddon`] applies
+/// internally via [`WrapAddon::rewrite_stream`]. Including it in a
+/// [`ComposedTransformer`] pipeline makes the rewrite step explicit and
+/// order-controllable.
+pub struct ProxyLinkTransformer {
+    codec: ProxyCodec,
+    rewrite: ProxyRewriteConfig,
+}
+
+impl ProxyLinkTransformer {
+    /// Build a [`ProxyLinkTransformer`] from the given codec and rewrite config.
+    pub fn new(codec: ProxyCodec, rewrite: ProxyRewriteConfig) -> Self {
+        Self { codec, rewrite }
+    }
+}
+
+impl Transformer for ProxyLinkTransformer {
+    fn transform_streams(&self, streams: Vec<Stream>) -> Vec<Stream> {
+        streams
+            .into_iter()
+            .map(|s| rewrite_stream_with(&self.codec, &self.rewrite, s))
+            .collect()
+    }
+}
+
+/// A transformer that injects a fixed set of request headers into every
+/// stream's proxy payload (Req 24.4 header injection).
+///
+/// The injected headers are merged into the stream's existing
+/// `proxyHeaders.request` map (stream-specific headers take precedence over
+/// the injected ones when both supply the same header name).
+pub struct HeaderInjectionTransformer {
+    /// Headers to inject on every proxied upstream request.
+    headers: BTreeMap<String, String>,
+}
+
+impl HeaderInjectionTransformer {
+    /// Build a [`HeaderInjectionTransformer`] that injects the given headers.
+    pub fn new(headers: BTreeMap<String, String>) -> Self {
+        Self { headers }
+    }
+}
+
+impl Transformer for HeaderInjectionTransformer {
+    fn transform_streams(&self, streams: Vec<Stream>) -> Vec<Stream> {
+        if self.headers.is_empty() {
+            return streams;
+        }
+        streams
+            .into_iter()
+            .map(|mut s| {
+                // Inject into the stream's proxyHeaders.request so the engine
+                // replays them upstream. Stream-specific headers take precedence.
+                let hints = s.behavior_hints.get_or_insert_with(Default::default);
+                let proxy_headers = hints.proxy_headers.get_or_insert_with(Default::default);
+                for (name, value) in &self.headers {
+                    // Only inject if the stream doesn't already supply this header.
+                    proxy_headers
+                        .request
+                        .entry(name.clone())
+                        .or_insert_with(|| value.clone());
+                }
+                s
+            })
+            .collect()
+    }
+}
+
+/// A transformer that appends ClearKey `key_id`/`key` pairs to every stream's
+/// proxy URL so the Streaming_Proxy_Engine decrypts on playback (Req 24.4 DRM).
+///
+/// The DRM keys are appended as `key_id=<kid>&key=<key>` query parameters on
+/// the proxy URL. This transformer is applied **after** the proxy-link rewrite
+/// (i.e. after [`ProxyLinkTransformer`] in the pipeline) so it can append to
+/// the already-rewritten URL.
+pub struct DrmKeyTransformer {
+    /// ClearKey `KID -> key` pairs to append to every proxy URL.
+    key_ids: BTreeMap<String, String>,
+}
+
+impl DrmKeyTransformer {
+    /// Build a [`DrmKeyTransformer`] that appends the given ClearKey pairs.
+    pub fn new(key_ids: BTreeMap<String, String>) -> Self {
+        Self { key_ids }
+    }
+}
+
+impl Transformer for DrmKeyTransformer {
+    fn transform_streams(&self, streams: Vec<Stream>) -> Vec<Stream> {
+        if self.key_ids.is_empty() {
+            return streams;
+        }
+        streams
+            .into_iter()
+            .map(|mut s| {
+                if let Some(url) = s.url.take() {
+                    let mut new_url = url;
+                    for (key_id, key) in &self.key_ids {
+                        new_url.push_str(&format!("&key_id={key_id}&key={key}"));
+                    }
+                    s.url = Some(new_url);
+                }
+                s
+            })
+            .collect()
+    }
+}
+
+/// A transformer that filters the stream list to those whose release-name
+/// quality tokens satisfy the configured [`QualityPrefs`] constraints
+/// (Req 24.3, 38.1–38.6).
+///
+/// Streams whose `behaviorHints.filename` (or `description`) can be parsed as
+/// a release name are ranked and filtered by the quality ranker; streams with
+/// no parseable name are kept (they cannot be excluded on quality grounds).
+/// The output order follows the ranker's descending quality order.
+pub struct QualityFilterTransformer {
+    prefs: QualityPrefs,
+    /// Optional bandwidth estimate in bits per second (Req 38.5).
+    bandwidth_bps: Option<u64>,
+}
+
+impl QualityFilterTransformer {
+    /// Build a [`QualityFilterTransformer`] with the given preferences and
+    /// optional bandwidth estimate.
+    pub fn new(prefs: QualityPrefs, bandwidth_bps: Option<u64>) -> Self {
+        Self {
+            prefs,
+            bandwidth_bps,
+        }
+    }
+}
+
+impl Transformer for QualityFilterTransformer {
+    fn transform_streams(&self, streams: Vec<Stream>) -> Vec<Stream> {
+        if streams.is_empty() {
+            return streams;
+        }
+
+        // Partition streams into those with a parseable name (rankable) and
+        // those without (kept as-is, appended after the ranked set).
+        let mut rankable: Vec<(usize, RankedFile)> = Vec::new();
+        let mut unrankable: Vec<(usize, Stream)> = Vec::new();
+
+        for (idx, s) in streams.iter().enumerate() {
+            // Use filename from behaviorHints, then description, then name.
+            let name = s
+                .behavior_hints
+                .as_ref()
+                .and_then(|h| h.filename.as_deref())
+                .or_else(|| s.description.as_deref())
+                .or_else(|| s.name.as_deref())
+                .unwrap_or("");
+
+            if name.is_empty() {
+                unrankable.push((idx, s.clone()));
+            } else {
+                let size = s
+                    .behavior_hints
+                    .as_ref()
+                    .and_then(|h| h.video_size)
+                    .unwrap_or(-1);
+                rankable.push((idx, RankedFile::new(name, size)));
+            }
+        }
+
+        // Rank the rankable streams.
+        let ranked_files = QualityRanker::rank(
+            rankable.iter().map(|(_, f)| f.clone()).collect(),
+            &self.prefs,
+            self.bandwidth_bps,
+        );
+
+        // Map ranked files back to their original streams (by name match).
+        let mut result: Vec<Stream> = ranked_files
+            .into_iter()
+            .filter_map(|rf| {
+                // Find the original stream whose name matches this ranked file.
+                rankable.iter().find_map(|(orig_idx, _)| {
+                    let s = &streams[*orig_idx];
+                    let name = s
+                        .behavior_hints
+                        .as_ref()
+                        .and_then(|h| h.filename.as_deref())
+                        .or_else(|| s.description.as_deref())
+                        .or_else(|| s.name.as_deref())
+                        .unwrap_or("");
+                    if name == rf.name {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        // Append unrankable streams at the end.
+        result.extend(unrankable.into_iter().map(|(_, s)| s));
+        result
+    }
+}
+
+/// A composable transformer pipeline that applies a sequence of
+/// [`Transformer`]s in order (Req 24.3).
+///
+/// The pipeline is order-preserving: each transformer receives the output of
+/// the previous one, so the final result is the composition of all
+/// transformers in the order they were added.
+///
+/// ```rust,ignore
+/// let pipeline = ComposedTransformer::new(vec![
+///     Arc::new(HeaderInjectionTransformer::new(headers)),
+///     Arc::new(DrmKeyTransformer::new(keys)),
+///     Arc::new(QualityFilterTransformer::new(prefs, None)),
+/// ]);
+/// ```
+pub struct ComposedTransformer {
+    transformers: Vec<Arc<dyn Transformer>>,
+}
+
+impl ComposedTransformer {
+    /// Build a pipeline from an ordered list of transformers.
+    pub fn new(transformers: Vec<Arc<dyn Transformer>>) -> Self {
+        Self { transformers }
+    }
+
+    /// Append a transformer to the end of the pipeline.
+    pub fn push(mut self, transformer: Arc<dyn Transformer>) -> Self {
+        self.transformers.push(transformer);
+        self
+    }
+}
+
+impl Transformer for ComposedTransformer {
+    fn transform_streams(&self, mut streams: Vec<Stream>) -> Vec<Stream> {
+        for t in &self.transformers {
+            streams = t.transform_streams(streams);
+        }
+        streams
+    }
+
+    fn transform_metas(&self, mut metas: Vec<MetaPreview>) -> Vec<MetaPreview> {
+        for t in &self.transformers {
+            metas = t.transform_metas(metas);
+        }
+        metas
+    }
+
+    fn transform_subtitles(&self, mut subtitles: Vec<Subtitle>) -> Vec<Subtitle> {
+        for t in &self.transformers {
+            subtitles = t.transform_subtitles(subtitles);
+        }
+        subtitles
+    }
+
+    fn transform_meta(&self, mut meta: Meta) -> Meta {
+        for t in &self.transformers {
+            meta = t.transform_meta(meta);
+        }
+        meta
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper: rewrite a stream with an explicit codec + config
+// ---------------------------------------------------------------------------
+
+/// Rewrite a single upstream [`Stream`] so its playable URL flows through the
+/// stream-flow proxy (Req 24.4), **preserving the stream's `behaviorHints`
+/// unchanged** (Req 24.5).
+///
+/// This is the shared implementation used by both [`WrapAddon::rewrite_stream`]
+/// and [`ProxyLinkTransformer`].
+fn rewrite_stream_with(codec: &ProxyCodec, rewrite: &ProxyRewriteConfig, stream: Stream) -> Stream {
+    let upstream_url = match stream.url.as_deref() {
+        Some(u) if !u.is_empty() => u.to_string(),
+        // No proxyable URL (infoHash/ytId/externalUrl): leave it untouched.
+        _ => return stream,
+    };
+
+    let mut payload = ProxyPayload::new(upstream_url);
+    // Configured header injection (Req 24.4) ...
+    for (name, value) in &rewrite.inject_headers {
+        payload.headers.insert(name.clone(), value.clone());
+    }
+    // ... augmented by the stream's own request proxyHeaders so the engine
+    // replays them upstream (the hints themselves are preserved below).
+    if let Some(hints) = &stream.behavior_hints {
+        if let Some(proxy_headers) = &hints.proxy_headers {
+            for (name, value) in &proxy_headers.request {
+                payload.headers.insert(name.clone(), value.clone());
+            }
+        }
+    }
+
+    // Encryption (Req 24.4): seal the payload into an AES-CBC `d` link.
+    let proxy_url = match codec.encode_mediaflow(&payload) {
+        Ok(link) => rewrite.build_proxy_url(&link),
+        // Fail-safe: an encode error must not drop the stream; keep the
+        // original (the engine/proxy-link layer will reject a bad link).
+        Err(_) => return stream,
+    };
+
+    // Req 24.5: every other field — crucially `behavior_hints` — is carried
+    // over unchanged; only the URL is rewritten.
+    Stream {
+        url: Some(proxy_url),
+        ..stream
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP handlers for the Wrap addon (stremthru surface, Req 24)
+// ---------------------------------------------------------------------------
+
+/// Query parameters for a Wrap addon resource request.
+#[derive(serde::Deserialize)]
+pub struct WrapResourceQuery {
+    /// Optional extra args string (e.g. `genre=Action`).
+    #[serde(default)]
+    pub extra: Option<String>,
+}
+
+/// Path parameters for a Wrap addon resource request.
+#[derive(serde::Deserialize)]
+pub struct WrapResourcePath {
+    /// The resource name (`catalog`/`meta`/`stream`/`subtitles`).
+    pub resource: String,
+    /// The content type (`movie`/`series`/…).
+    pub content_type: String,
+    /// The content id.
+    pub id: String,
+}
+
+fn public_base_url(req: &HttpRequest, state: &AppState) -> String {
+    if let Some(base) = state
+        .config()
+        .stremio
+        .base_url
+        .as_deref()
+        .filter(|v| !v.is_empty())
+    {
+        return base.trim_end_matches('/').to_string();
+    }
+    format!(
+        "{}://{}",
+        req.connection_info().scheme(),
+        req.connection_info().host()
+    )
+}
+
+fn proxy_codec(state: &AppState) -> ProxyCodec {
+    let api_password = state
+        .config()
+        .auth
+        .api_password
+        .as_ref()
+        .map(|secret| secret.expose())
+        .unwrap_or_default();
+    let token_secret = state
+        .config()
+        .auth
+        .proxy_auth
+        .first()
+        .and_then(|entry| entry.split_once(':').map(|(_, pass)| pass))
+        .unwrap_or(api_password);
+    ProxyCodec::from_secrets(api_password, token_secret)
+}
+
+fn build_wrap_addon(req: &HttpRequest, state: &AppState) -> WrapAddon {
+    let name = state
+        .config()
+        .stremio
+        .addon_name
+        .clone()
+        .unwrap_or_else(|| "stream-flow Wrap".to_string());
+    let meta = WrapManifestMeta {
+        name,
+        ..WrapManifestMeta::default()
+    };
+    let upstreams = state
+        .config()
+        .stremio
+        .wrap_upstreams
+        .iter()
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| UpstreamAddon::new(url.clone()))
+        .collect();
+    WrapAddon::new(
+        meta,
+        upstreams,
+        Arc::clone(state.egress()),
+        proxy_codec(state),
+        ProxyRewriteConfig::new(public_base_url(req, state)),
+    )
+}
+
+pub async fn wrap_manifest_endpoint(req: HttpRequest, state: web::Data<AppState>) -> HttpResponse {
+    let addon = build_wrap_addon(&req, &state);
+    HttpResponse::Ok().json(addon.manifest().await)
+}
+
+pub async fn wrap_resource_endpoint(
+    path: web::Path<WrapResourcePath>,
+    query: web::Query<WrapResourceQuery>,
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> HttpResponse {
+    let addon = build_wrap_addon(&req, &state);
+    match path.resource.as_str() {
+        "catalog" => HttpResponse::Ok().json(
+            addon
+                .get_catalog(&path.content_type, &path.id, query.extra.as_deref())
+                .await,
+        ),
+        "stream" => HttpResponse::Ok().json(addon.get_streams(&path.content_type, &path.id).await),
+        "subtitles" => {
+            HttpResponse::Ok().json(addon.get_subtitles(&path.content_type, &path.id).await)
+        }
+        "meta" => match addon.get_meta(&path.content_type, &path.id).await {
+            Some(meta) => HttpResponse::Ok().json(meta),
+            None => HttpResponse::NotFound().json(super::types::StremioError::not_found("meta")),
+        },
+        other => HttpResponse::NotFound().json(super::types::StremioError::not_found(other)),
+    }
+}
+
+pub fn configure_wrap_addon_routes(cfg: &mut web::ServiceConfig) {
+    cfg.route(
+        "/stremio/wrap/manifest.json",
+        web::get().to(wrap_manifest_endpoint),
+    )
+    .route(
+        "/stremio/wrap/{resource}/{content_type}/{id}.json",
+        web::get().to(wrap_resource_endpoint),
+    );
 }
 
 /// Merge an upstream [`Resource`] into the aggregate, deduplicating by name and
@@ -471,9 +915,9 @@ mod tests {
     use crate::egress::OutboundClient;
     use crate::proxylink::{ProxyCodec, ProxyLink};
     use crate::stremio::types::Stream;
+    use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use serde_json::json;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -602,7 +1046,11 @@ mod tests {
         ]);
         let m = wrap.manifest().await;
         let names: Vec<&str> = m.resources.iter().map(|r| r.name.as_str()).collect();
-        assert_eq!(names, vec!["stream"], "only the reachable upstream contributes");
+        assert_eq!(
+            names,
+            vec!["stream"],
+            "only the reachable upstream contributes"
+        );
     }
 
     // -- Req 24.2/24.4/24.5: stream forward + aggregate + rewrite + hints ----
@@ -660,7 +1108,10 @@ mod tests {
         let hints = s0.behavior_hints.as_ref().expect("hints preserved");
         assert_eq!(hints.binge_group.as_deref(), Some("grp-1"));
         assert!(hints.not_web_ready);
-        assert_eq!(hints.country_whitelist, vec!["US".to_string(), "CA".to_string()]);
+        assert_eq!(
+            hints.country_whitelist,
+            vec!["US".to_string(), "CA".to_string()]
+        );
         assert_eq!(
             hints
                 .proxy_headers
@@ -676,7 +1127,10 @@ mod tests {
         // upstream proxyHeaders.request were injected into the proxied request.
         let payload = decode_proxy_url(&codec(), s0.url.as_ref().unwrap());
         assert_eq!(payload.url, "https://cdn1.example.com/a.mkv");
-        assert_eq!(payload.headers.get("Referer").unwrap(), "https://cdn1.example.com/");
+        assert_eq!(
+            payload.headers.get("Referer").unwrap(),
+            "https://cdn1.example.com/"
+        );
     }
 
     // -- Req 24.4: rewrite applies configured headers / transcode / DRM ------
@@ -777,7 +1231,11 @@ mod tests {
             UpstreamAddon::new(&ok.uri()),
         ]);
         let resp = wrap.get_streams("movie", "tt1").await;
-        assert_eq!(resp.streams.len(), 1, "only the reachable upstream contributes");
+        assert_eq!(
+            resp.streams.len(),
+            1,
+            "only the reachable upstream contributes"
+        );
         assert_eq!(
             decode_proxy_url(&codec(), resp.streams[0].url.as_ref().unwrap()).url,
             "https://cdn.example.com/v.mkv"
@@ -909,5 +1367,321 @@ mod tests {
         assert_eq!(out.url, None, "an infoHash stream keeps no http url");
         assert_eq!(out.info_hash.as_deref(), Some("abcd"));
         assert_eq!(out.file_index, Some(0));
+    }
+
+    // -- ProxyLinkTransformer: named composable proxy-link rewrite -----------
+
+    #[test]
+    fn proxy_link_transformer_rewrites_stream_urls() {
+        let transformer = ProxyLinkTransformer::new(codec(), rewrite_cfg());
+        let streams = vec![
+            Stream {
+                url: Some("https://cdn.example.com/a.mkv".into()),
+                name: Some("HD".into()),
+                ..Default::default()
+            },
+            Stream {
+                info_hash: Some("abc123".into()),
+                ..Default::default()
+            },
+        ];
+        let result = transformer.transform_streams(streams);
+        assert_eq!(result.len(), 2);
+        // First stream: URL rewritten to proxy link.
+        let u = result[0].url.as_ref().unwrap();
+        assert!(
+            u.starts_with("https://flow.example.com/proxy/stream?d="),
+            "url is a proxy link: {u}"
+        );
+        let payload = decode_proxy_url(&codec(), u);
+        assert_eq!(payload.url, "https://cdn.example.com/a.mkv");
+        // Second stream: infoHash stream left unchanged.
+        assert_eq!(result[1].url, None);
+        assert_eq!(result[1].info_hash.as_deref(), Some("abc123"));
+    }
+
+    // -- HeaderInjectionTransformer: injects headers into streams ------------
+
+    #[test]
+    fn header_injection_transformer_injects_headers() {
+        let mut headers = BTreeMap::new();
+        headers.insert("User-Agent".into(), "stream-flow/1.0".into());
+        headers.insert("Referer".into(), "https://example.com/".into());
+        let transformer = HeaderInjectionTransformer::new(headers);
+
+        let streams = vec![Stream {
+            url: Some("https://cdn.example.com/v.mkv".into()),
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams);
+        assert_eq!(result.len(), 1);
+        let hints = result[0].behavior_hints.as_ref().expect("hints set");
+        let req_headers = &hints
+            .proxy_headers
+            .as_ref()
+            .expect("proxy_headers set")
+            .request;
+        assert_eq!(req_headers.get("User-Agent").unwrap(), "stream-flow/1.0");
+        assert_eq!(req_headers.get("Referer").unwrap(), "https://example.com/");
+    }
+
+    #[test]
+    fn header_injection_does_not_override_stream_specific_headers() {
+        let mut inject = BTreeMap::new();
+        inject.insert("User-Agent".into(), "injected".into());
+        let transformer = HeaderInjectionTransformer::new(inject);
+
+        // Stream already has a User-Agent in its proxyHeaders.
+        let mut stream = Stream {
+            url: Some("https://cdn.example.com/v.mkv".into()),
+            ..Default::default()
+        };
+        let mut hints = crate::stremio::types::StreamBehaviorHints::default();
+        let mut proxy_headers = crate::stremio::types::ProxyHeaders::default();
+        proxy_headers
+            .request
+            .insert("User-Agent".into(), "stream-specific".into());
+        hints.proxy_headers = Some(proxy_headers);
+        stream.behavior_hints = Some(hints);
+
+        let result = transformer.transform_streams(vec![stream]);
+        let req_headers = &result[0]
+            .behavior_hints
+            .as_ref()
+            .unwrap()
+            .proxy_headers
+            .as_ref()
+            .unwrap()
+            .request;
+        // Stream-specific header takes precedence.
+        assert_eq!(req_headers.get("User-Agent").unwrap(), "stream-specific");
+    }
+
+    #[test]
+    fn header_injection_empty_headers_is_identity() {
+        let transformer = HeaderInjectionTransformer::new(BTreeMap::new());
+        let streams = vec![Stream {
+            url: Some("https://cdn.example.com/v.mkv".into()),
+            name: Some("HD".into()),
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams.clone());
+        assert_eq!(result[0].url, streams[0].url);
+        assert_eq!(result[0].behavior_hints, streams[0].behavior_hints);
+    }
+
+    // -- DrmKeyTransformer: appends DRM key params to proxy URLs -------------
+
+    #[test]
+    fn drm_key_transformer_appends_key_params() {
+        let mut keys = BTreeMap::new();
+        keys.insert("kid1".into(), "key1value".into());
+        keys.insert("kid2".into(), "key2value".into());
+        let transformer = DrmKeyTransformer::new(keys);
+
+        let streams = vec![Stream {
+            url: Some("https://flow.example.com/proxy/stream?d=abc123".into()),
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams);
+        let u = result[0].url.as_ref().unwrap();
+        assert!(u.contains("key_id=kid1"), "key_id=kid1 present: {u}");
+        assert!(u.contains("key=key1value"), "key=key1value present: {u}");
+        assert!(u.contains("key_id=kid2"), "key_id=kid2 present: {u}");
+        assert!(u.contains("key=key2value"), "key=key2value present: {u}");
+        // Original d param preserved.
+        assert!(u.contains("d=abc123"), "original d param preserved: {u}");
+    }
+
+    #[test]
+    fn drm_key_transformer_empty_keys_is_identity() {
+        let transformer = DrmKeyTransformer::new(BTreeMap::new());
+        let url = "https://flow.example.com/proxy/stream?d=abc123";
+        let streams = vec![Stream {
+            url: Some(url.into()),
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams);
+        assert_eq!(result[0].url.as_deref(), Some(url));
+    }
+
+    #[test]
+    fn drm_key_transformer_skips_streams_without_url() {
+        let mut keys = BTreeMap::new();
+        keys.insert("kid1".into(), "key1".into());
+        let transformer = DrmKeyTransformer::new(keys);
+        let streams = vec![Stream {
+            info_hash: Some("abc".into()),
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams);
+        assert_eq!(result[0].url, None);
+        assert_eq!(result[0].info_hash.as_deref(), Some("abc"));
+    }
+
+    // -- QualityFilterTransformer: filters by quality prefs ------------------
+
+    #[test]
+    fn quality_filter_transformer_filters_by_max_resolution() {
+        use crate::quality::Resolution;
+        let prefs = QualityPrefs {
+            max_resolution: Some(Resolution::R1080p),
+            ..Default::default()
+        };
+        let transformer = QualityFilterTransformer::new(prefs, None);
+
+        let streams = vec![
+            Stream {
+                url: Some("https://cdn.example.com/4k.mkv".into()),
+                name: Some("4K".into()),
+                behavior_hints: Some(crate::stremio::types::StreamBehaviorHints {
+                    filename: Some("Movie.2160p.BluRay.x265".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            Stream {
+                url: Some("https://cdn.example.com/1080p.mkv".into()),
+                name: Some("1080p".into()),
+                behavior_hints: Some(crate::stremio::types::StreamBehaviorHints {
+                    filename: Some("Movie.1080p.WEB-DL.x264".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        ];
+        let result = transformer.transform_streams(streams);
+        // 4K stream excluded (above max_resolution=1080p).
+        assert_eq!(result.len(), 1, "4K stream excluded");
+        assert_eq!(result[0].name.as_deref(), Some("1080p"));
+    }
+
+    #[test]
+    fn quality_filter_transformer_keeps_streams_without_parseable_name() {
+        let prefs = QualityPrefs {
+            max_resolution: Some(crate::quality::Resolution::R720p),
+            ..Default::default()
+        };
+        let transformer = QualityFilterTransformer::new(prefs, None);
+
+        let streams = vec![Stream {
+            url: Some("https://cdn.example.com/v.mkv".into()),
+            // No name/description/filename — cannot be ranked.
+            ..Default::default()
+        }];
+        let result = transformer.transform_streams(streams);
+        // Unrankable stream is kept.
+        assert_eq!(result.len(), 1);
+    }
+
+    // -- ComposedTransformer: order-preserving pipeline ----------------------
+
+    #[test]
+    fn composed_transformer_applies_in_order() {
+        // Pipeline: inject header, then append DRM key.
+        let mut headers = BTreeMap::new();
+        headers.insert("X-Test".into(), "injected".into());
+        let mut keys = BTreeMap::new();
+        keys.insert("kid1".into(), "key1".into());
+
+        let pipeline = ComposedTransformer::new(vec![
+            Arc::new(HeaderInjectionTransformer::new(headers)),
+            Arc::new(DrmKeyTransformer::new(keys)),
+        ]);
+
+        let streams = vec![Stream {
+            url: Some("https://flow.example.com/proxy/stream?d=abc".into()),
+            ..Default::default()
+        }];
+        let result = pipeline.transform_streams(streams);
+        assert_eq!(result.len(), 1);
+        // DRM key appended.
+        let u = result[0].url.as_ref().unwrap();
+        assert!(u.contains("key_id=kid1"), "DRM key appended: {u}");
+        // Header injected.
+        let req_headers = &result[0]
+            .behavior_hints
+            .as_ref()
+            .unwrap()
+            .proxy_headers
+            .as_ref()
+            .unwrap()
+            .request;
+        assert_eq!(req_headers.get("X-Test").unwrap(), "injected");
+    }
+
+    #[test]
+    fn composed_transformer_empty_pipeline_is_identity() {
+        let pipeline = ComposedTransformer::new(vec![]);
+        let streams = vec![Stream {
+            url: Some("https://cdn.example.com/v.mkv".into()),
+            name: Some("HD".into()),
+            ..Default::default()
+        }];
+        let result = pipeline.transform_streams(streams.clone());
+        assert_eq!(result[0].url, streams[0].url);
+        assert_eq!(result[0].name, streams[0].name);
+    }
+
+    #[test]
+    fn composed_transformer_push_appends_to_pipeline() {
+        let mut keys1 = BTreeMap::new();
+        keys1.insert("kid1".into(), "key1".into());
+        let mut keys2 = BTreeMap::new();
+        keys2.insert("kid2".into(), "key2".into());
+
+        let pipeline = ComposedTransformer::new(vec![Arc::new(DrmKeyTransformer::new(keys1))])
+            .push(Arc::new(DrmKeyTransformer::new(keys2)));
+
+        let streams = vec![Stream {
+            url: Some("https://flow.example.com/proxy/stream?d=abc".into()),
+            ..Default::default()
+        }];
+        let result = pipeline.transform_streams(streams);
+        let u = result[0].url.as_ref().unwrap();
+        assert!(u.contains("key_id=kid1"), "first DRM key present: {u}");
+        assert!(u.contains("key_id=kid2"), "second DRM key present: {u}");
+    }
+
+    // -- Transformer chain composability and order-preservation --------------
+
+    #[test]
+    fn transformer_chain_is_composable_and_order_preserving() {
+        // Verify that a pipeline of [HeaderInjection, ProxyLink, DrmKey]
+        // produces the correct result: headers injected, URL rewritten, DRM appended.
+        let mut headers = BTreeMap::new();
+        headers.insert("Referer".into(), "https://source.example.com/".into());
+        let mut keys = BTreeMap::new();
+        keys.insert("kid-drm".into(), "drm-key-value".into());
+
+        let pipeline = ComposedTransformer::new(vec![
+            Arc::new(HeaderInjectionTransformer::new(headers)),
+            Arc::new(ProxyLinkTransformer::new(codec(), rewrite_cfg())),
+            Arc::new(DrmKeyTransformer::new(keys)),
+        ]);
+
+        let streams = vec![Stream {
+            url: Some("https://cdn.example.com/movie.mkv".into()),
+            name: Some("HD".into()),
+            ..Default::default()
+        }];
+        let result = pipeline.transform_streams(streams);
+        assert_eq!(result.len(), 1);
+
+        let u = result[0].url.as_ref().unwrap();
+        // URL is a proxy link (ProxyLinkTransformer ran).
+        assert!(
+            u.starts_with("https://flow.example.com/proxy/stream?d="),
+            "proxy link: {u}"
+        );
+        // DRM key appended (DrmKeyTransformer ran after ProxyLinkTransformer).
+        assert!(u.contains("key_id=kid-drm"), "DRM key appended: {u}");
+        // Referer header injected into the payload (HeaderInjectionTransformer ran first).
+        let payload = decode_proxy_url(&codec(), u);
+        assert_eq!(payload.url, "https://cdn.example.com/movie.mkv");
+        assert_eq!(
+            payload.headers.get("Referer").unwrap(),
+            "https://source.example.com/"
+        );
     }
 }

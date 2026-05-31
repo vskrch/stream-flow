@@ -340,7 +340,9 @@ pub fn compute_response_metadata(
 /// [`AppError::bad_request`] (Req 47.4).
 fn parse_u64(s: &str, raw: &str) -> Result<u64, AppError> {
     s.parse::<u64>().map_err(|_| {
-        AppError::bad_request(format!("invalid byte position {s:?} in Range header {raw:?}"))
+        AppError::bad_request(format!(
+            "invalid byte position {s:?} in Range header {raw:?}"
+        ))
     })
 }
 
@@ -364,26 +366,47 @@ mod tests {
 
     #[test]
     fn parse_open_ended_is_from_offset() {
-        assert_eq!(RangeSpec::parse("bytes=0-").unwrap(), RangeSpec::FromOffset(0));
-        assert_eq!(RangeSpec::parse("bytes=500-").unwrap(), RangeSpec::FromOffset(500));
+        assert_eq!(
+            RangeSpec::parse("bytes=0-").unwrap(),
+            RangeSpec::FromOffset(0)
+        );
+        assert_eq!(
+            RangeSpec::parse("bytes=500-").unwrap(),
+            RangeSpec::FromOffset(500)
+        );
     }
 
     #[test]
     fn parse_closed_is_inclusive() {
-        assert_eq!(RangeSpec::parse("bytes=0-499").unwrap(), RangeSpec::Inclusive(0, 499));
-        assert_eq!(RangeSpec::parse("bytes=200-999").unwrap(), RangeSpec::Inclusive(200, 999));
+        assert_eq!(
+            RangeSpec::parse("bytes=0-499").unwrap(),
+            RangeSpec::Inclusive(0, 499)
+        );
+        assert_eq!(
+            RangeSpec::parse("bytes=200-999").unwrap(),
+            RangeSpec::Inclusive(200, 999)
+        );
     }
 
     #[test]
     fn parse_suffix_is_suffix() {
-        assert_eq!(RangeSpec::parse("bytes=-500").unwrap(), RangeSpec::Suffix(500));
+        assert_eq!(
+            RangeSpec::parse("bytes=-500").unwrap(),
+            RangeSpec::Suffix(500)
+        );
         assert_eq!(RangeSpec::parse("bytes=-1").unwrap(), RangeSpec::Suffix(1));
     }
 
     #[test]
     fn parse_is_unit_case_insensitive_and_tolerates_whitespace() {
-        assert_eq!(RangeSpec::parse("BYTES=0-10").unwrap(), RangeSpec::Inclusive(0, 10));
-        assert_eq!(RangeSpec::parse("  bytes = 0 - 10 ").unwrap(), RangeSpec::Inclusive(0, 10));
+        assert_eq!(
+            RangeSpec::parse("BYTES=0-10").unwrap(),
+            RangeSpec::Inclusive(0, 10)
+        );
+        assert_eq!(
+            RangeSpec::parse("  bytes = 0 - 10 ").unwrap(),
+            RangeSpec::Inclusive(0, 10)
+        );
     }
 
     // -- Malformed headers map onto the BadRequest taxonomy (Req 47.4) ------
@@ -420,7 +443,10 @@ mod tests {
 
     #[test]
     fn parse_rejects_bare_dash_and_multi_range() {
-        assert_eq!(RangeSpec::parse("bytes=-").unwrap_err().category, ErrorCategory::BadRequest);
+        assert_eq!(
+            RangeSpec::parse("bytes=-").unwrap_err().category,
+            ErrorCategory::BadRequest
+        );
         assert_eq!(
             RangeSpec::parse("bytes=0-10,20-30").unwrap_err().category,
             ErrorCategory::BadRequest
@@ -440,7 +466,14 @@ mod tests {
     fn resolve_open_ended_spans_offset_to_last_byte() {
         // bytes=N- -> N..=S-1 (Req 37.15).
         let r = RangeSpec::FromOffset(100).resolve(1000).unwrap().unwrap();
-        assert_eq!(r, ResolvedRange { start: 100, end: 999, total: 1000 });
+        assert_eq!(
+            r,
+            ResolvedRange {
+                start: 100,
+                end: 999,
+                total: 1000
+            }
+        );
         assert_eq!(r.length(), 900);
         assert_eq!(r.content_range(), "bytes 100-999/1000");
     }
@@ -449,17 +482,41 @@ mod tests {
     fn resolve_open_ended_from_zero_covers_everything_as_206() {
         // bytes=0- is still a 206 (Req 37.15), not a 200.
         let r = RangeSpec::FromOffset(0).resolve(1000).unwrap().unwrap();
-        assert_eq!(r, ResolvedRange { start: 0, end: 999, total: 1000 });
+        assert_eq!(
+            r,
+            ResolvedRange {
+                start: 0,
+                end: 999,
+                total: 1000
+            }
+        );
         assert_eq!(r.content_range(), "bytes 0-999/1000");
     }
 
     #[test]
     fn resolve_closed_range_clamps_end_to_last_byte() {
         let r = RangeSpec::Inclusive(0, 499).resolve(1000).unwrap().unwrap();
-        assert_eq!(r, ResolvedRange { start: 0, end: 499, total: 1000 });
+        assert_eq!(
+            r,
+            ResolvedRange {
+                start: 0,
+                end: 499,
+                total: 1000
+            }
+        );
         // last-byte-pos beyond the resource is clamped to S-1 (RFC 7233).
-        let clamped = RangeSpec::Inclusive(900, 5000).resolve(1000).unwrap().unwrap();
-        assert_eq!(clamped, ResolvedRange { start: 900, end: 999, total: 1000 });
+        let clamped = RangeSpec::Inclusive(900, 5000)
+            .resolve(1000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            clamped,
+            ResolvedRange {
+                start: 900,
+                end: 999,
+                total: 1000
+            }
+        );
         assert_eq!(clamped.length(), 100);
     }
 
@@ -467,7 +524,14 @@ mod tests {
     fn resolve_suffix_spans_last_n_bytes() {
         // bytes=-N -> max(0, S-N)..=S-1 (Req 37.16).
         let r = RangeSpec::Suffix(500).resolve(1000).unwrap().unwrap();
-        assert_eq!(r, ResolvedRange { start: 500, end: 999, total: 1000 });
+        assert_eq!(
+            r,
+            ResolvedRange {
+                start: 500,
+                end: 999,
+                total: 1000
+            }
+        );
         assert_eq!(r.length(), 500);
         assert_eq!(r.content_range(), "bytes 500-999/1000");
     }
@@ -476,30 +540,58 @@ mod tests {
     fn resolve_suffix_larger_than_resource_covers_everything() {
         // A suffix longer than the resource selects the whole representation.
         let r = RangeSpec::Suffix(5000).resolve(1000).unwrap().unwrap();
-        assert_eq!(r, ResolvedRange { start: 0, end: 999, total: 1000 });
+        assert_eq!(
+            r,
+            ResolvedRange {
+                start: 0,
+                end: 999,
+                total: 1000
+            }
+        );
         assert_eq!(r.content_range(), "bytes 0-999/1000");
     }
 
     #[test]
     fn resolve_start_at_or_beyond_size_is_unsatisfiable() {
         // start == S (Req 5.5).
-        assert_eq!(RangeSpec::FromOffset(1000).resolve(1000), Err(Unsatisfiable { total: 1000 }));
+        assert_eq!(
+            RangeSpec::FromOffset(1000).resolve(1000),
+            Err(Unsatisfiable { total: 1000 })
+        );
         // start > S.
-        assert_eq!(RangeSpec::FromOffset(2000).resolve(1000), Err(Unsatisfiable { total: 1000 }));
+        assert_eq!(
+            RangeSpec::FromOffset(2000).resolve(1000),
+            Err(Unsatisfiable { total: 1000 })
+        );
         // closed range starting past the end.
-        assert_eq!(RangeSpec::Inclusive(1000, 1100).resolve(1000), Err(Unsatisfiable { total: 1000 }));
+        assert_eq!(
+            RangeSpec::Inclusive(1000, 1100).resolve(1000),
+            Err(Unsatisfiable { total: 1000 })
+        );
     }
 
     #[test]
     fn resolve_zero_length_suffix_is_unsatisfiable() {
-        assert_eq!(RangeSpec::Suffix(0).resolve(1000), Err(Unsatisfiable { total: 1000 }));
+        assert_eq!(
+            RangeSpec::Suffix(0).resolve(1000),
+            Err(Unsatisfiable { total: 1000 })
+        );
     }
 
     #[test]
     fn resolve_any_range_on_empty_resource_is_unsatisfiable() {
-        assert_eq!(RangeSpec::FromOffset(0).resolve(0), Err(Unsatisfiable { total: 0 }));
-        assert_eq!(RangeSpec::Inclusive(0, 0).resolve(0), Err(Unsatisfiable { total: 0 }));
-        assert_eq!(RangeSpec::Suffix(10).resolve(0), Err(Unsatisfiable { total: 0 }));
+        assert_eq!(
+            RangeSpec::FromOffset(0).resolve(0),
+            Err(Unsatisfiable { total: 0 })
+        );
+        assert_eq!(
+            RangeSpec::Inclusive(0, 0).resolve(0),
+            Err(Unsatisfiable { total: 0 })
+        );
+        assert_eq!(
+            RangeSpec::Suffix(10).resolve(0),
+            Err(Unsatisfiable { total: 0 })
+        );
     }
 
     #[test]
@@ -524,7 +616,14 @@ mod tests {
         assert_eq!(meta.content_length, Some(100));
         assert!(meta.accept_ranges);
         assert!(meta.include_body);
-        assert_eq!(meta.range, Some(ResolvedRange { start: 100, end: 199, total: 1000 }));
+        assert_eq!(
+            meta.range,
+            Some(ResolvedRange {
+                start: 100,
+                end: 199,
+                total: 1000
+            })
+        );
     }
 
     #[test]
@@ -602,12 +701,24 @@ mod tests {
     #[test]
     fn accept_ranges_advertised_whenever_size_known() {
         // Full body, size known.
-        assert!(compute_response_metadata(&RangeSpec::Full, Some(1000), false).unwrap().accept_ranges);
+        assert!(
+            compute_response_metadata(&RangeSpec::Full, Some(1000), false)
+                .unwrap()
+                .accept_ranges
+        );
         // Partial, size known.
         let spec = RangeSpec::parse("bytes=0-99").unwrap();
-        assert!(compute_response_metadata(&spec, Some(1000), false).unwrap().accept_ranges);
+        assert!(
+            compute_response_metadata(&spec, Some(1000), false)
+                .unwrap()
+                .accept_ranges
+        );
         // HEAD, size known.
-        assert!(compute_response_metadata(&RangeSpec::Full, Some(1000), true).unwrap().accept_ranges);
+        assert!(
+            compute_response_metadata(&RangeSpec::Full, Some(1000), true)
+                .unwrap()
+                .accept_ranges
+        );
     }
 
     #[test]

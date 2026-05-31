@@ -192,7 +192,10 @@ mod tests {
         let extractor = VidozaExtractor::new(http(EgressPolicy::FailOpen));
         let page = Url::parse(&format!("{}/watch", server.uri())).unwrap();
         let extra = ExtraParams::with_headers([("Cookie".to_string(), "sess=1".to_string())]);
-        let result = extractor.extract(&page, &extra).await.expect("extraction succeeds");
+        let result = extractor
+            .extract(&page, &extra)
+            .await
+            .expect("extraction succeeds");
         assert_eq!(result.headers.get("Cookie"), Some(&"sess=1".to_string()));
         assert!(result.headers.contains_key("Referer"));
     }

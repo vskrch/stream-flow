@@ -33,9 +33,7 @@
 pub enum PathPrefixError {
     /// The prefix contained a character that is not permitted in a URL path
     /// prefix (whitespace, a control character, or a URL delimiter).
-    #[error(
-        "value `{value}` contains a forbidden {kind} character {ch:?} at byte offset {index}"
-    )]
+    #[error("value `{value}` contains a forbidden {kind} character {ch:?} at byte offset {index}")]
     ForbiddenChar {
         /// The full offending prefix value (Req 31.5: "report the offending value").
         value: String,
@@ -208,11 +206,17 @@ mod tests {
     fn rejects_tab_and_newline() {
         assert!(matches!(
             normalize_path_prefix("/api\tv1").unwrap_err(),
-            PathPrefixError::ForbiddenChar { kind: "whitespace", .. }
+            PathPrefixError::ForbiddenChar {
+                kind: "whitespace",
+                ..
+            }
         ));
         assert!(matches!(
             normalize_path_prefix("/api\nv1").unwrap_err(),
-            PathPrefixError::ForbiddenChar { kind: "whitespace", .. }
+            PathPrefixError::ForbiddenChar {
+                kind: "whitespace",
+                ..
+            }
         ));
     }
 
@@ -221,19 +225,28 @@ mod tests {
         let err = normalize_path_prefix("/api\u{0007}v1").unwrap_err();
         assert!(matches!(
             err,
-            PathPrefixError::ForbiddenChar { kind: "control", .. }
+            PathPrefixError::ForbiddenChar {
+                kind: "control",
+                ..
+            }
         ));
     }
 
     #[test]
     fn rejects_url_delimiters() {
         for bad in [
-            "/api?x", "/api#x", "/a[b]", "/a@b", "/a:b", "/a!b", "/a$b", "/a&b",
-            "/a'b", "/a(b)", "/a*b", "/a+b", "/a,b", "/a;b", "/a=b",
+            "/api?x", "/api#x", "/a[b]", "/a@b", "/a:b", "/a!b", "/a$b", "/a&b", "/a'b", "/a(b)",
+            "/a*b", "/a+b", "/a,b", "/a;b", "/a=b",
         ] {
             let err = normalize_path_prefix(bad).unwrap_err();
             assert!(
-                matches!(err, PathPrefixError::ForbiddenChar { kind: "URL delimiter", .. }),
+                matches!(
+                    err,
+                    PathPrefixError::ForbiddenChar {
+                        kind: "URL delimiter",
+                        ..
+                    }
+                ),
                 "expected {bad:?} to be rejected as a URL delimiter, got {err:?}"
             );
         }

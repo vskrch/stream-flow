@@ -19,11 +19,11 @@ use tokio::sync::RwLock;
 use url::Url;
 
 use crate::egress::OutboundClient;
-use crate::errors::{AppError};
+use crate::errors::AppError;
 use crate::proxy::range::RangeSpec;
 use crate::proxy::source::{UpstreamBody, UpstreamSource};
 use crate::store::fallback::StoreFallbackChain;
-use crate::store::{GenerateLinkData, GenerateLinkParams, Ctx, Store, StoreName};
+use crate::store::{Ctx, GenerateLinkData, GenerateLinkParams, Store, StoreName};
 
 /// Stores that bind direct links to the requesting IP (Req 18.3).
 /// These stores MUST receive the Egress_IP on link generation.
@@ -175,10 +175,7 @@ impl DebridSource {
 impl UpstreamSource for DebridSource {
     fn total_size(&self) -> Option<u64> {
         // Use try_read to avoid blocking; return None if locked.
-        self.total_size
-            .try_read()
-            .ok()
-            .and_then(|guard| *guard)
+        self.total_size.try_read().ok().and_then(|guard| *guard)
     }
 
     fn content_type(&self) -> Option<&str> {
@@ -207,9 +204,7 @@ impl UpstreamSource for DebridSource {
 
         let resp = builder.send().await.map_err(|e| {
             let host = url.host_str().unwrap_or("<unknown>");
-            AppError::upstream_unavailable(
-                format!("upstream request to {host} failed: {e}"),
-            )
+            AppError::upstream_unavailable(format!("upstream request to {host} failed: {e}"))
         })?;
 
         let body = UpstreamBody::from_response(resp);
@@ -271,12 +266,11 @@ impl UpstreamSource for DebridSource {
                             .await;
                             match fallback_result {
                                 Ok(data) => {
-                                    let new_url =
-                                        Url::parse(&data.link).map_err(|e| {
-                                            AppError::unknown(format!(
-                                                "fallback store returned invalid link URL: {e}"
-                                            ))
-                                        })?;
+                                    let new_url = Url::parse(&data.link).map_err(|e| {
+                                        AppError::unknown(format!(
+                                            "fallback store returned invalid link URL: {e}"
+                                        ))
+                                    })?;
                                     *self.current_link.write().await = new_url;
                                     Ok(())
                                 }
@@ -313,7 +307,7 @@ mod tests {
     use crate::store::fallback::StoreBreakerSet;
     use crate::store::types::*;
     use std::collections::{HashMap, VecDeque};
-    use std::net::{Ipv4Addr};
+    use std::net::Ipv4Addr;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
     use std::time::Duration;
@@ -487,9 +481,10 @@ mod tests {
             self.received.lock().unwrap().push(p.client_ip);
             match self.outcomes.lock().unwrap().pop_front() {
                 Some(Outcome::Link(link)) => Ok(GenerateLinkData { link }),
-                Some(Outcome::IpRestricted) => {
-                    Err(AppError::ip_restricted_for(self.name.as_str(), "IP not allowed"))
-                }
+                Some(Outcome::IpRestricted) => Err(AppError::ip_restricted_for(
+                    self.name.as_str(),
+                    "IP not allowed",
+                )),
                 Some(Outcome::Unauthorized) => {
                     Err(AppError::unauthorized_for(self.name.as_str(), "bad token"))
                 }
@@ -581,7 +576,11 @@ mod tests {
 
         let ips = store.received_ips();
         assert_eq!(ips, vec![Some(egress)]);
-        assert_ne!(ips[0], Some(client_ip), "Client_IP must never reach the store");
+        assert_ne!(
+            ips[0],
+            Some(client_ip),
+            "Client_IP must never reach the store"
+        );
     }
 
     // -- generate_link omits the IP for non-IP-binding stores (Req 18.4) -----
@@ -637,7 +636,10 @@ mod tests {
         .expect("first attempt succeeds");
 
         assert_eq!(data.link, "https://cdn.example/ok.mkv");
-        assert!(!refreshed.load(Ordering::SeqCst), "no refresh when the first try works");
+        assert!(
+            !refreshed.load(Ordering::SeqCst),
+            "no refresh when the first try works"
+        );
         assert_eq!(store.received_ips().len(), 1);
     }
 
@@ -672,9 +674,15 @@ mod tests {
         .expect("retry with refreshed Egress_IP succeeds");
 
         assert_eq!(data.link, "https://cdn.example/after-regen.mkv");
-        assert!(refreshed.load(Ordering::SeqCst), "the refresh closure ran once");
+        assert!(
+            refreshed.load(Ordering::SeqCst),
+            "the refresh closure ran once"
+        );
         // Exactly two attempts: the original IP, then the refreshed Egress_IP.
-        assert_eq!(store.received_ips(), vec![Some(first_ip), Some(refreshed_ip)]);
+        assert_eq!(
+            store.received_ips(),
+            vec![Some(first_ip), Some(refreshed_ip)]
+        );
     }
 
     // -- generate_link_with_retry: non-IP error returns without retry (18.7) -
@@ -701,7 +709,10 @@ mod tests {
         // (Req 18.7).
         assert_eq!(err.category, ErrorCategory::Unauthorized);
         assert_eq!(err.store.as_deref(), Some("realdebrid"));
-        assert!(!refreshed.load(Ordering::SeqCst), "no IP refresh on a non-IP error");
+        assert!(
+            !refreshed.load(Ordering::SeqCst),
+            "no IP refresh on a non-IP error"
+        );
         // Only the single original attempt was made (no retry).
         assert_eq!(store.received_ips().len(), 1);
     }
@@ -743,12 +754,18 @@ mod tests {
             ctx(),
         );
 
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/stale.mkv");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/stale.mkv"
+        );
 
         source.renew().await.expect("renew re-generates the link");
 
         // The link was transparently regenerated (Req 37.6) …
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/fresh.mkv");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/fresh.mkv"
+        );
         // … bound to the verified Egress_IP for this IP-locked store (Req 18.3).
         assert_eq!(store.received_ips(), vec![Some(ip("203.0.113.7"))]);
     }
@@ -773,9 +790,15 @@ mod tests {
             ctx(),
         );
 
-        source.renew().await.expect("renew retries once and succeeds");
+        source
+            .renew()
+            .await
+            .expect("renew retries once and succeeds");
 
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/regen.mkv");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/regen.mkv"
+        );
         // Both attempts bound to the current Egress_IP (the one-time regen).
         assert_eq!(
             store.received_ips(),
@@ -800,11 +823,17 @@ mod tests {
             ctx(),
         );
 
-        source.renew().await.expect("renew succeeds for non-IP store");
+        source
+            .renew()
+            .await
+            .expect("renew succeeds for non-IP store");
 
         // Even though a verified Egress_IP exists, a non-IP-binding store gets
         // `None` (Req 18.4).
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/ad.mkv");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/ad.mkv"
+        );
         assert_eq!(store.received_ips(), vec![None]);
     }
 
@@ -837,12 +866,26 @@ mod tests {
         )
         .with_fallback_chain(chain);
 
-        source.renew().await.expect("renew falls back to the next store");
+        source
+            .renew()
+            .await
+            .expect("renew falls back to the next store");
 
         // The fallback store's fresh link is now current (Req 37.7).
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/fallback.mkv");
-        assert_eq!(primary.received_ips().len(), 1, "primary tried exactly once");
-        assert_eq!(fallback.received_ips().len(), 1, "fallback tried exactly once");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/fallback.mkv"
+        );
+        assert_eq!(
+            primary.received_ips().len(),
+            1,
+            "primary tried exactly once"
+        );
+        assert_eq!(
+            fallback.received_ips().len(),
+            1,
+            "fallback tried exactly once"
+        );
     }
 
     // -- renew: no fallback chain → primary failure surfaces (Req 37.6) ------
@@ -866,6 +909,9 @@ mod tests {
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         assert_eq!(err.store.as_deref(), Some("realdebrid"));
         // The current link is left untouched on a failed renew.
-        assert_eq!(source.current_link().await.as_str(), "https://cdn.example/stale.mkv");
+        assert_eq!(
+            source.current_link().await.as_str(),
+            "https://cdn.example/stale.mkv"
+        );
     }
 }

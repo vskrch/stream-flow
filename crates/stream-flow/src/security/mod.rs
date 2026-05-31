@@ -74,13 +74,11 @@ pub fn resolve_and_guard(host: &str, cfg: &SecurityConfig) -> Result<IpAddr, App
 /// private/loopback/link-local address is denied unless
 /// [`allow_private_ranges`](SecurityConfig::allow_private_ranges) is set
 /// (Req 46.1).
-pub fn guard_resolved_ip(
-    ip: IpAddr,
-    host: &str,
-    cfg: &SecurityConfig,
-) -> Result<IpAddr, AppError> {
+pub fn guard_resolved_ip(ip: IpAddr, host: &str, cfg: &SecurityConfig) -> Result<IpAddr, AppError> {
     if list_matches(&cfg.ssrf_denylist, ip, host) {
-        return Err(AppError::forbidden(format!("target host is denylisted: {host}")));
+        return Err(AppError::forbidden(format!(
+            "target host is denylisted: {host}"
+        )));
     }
 
     if !cfg.ssrf_allowlist.is_empty() {
@@ -253,9 +251,8 @@ where
     let mut buf: Vec<u8> = Vec::new();
 
     while let Some(item) = stream.next().await {
-        let chunk = item.map_err(|e| {
-            AppError::upstream_unavailable(format!("upstream read failed: {e}"))
-        })?;
+        let chunk =
+            item.map_err(|e| AppError::upstream_unavailable(format!("upstream read failed: {e}")))?;
         if buf.len().saturating_add(chunk.len()) > cap {
             return Err(AppError::payload_too_large(format!(
                 "buffered upstream body exceeds the {cap}-byte cap"
@@ -302,7 +299,9 @@ pub fn validate_url(raw: &str) -> Result<Url, AppError> {
 /// empty names, embedded spaces, and CR/LF header-injection attempts.
 pub fn validate_header_name(name: &str) -> Result<(), AppError> {
     if name.is_empty() {
-        return Err(AppError::bad_request("header name must not be empty".to_string()));
+        return Err(AppError::bad_request(
+            "header name must not be empty".to_string(),
+        ));
     }
     if !name.bytes().all(is_tchar) {
         return Err(AppError::bad_request(format!(
@@ -342,8 +341,24 @@ pub fn validate_param(value: &str) -> Result<(), AppError> {
 
 /// RFC 7230 `tchar`: the set of bytes allowed in a header field name / token.
 fn is_tchar(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || matches!(b, b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*'
-        | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~')
+    b.is_ascii_alphanumeric()
+        || matches!(
+            b,
+            b'!' | b'#'
+                | b'$'
+                | b'%'
+                | b'&'
+                | b'\''
+                | b'*'
+                | b'+'
+                | b'-'
+                | b'.'
+                | b'^'
+                | b'_'
+                | b'`'
+                | b'|'
+                | b'~'
+        )
 }
 
 /// A byte that must never appear in a header value or parameter: any C0
@@ -376,7 +391,11 @@ mod tests {
     fn denies_private_ipv4_ranges_when_not_allowlisted() {
         for addr in ["10.0.0.1", "172.16.0.1", "172.31.255.254", "192.168.1.1"] {
             let err = guard_resolved_ip(ip(addr), addr, &cfg()).unwrap_err();
-            assert_eq!(err.category, ErrorCategory::Forbidden, "{addr} must be denied");
+            assert_eq!(
+                err.category,
+                ErrorCategory::Forbidden,
+                "{addr} must be denied"
+            );
         }
     }
 
@@ -409,7 +428,10 @@ mod tests {
     #[test]
     fn allows_public_addresses_by_default() {
         for addr in ["8.8.8.8", "1.1.1.1", "93.184.216.34"] {
-            assert!(guard_resolved_ip(ip(addr), addr, &cfg()).is_ok(), "{addr} should pass");
+            assert!(
+                guard_resolved_ip(ip(addr), addr, &cfg()).is_ok(),
+                "{addr} should pass"
+            );
         }
         assert!(guard_resolved_ip(ip("2606:4700:4700::1111"), "h", &cfg()).is_ok());
     }
@@ -525,7 +547,9 @@ mod tests {
     fn disallowed_range_predicate_matches_expected() {
         assert!(is_disallowed_range(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
         assert!(is_disallowed_range(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
-        assert!(is_disallowed_range(IpAddr::V4(Ipv4Addr::new(169, 254, 1, 1))));
+        assert!(is_disallowed_range(IpAddr::V4(Ipv4Addr::new(
+            169, 254, 1, 1
+        ))));
         assert!(is_disallowed_range(IpAddr::V6(Ipv6Addr::LOCALHOST)));
         assert!(!is_disallowed_range(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
         // IPv4-mapped loopback must be unwrapped and denied.
@@ -584,7 +608,10 @@ mod tests {
         });
         let err = read_to_cap(stream, 25).await.unwrap_err();
         assert_eq!(err.category, ErrorCategory::PayloadTooLarge);
-        assert!(polled.load(Ordering::SeqCst) < 5, "must abort before consuming all chunks");
+        assert!(
+            polled.load(Ordering::SeqCst) < 5,
+            "must abort before consuming all chunks"
+        );
     }
 
     #[tokio::test]
@@ -609,9 +636,18 @@ mod tests {
 
     #[test]
     fn validate_url_rejects_malformed_and_non_http_schemes() {
-        for bad in ["not a url", "ftp://example.com", "file:///etc/passwd", "javascript:alert(1)"] {
+        for bad in [
+            "not a url",
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+        ] {
             let err = validate_url(bad).unwrap_err();
-            assert_eq!(err.category, ErrorCategory::BadRequest, "{bad} must be rejected");
+            assert_eq!(
+                err.category,
+                ErrorCategory::BadRequest,
+                "{bad} must be rejected"
+            );
         }
     }
 

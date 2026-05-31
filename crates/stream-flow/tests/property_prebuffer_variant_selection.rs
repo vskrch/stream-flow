@@ -98,8 +98,14 @@ fn expected_index(specs: &[VariantSpec], ceiling: u64) -> Option<usize> {
 
     // Clause 2: every candidate exceeds the ceiling → lowest candidate
     // bandwidth, first occurrence on ties.
-    let min_bw = candidates.iter().map(|&i| specs[i].bandwidth).min().unwrap();
-    candidates.into_iter().find(|&i| specs[i].bandwidth == min_bw)
+    let min_bw = candidates
+        .iter()
+        .map(|&i| specs[i].bandwidth)
+        .min()
+        .unwrap();
+    candidates
+        .into_iter()
+        .find(|&i| specs[i].bandwidth == min_bw)
 }
 
 /// A single variant spec. Bandwidths are biased toward a small shared set (to

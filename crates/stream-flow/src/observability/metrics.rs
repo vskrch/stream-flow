@@ -113,17 +113,12 @@ impl Metrics {
         )
         .expect("valid histogram opts");
 
-        let cache_hits = IntCounter::new(
-            format!("{NS}_cache_hits_total"),
-            "Total cache hits.",
-        )
-        .expect("valid metric opts");
+        let cache_hits = IntCounter::new(format!("{NS}_cache_hits_total"), "Total cache hits.")
+            .expect("valid metric opts");
 
-        let cache_misses = IntCounter::new(
-            format!("{NS}_cache_misses_total"),
-            "Total cache misses.",
-        )
-        .expect("valid metric opts");
+        let cache_misses =
+            IntCounter::new(format!("{NS}_cache_misses_total"), "Total cache misses.")
+                .expect("valid metric opts");
 
         let upstream_failures = IntCounterVec::new(
             Opts::new(
@@ -373,12 +368,15 @@ mod tests {
         m.record_store_op("alldebrid", "success", Duration::from_millis(30));
 
         let text = m.gather();
-        assert!(text
-            .contains("stream_flow_store_operations_total{outcome=\"success\",store=\"realdebrid\"} 1"));
-        assert!(text
-            .contains("stream_flow_store_operations_total{outcome=\"error\",store=\"realdebrid\"} 1"));
-        assert!(text
-            .contains("stream_flow_store_operations_total{outcome=\"success\",store=\"alldebrid\"} 1"));
+        assert!(text.contains(
+            "stream_flow_store_operations_total{outcome=\"success\",store=\"realdebrid\"} 1"
+        ));
+        assert!(text.contains(
+            "stream_flow_store_operations_total{outcome=\"error\",store=\"realdebrid\"} 1"
+        ));
+        assert!(text.contains(
+            "stream_flow_store_operations_total{outcome=\"success\",store=\"alldebrid\"} 1"
+        ));
     }
 
     #[test]
@@ -417,8 +415,7 @@ mod tests {
         assert!(text.contains("stream_flow_store_fallbacks_total 1"));
         assert!(text.contains("stream_flow_task_restarts_total{task=\"prefetcher\"} 1"));
         assert!(text.contains("stream_flow_redis_reattach_total 1"));
-        assert!(text
-            .contains("stream_flow_resources_reclaimed_total{kind=\"sse_subscription\"} 1"));
+        assert!(text.contains("stream_flow_resources_reclaimed_total{kind=\"sse_subscription\"} 1"));
     }
 
     #[test]

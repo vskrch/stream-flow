@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 use crate::cache::CacheBackend;
@@ -87,21 +87,16 @@ impl AniListAdapter {
     /// 27.4) and logging errors when the upstream fails (Req 27.5).
     pub async fn fetch_anime_list(&self) -> Result<IntegrationList, AppError> {
         let cache_key = format!("anilist:anime:{}", self.username);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let username = self.username.clone();
-                async move { fetch_media_list(&client, &username, "ANIME").await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let username = self.username.clone();
+            async move { fetch_media_list(&client, &username, "ANIME").await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("AniList: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("AniList: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 
@@ -109,21 +104,16 @@ impl AniListAdapter {
     /// 27.4) and logging errors when the upstream fails (Req 27.5).
     pub async fn fetch_manga_list(&self) -> Result<IntegrationList, AppError> {
         let cache_key = format!("anilist:manga:{}", self.username);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let username = self.username.clone();
-                async move { fetch_media_list(&client, &username, "MANGA").await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let username = self.username.clone();
+            async move { fetch_media_list(&client, &username, "MANGA").await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("AniList: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("AniList: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 }
@@ -167,8 +157,9 @@ async fn fetch_media_list(
 
     // Parse the GraphQL response and normalize to IntegrationList.
     let list = parse_anilist_response(&response_bytes, media_type)?;
-    let serialized = serde_json::to_vec(&list)
-        .map_err(|e| AppError::upstream_unavailable(format!("AniList: serialization failed: {e}")))?;
+    let serialized = serde_json::to_vec(&list).map_err(|e| {
+        AppError::upstream_unavailable(format!("AniList: serialization failed: {e}"))
+    })?;
     Ok(Bytes::from(serialized))
 }
 
@@ -221,8 +212,9 @@ fn parse_anilist_response(data: &[u8], media_type: &str) -> Result<IntegrationLi
         year: Option<u32>,
     }
 
-    let resp: Response = serde_json::from_slice(data)
-        .map_err(|e| AppError::upstream_unavailable(format!("AniList: failed to parse response: {e}")))?;
+    let resp: Response = serde_json::from_slice(data).map_err(|e| {
+        AppError::upstream_unavailable(format!("AniList: failed to parse response: {e}"))
+    })?;
 
     if let Some(errors) = resp.errors {
         if !errors.is_empty() {
@@ -238,7 +230,11 @@ fn parse_anilist_response(data: &[u8], media_type: &str) -> Result<IntegrationLi
         .and_then(|d| d.media_list_collection)
         .ok_or_else(|| AppError::upstream_unavailable("AniList: empty response data"))?;
 
-    let content_type = if media_type == "ANIME" { "series" } else { "movie" };
+    let content_type = if media_type == "ANIME" {
+        "series"
+    } else {
+        "movie"
+    };
 
     let items: Vec<ListItem> = collection
         .lists
@@ -334,8 +330,7 @@ mod tests {
 
         // We can't easily override the ANILIST_API_URL in tests, so we test
         // the parse logic directly.
-        let response_bytes =
-            serde_json::to_vec(&sample_anilist_response()).unwrap();
+        let response_bytes = serde_json::to_vec(&sample_anilist_response()).unwrap();
         let list = parse_anilist_response(&response_bytes, "ANIME").unwrap();
 
         assert_eq!(list.source, INTEGRATION_ANILIST);
@@ -416,9 +411,7 @@ mod tests {
         let breaker = integration_breaker(INTEGRATION_ANILIST);
         assert_eq!(
             breaker.key(),
-            &crate::resilience::breaker::BreakerKey::Integration(
-                INTEGRATION_ANILIST.to_string()
-            )
+            &crate::resilience::breaker::BreakerKey::Integration(INTEGRATION_ANILIST.to_string())
         );
     }
 }

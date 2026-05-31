@@ -181,7 +181,11 @@ mod tests {
         let plaintext = b"super-secret-token";
         let blob = vault.encrypt(plaintext).expect("encrypt");
 
-        assert_ne!(blob.as_slice(), plaintext.as_slice(), "blob must not be plaintext");
+        assert_ne!(
+            blob.as_slice(),
+            plaintext.as_slice(),
+            "blob must not be plaintext"
+        );
         // nonce (12) + ciphertext (== plaintext len) + tag (16).
         assert_eq!(blob.len(), NONCE_LEN + plaintext.len() + 16);
     }
@@ -228,7 +232,11 @@ mod tests {
 
         let plaintext = b"no-vault-configured";
         let stored = vault.encrypt(plaintext).expect("encrypt");
-        assert_eq!(stored.as_slice(), plaintext.as_slice(), "disabled vault stores plaintext");
+        assert_eq!(
+            stored.as_slice(),
+            plaintext.as_slice(),
+            "disabled vault stores plaintext"
+        );
         assert_eq!(vault.decrypt(&stored).expect("decrypt"), plaintext);
     }
 
@@ -264,7 +272,10 @@ mod tests {
         let mut blob = vault.encrypt(b"sensitive").expect("encrypt");
         let last = blob.len() - 1;
         blob[last] ^= 0xFF;
-        assert!(vault.decrypt(&blob).is_err(), "tampered blob must be rejected");
+        assert!(
+            vault.decrypt(&blob).is_err(),
+            "tampered blob must be rejected"
+        );
     }
 
     /// Decryption rejects a blob too short to even contain a nonce.

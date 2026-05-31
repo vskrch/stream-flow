@@ -161,9 +161,7 @@ mod tests {
     ///
     /// `test::try_call_service` surfaces the typed `Err` instead of panicking
     /// (which `test::call_service` does), so the panic path is observable.
-    async fn render<B>(
-        result: Result<ServiceResponse<B>, Error>,
-    ) -> (u16, web::Bytes)
+    async fn render<B>(result: Result<ServiceResponse<B>, Error>) -> (u16, web::Bytes)
     where
         B: actix_web::body::MessageBody,
     {

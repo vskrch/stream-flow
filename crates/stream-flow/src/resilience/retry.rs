@@ -89,7 +89,12 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     /// Construct an explicit policy.
-    pub fn new(max_attempts: u32, base_delay: Duration, max_delay: Duration, multiplier: f64) -> Self {
+    pub fn new(
+        max_attempts: u32,
+        base_delay: Duration,
+        max_delay: Duration,
+        multiplier: f64,
+    ) -> Self {
         Self {
             max_attempts,
             base_delay,
@@ -345,18 +350,16 @@ mod tests {
     /// never exceeds `max_delay`, across many attempts and seeds.
     #[test]
     fn backoff_is_within_full_jitter_band_and_capped() {
-        let policy = RetryPolicy::new(
-            8,
-            Duration::from_millis(100),
-            Duration::from_secs(5),
-            2.0,
-        );
+        let policy = RetryPolicy::new(8, Duration::from_millis(100), Duration::from_secs(5), 2.0);
         for seed in 0..32u64 {
             let mut rng = StdRng::seed_from_u64(seed);
             for attempt in 0..8u32 {
                 let capped = policy.capped_delay(attempt);
                 let delay = policy.backoff(attempt, &mut rng);
-                assert!(delay <= capped, "attempt {attempt}: {delay:?} > cap {capped:?}");
+                assert!(
+                    delay <= capped,
+                    "attempt {attempt}: {delay:?} > cap {capped:?}"
+                );
                 assert!(
                     delay <= policy.max_delay,
                     "attempt {attempt}: {delay:?} exceeds max_delay {:?}",
@@ -370,12 +373,7 @@ mod tests {
     /// `base·multiplierⁿ >= max_delay`, the cap is exactly `max_delay`.
     #[test]
     fn capped_delay_saturates_at_max_delay() {
-        let policy = RetryPolicy::new(
-            64,
-            Duration::from_millis(100),
-            Duration::from_secs(5),
-            2.0,
-        );
+        let policy = RetryPolicy::new(64, Duration::from_millis(100), Duration::from_secs(5), 2.0);
         // 100ms·2⁶ = 6.4s > 5s ⇒ capped at 5s.
         assert_eq!(policy.capped_delay(6), Duration::from_secs(5));
         // A huge attempt must saturate (not overflow/panic).
@@ -386,12 +384,7 @@ mod tests {
     /// Early (un-capped) attempts grow as `base·multiplierⁿ`.
     #[test]
     fn capped_delay_follows_exponential_before_cap() {
-        let policy = RetryPolicy::new(
-            10,
-            Duration::from_millis(100),
-            Duration::from_secs(60),
-            2.0,
-        );
+        let policy = RetryPolicy::new(10, Duration::from_millis(100), Duration::from_secs(60), 2.0);
         assert_eq!(policy.capped_delay(0), Duration::from_millis(100));
         assert_eq!(policy.capped_delay(1), Duration::from_millis(200));
         assert_eq!(policy.capped_delay(2), Duration::from_millis(400));
@@ -406,7 +399,10 @@ mod tests {
         let mut a = StdRng::seed_from_u64(42);
         let mut b = StdRng::seed_from_u64(42);
         for attempt in 0..6u32 {
-            assert_eq!(policy.backoff(attempt, &mut a), policy.backoff(attempt, &mut b));
+            assert_eq!(
+                policy.backoff(attempt, &mut a),
+                policy.backoff(attempt, &mut b)
+            );
         }
     }
 
@@ -422,7 +418,10 @@ mod tests {
         let within =
             AppError::too_many_requests("rate limited").with_retry_after(Duration::from_secs(3));
         let mut rng = StdRng::seed_from_u64(7);
-        assert_eq!(policy.delay_for(0, &within, &mut rng), Duration::from_secs(3));
+        assert_eq!(
+            policy.delay_for(0, &within, &mut rng),
+            Duration::from_secs(3)
+        );
 
         // Above the cap: clamped to max_delay.
         let above =
@@ -450,7 +449,11 @@ mod tests {
             })
             .await;
         assert!(result.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "permanent error must not retry");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "permanent error must not retry"
+        );
     }
 
     /// A persistently transient error is retried at most `max_attempts − 1`

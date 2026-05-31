@@ -295,7 +295,12 @@ mod tests {
     /// Build a throwaway prefetcher (its identity is all these tests need).
     fn make_prefetcher(n: usize) -> Prefetcher {
         let base = Url::parse(&format!("https://cdn.example/p{n}/media.m3u8")).unwrap();
-        Prefetcher::new(outbound(), SegmentCache::new(Duration::from_secs(300)), base, 3)
+        Prefetcher::new(
+            outbound(),
+            SegmentCache::new(Duration::from_secs(300)),
+            base,
+            3,
+        )
     }
 
     fn manager(max: usize, idle: Duration, clock: FakeClock) -> PrefetcherManager {
@@ -309,7 +314,10 @@ mod tests {
         let mgr = manager(10, Duration::from_secs(60), FakeClock::default());
         let a = mgr.get_or_create("k", || make_prefetcher(1));
         let b = mgr.get_or_create("k", || make_prefetcher(2));
-        assert!(Arc::ptr_eq(&a, &b), "the same key returns the same prefetcher");
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "the same key returns the same prefetcher"
+        );
         assert_eq!(mgr.len(), 1);
     }
 
@@ -335,7 +343,11 @@ mod tests {
         // Insert a 4th → over capacity → exactly one eviction down to 3.
         clock.advance(Duration::from_secs(1));
         mgr.insert("k3", Arc::new(make_prefetcher(3)));
-        assert_eq!(mgr.len(), 3, "LRU-evict down to the configured size (Req 7.6)");
+        assert_eq!(
+            mgr.len(),
+            3,
+            "LRU-evict down to the configured size (Req 7.6)"
+        );
 
         // k1 (the least-recently-used) was evicted; the rest remain.
         assert!(!mgr.contains("k1"), "the LRU prefetcher is evicted");
@@ -384,9 +396,16 @@ mod tests {
         assert!(mgr.get("active").is_some());
         clock.advance(Duration::from_secs(15)); // idle: 35s, active: 15s
 
-        assert_eq!(mgr.reap_idle(), 1, "the idle prefetcher is evicted (Req 7.5)");
+        assert_eq!(
+            mgr.reap_idle(),
+            1,
+            "the idle prefetcher is evicted (Req 7.5)"
+        );
         assert!(!mgr.contains("idle"));
-        assert!(mgr.contains("active"), "the recently-used prefetcher survives");
+        assert!(
+            mgr.contains("active"),
+            "the recently-used prefetcher survives"
+        );
     }
 
     #[test]
@@ -413,7 +432,11 @@ mod tests {
         let mgr = manager(100, Duration::from_secs(0), clock.clone());
         mgr.insert("k", Arc::new(make_prefetcher(1)));
         clock.advance(Duration::from_secs(3600));
-        assert_eq!(mgr.reap_idle(), 0, "a zero idle timeout disables idle eviction");
+        assert_eq!(
+            mgr.reap_idle(),
+            0,
+            "a zero idle timeout disables idle eviction"
+        );
         assert!(mgr.contains("k"));
     }
 
@@ -429,7 +452,11 @@ mod tests {
         assert_eq!(reapable.kind(), "prefetcher");
 
         clock.advance(Duration::from_secs(31));
-        assert_eq!(reapable.reap(), 1, "the reaper seam evicts the idle prefetcher");
+        assert_eq!(
+            reapable.reap(),
+            1,
+            "the reaper seam evicts the idle prefetcher"
+        );
         assert!(mgr.is_empty());
     }
 }

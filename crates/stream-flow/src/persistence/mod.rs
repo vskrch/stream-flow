@@ -63,9 +63,7 @@
 use std::time::Duration;
 
 use sqlx::migrate::{MigrateError, Migrator};
-use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
-};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 
 use crate::config::DbConfig;
@@ -133,12 +131,7 @@ pub async fn build_pool(cfg: &DbConfig) -> Result<SqlitePool, AppError> {
         .max_connections(cfg.max_connections)
         .connect_with(connect_options(cfg))
         .await
-        .map_err(|e| {
-            AppError::unknown(format!(
-                "failed to open SQLite pool at {}: {e}",
-                cfg.path
-            ))
-        })
+        .map_err(|e| AppError::unknown(format!("failed to open SQLite pool at {}: {e}", cfg.path)))
 }
 
 /// Apply all pending migrations against `pool`, in version order, before the
@@ -172,8 +165,10 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), AppError> {
 /// skipping, and transactional rollback are all `sqlx`'s `Migrator::run`
 /// behavior — this wrapper only owns the typed-error translation.
 async fn run_with(migrator: &Migrator, pool: &SqlitePool) -> Result<(), AppError> {
-    migrator.run(pool).await.map_err(|e| {
-        match failing_migration_version(&e) {
+    migrator
+        .run(pool)
+        .await
+        .map_err(|e| match failing_migration_version(&e) {
             Some(version) => {
                 tracing::error!(
                     migration_version = version,
@@ -186,8 +181,7 @@ async fn run_with(migrator: &Migrator, pool: &SqlitePool) -> Result<(), AppError
                 tracing::error!(error = %e, "migration run failed; aborting startup");
                 AppError::unknown(format!("migrations failed to apply: {e}"))
             }
-        }
-    })
+        })
 }
 
 /// Extract the migration **version** a [`MigrateError`] is about, when the
@@ -246,7 +240,11 @@ mod tests {
             .fetch_one(&pool)
             .await
             .expect("query journal_mode");
-        assert_eq!(journal_mode.to_lowercase(), "wal", "journal_mode must be WAL");
+        assert_eq!(
+            journal_mode.to_lowercase(),
+            "wal",
+            "journal_mode must be WAL"
+        );
 
         // `PRAGMA busy_timeout` reports the timeout in milliseconds.
         let busy_timeout_ms: i64 = sqlx::query_scalar("PRAGMA busy_timeout")
@@ -283,7 +281,10 @@ mod tests {
             .fetch_one(&pool)
             .await
             .expect("query busy_timeout");
-        assert_eq!(busy_timeout_ms, 7_000, "busy_timeout must reflect config (7s)");
+        assert_eq!(
+            busy_timeout_ms, 7_000,
+            "busy_timeout must reflect config (7s)"
+        );
 
         pool.close().await;
     }
@@ -317,7 +318,10 @@ mod tests {
     async fn database_file_is_created_when_missing() {
         let (dir, cfg) = temp_db(5, 5);
         let db_path = dir.path().join("stream-flow-test.db");
-        assert!(!db_path.exists(), "precondition: db file absent before build");
+        assert!(
+            !db_path.exists(),
+            "precondition: db file absent before build"
+        );
 
         let pool = build_pool(&cfg).await.expect("pool should open");
         assert!(db_path.exists(), "db file must be created on first connect");
@@ -371,13 +375,12 @@ mod migration_tests {
 
     /// Does a table exist in the connected SQLite database?
     async fn table_exists(pool: &SqlitePool, name: &str) -> bool {
-        let found: Option<String> = sqlx::query_scalar(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
-        )
-        .bind(name)
-        .fetch_optional(pool)
-        .await
-        .expect("query sqlite_master");
+        let found: Option<String> =
+            sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1")
+                .bind(name)
+                .fetch_optional(pool)
+                .await
+                .expect("query sqlite_master");
         found.is_some()
     }
 
@@ -396,7 +399,9 @@ mod migration_tests {
             );
         }
 
-        run_migrations(&pool).await.expect("migrations should apply on a fresh DB");
+        run_migrations(&pool)
+            .await
+            .expect("migrations should apply on a fresh DB");
 
         // Every schema table now exists.
         for table in EXPECTED_TABLES {
@@ -407,13 +412,15 @@ mod migration_tests {
         }
 
         // sqlx records applied versions in `_sqlx_migrations`; 0001 is present.
-        let applied: i64 = sqlx::query_scalar(
-            "SELECT version FROM _sqlx_migrations ORDER BY version LIMIT 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .expect("query _sqlx_migrations");
-        assert_eq!(applied, 1, "migration version 1 (0001_init) must be recorded");
+        let applied: i64 =
+            sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version LIMIT 1")
+                .fetch_one(&pool)
+                .await
+                .expect("query _sqlx_migrations");
+        assert_eq!(
+            applied, 1,
+            "migration version 1 (0001_init) must be recorded"
+        );
 
         pool.close().await;
     }
@@ -425,13 +432,14 @@ mod migration_tests {
     async fn already_applied_migrations_are_skipped_on_rerun() {
         let (_dir, pool) = fresh_pool().await;
 
-        run_migrations(&pool).await.expect("first run applies migrations");
+        run_migrations(&pool)
+            .await
+            .expect("first run applies migrations");
 
-        let count_after_first: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
-                .fetch_one(&pool)
-                .await
-                .expect("count applied migrations");
+        let count_after_first: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .expect("count applied migrations");
 
         // A second run must succeed without error and without re-applying
         // (which would otherwise fail on `CREATE TABLE ... ` for existing
@@ -440,11 +448,10 @@ mod migration_tests {
             .await
             .expect("re-run must succeed and skip already-applied migrations");
 
-        let count_after_second: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
-                .fetch_one(&pool)
-                .await
-                .expect("count applied migrations");
+        let count_after_second: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .expect("count applied migrations");
 
         assert_eq!(
             count_after_first, count_after_second,

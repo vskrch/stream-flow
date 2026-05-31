@@ -219,10 +219,7 @@ fn map_mpd(raw: RawMpd) -> Result<Mpd, MpdError> {
 }
 
 fn map_period(raw: RawPeriod, idx: usize) -> Result<Period, MpdError> {
-    let label = raw
-        .id
-        .clone()
-        .unwrap_or_else(|| format!("Period[{idx}]"));
+    let label = raw.id.clone().unwrap_or_else(|| format!("Period[{idx}]"));
 
     let mut adaptation_sets = Vec::with_capacity(raw.adaptation_sets.len());
     for (a_idx, a) in raw.adaptation_sets.into_iter().enumerate() {
@@ -253,11 +250,8 @@ fn map_adaptation_set(
 
     // The adaptation-set-level addressing is inherited by representations that
     // declare none of their own (DASH inheritance).
-    let inherited = build_segment_addressing(
-        raw.segment_template,
-        raw.segment_list,
-        raw.segment_base,
-    );
+    let inherited =
+        build_segment_addressing(raw.segment_template, raw.segment_list, raw.segment_base);
 
     let mut representations = Vec::with_capacity(raw.representations.len());
     for (r_idx, r) in raw.representations.into_iter().enumerate() {
@@ -290,7 +284,10 @@ fn map_representation(
 ) -> Result<Representation, MpdError> {
     let label = format!(
         "{set_label}/Representation[{idx}]{}",
-        raw.id.as_deref().map(|i| format!(" @id={i}")).unwrap_or_default()
+        raw.id
+            .as_deref()
+            .map(|i| format!(" @id={i}"))
+            .unwrap_or_default()
     );
 
     // `@id` is required by DASH and is what addresses the representation in
@@ -308,11 +305,7 @@ fn map_representation(
         .ok_or_else(|| MpdError::missing(&label, "bandwidth"))?;
 
     // Representation-level addressing wins; otherwise inherit the set's.
-    let own = build_segment_addressing(
-        raw.segment_template,
-        raw.segment_list,
-        raw.segment_base,
-    );
+    let own = build_segment_addressing(raw.segment_template, raw.segment_list, raw.segment_base);
     let segment_addressing = if matches!(own, SegmentAddressing::None) {
         inherited.clone()
     } else {
@@ -452,7 +445,10 @@ mod tests {
 
         assert_eq!(mpd.presentation_type, PresentationType::Static);
         assert_eq!(mpd.media_presentation_duration.as_deref(), Some("PT10S"));
-        assert_eq!(mpd.base_url.as_deref(), Some("https://cdn.example.com/movie/"));
+        assert_eq!(
+            mpd.base_url.as_deref(),
+            Some("https://cdn.example.com/movie/")
+        );
 
         assert_eq!(mpd.periods.len(), 1);
         let period = &mpd.periods[0];
@@ -492,8 +488,14 @@ mod tests {
         let v0 = mpd.representation("v0").unwrap();
         match &v0.segment_addressing {
             SegmentAddressing::Template(t) => {
-                assert_eq!(t.media.as_deref(), Some("$RepresentationID$/seg-$Number$.m4s"));
-                assert_eq!(t.initialization.as_deref(), Some("$RepresentationID$/init.mp4"));
+                assert_eq!(
+                    t.media.as_deref(),
+                    Some("$RepresentationID$/seg-$Number$.m4s")
+                );
+                assert_eq!(
+                    t.initialization.as_deref(),
+                    Some("$RepresentationID$/init.mp4")
+                );
                 assert_eq!(t.start_number, Some(1));
                 assert_eq!(t.timescale, Some(1000));
                 let timeline = t.timeline.as_ref().expect("timeline present");
@@ -550,7 +552,10 @@ mod tests {
             SegmentAddressing::Base(b) => {
                 assert_eq!(b.index_range.as_deref(), Some("800-1200"));
                 assert_eq!(b.timescale, Some(90000));
-                assert_eq!(b.initialization.as_ref().unwrap().range.as_deref(), Some("0-799"));
+                assert_eq!(
+                    b.initialization.as_ref().unwrap().range.as_deref(),
+                    Some("0-799")
+                );
             }
             other => panic!("expected SegmentBase, got {other:?}"),
         }
@@ -614,8 +619,14 @@ mod tests {
             MpdError::Missing { element, field } => {
                 assert_eq!(field, "id");
                 // The element path identifies where the failure is.
-                assert!(element.contains("p0"), "element path names the period: {element}");
-                assert!(element.contains("Representation"), "names the element: {element}");
+                assert!(
+                    element.contains("p0"),
+                    "element path names the period: {element}"
+                );
+                assert!(
+                    element.contains("Representation"),
+                    "names the element: {element}"
+                );
             }
             other => panic!("expected Missing, got {other:?}"),
         }
@@ -636,7 +647,10 @@ mod tests {
         match &err {
             MpdError::Missing { element, field } => {
                 assert_eq!(field, "bandwidth");
-                assert!(element.contains("v0"), "names the representation id: {element}");
+                assert!(
+                    element.contains("v0"),
+                    "names the representation id: {element}"
+                );
             }
             other => panic!("expected Missing, got {other:?}"),
         }

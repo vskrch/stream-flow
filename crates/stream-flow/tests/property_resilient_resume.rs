@@ -188,7 +188,9 @@ impl ScriptedSource {
             i = j;
         }
         if error_after {
-            items.push(Err(AppError::upstream_unavailable("scripted mid-stream drop")));
+            items.push(Err(AppError::upstream_unavailable(
+                "scripted mid-stream drop",
+            )));
         }
 
         let (status, content_range) = if self.status_200 {

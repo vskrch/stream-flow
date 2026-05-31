@@ -322,10 +322,7 @@ mod tests {
         runner
             .run(
                 &(
-                    prop::collection::vec(
-                        (arb_resolution(), 1i64..=50_000_000_000i64),
-                        1..=6,
-                    ),
+                    prop::collection::vec((arb_resolution(), 1i64..=50_000_000_000i64), 1..=6),
                     arb_resolution(),
                     1_000_000u64..=100_000_000u64,
                 ),
@@ -352,8 +349,7 @@ mod tests {
                         ..Default::default()
                     };
 
-                    let ranked =
-                        QualityRanker::rank(files.clone(), &prefs, Some(bandwidth_bps));
+                    let ranked = QualityRanker::rank(files.clone(), &prefs, Some(bandwidth_bps));
 
                     let threshold = (bandwidth_bps as f64 * 0.8) as u64;
 
@@ -365,7 +361,7 @@ mod tests {
                             0
                         };
 
-                        let should_be_excluded = res.map_or(false, |r| r > max_resolution)
+                        let should_be_excluded = res.is_some_and(|r| r > max_resolution)
                             || (original.size > 0 && estimated_bps > threshold);
 
                         let in_ranked = ranked.iter().any(|f| f.name == original.name);
@@ -398,40 +394,41 @@ mod tests {
         });
 
         runner
-            .run(
-                &(arb_source(), arb_hdr_flag()),
-                |(source, hdr)| {
-                    let source_token = match source {
-                        Source::BluRay => "BluRay",
-                        Source::WebDL => "WEB-DL",
-                        Source::WebRip => "WEBRip",
-                        Source::HDTV => "HDTV",
-                        Source::DVDRip => "DVDRip",
-                        Source::CAM => "CAM",
-                        Source::BluRayRemux => "Remux",
-                    };
-                    let hdr_token = match hdr {
-                        HdrFlag::HDR => "HDR",
-                        HdrFlag::HDR10 => "HDR10",
-                        HdrFlag::HDR10Plus => "HDR10+",
-                        HdrFlag::DolbyVision => "DV",
-                        HdrFlag::HLG => "HLG",
-                    };
-                    let name =
-                        format!("Movie.2023.1080p.{source_token}.x265.{hdr_token}.AAC-GROUP");
-                    let info = parse_release_name(&name);
+            .run(&(arb_source(), arb_hdr_flag()), |(source, hdr)| {
+                let source_token = match source {
+                    Source::BluRay => "BluRay",
+                    Source::WebDL => "WEB-DL",
+                    Source::WebRip => "WEBRip",
+                    Source::HDTV => "HDTV",
+                    Source::DVDRip => "DVDRip",
+                    Source::CAM => "CAM",
+                    Source::BluRayRemux => "Remux",
+                };
+                let hdr_token = match hdr {
+                    HdrFlag::HDR => "HDR",
+                    HdrFlag::HDR10 => "HDR10",
+                    HdrFlag::HDR10Plus => "HDR10+",
+                    HdrFlag::DolbyVision => "DV",
+                    HdrFlag::HLG => "HLG",
+                };
+                let name = format!("Movie.2023.1080p.{source_token}.x265.{hdr_token}.AAC-GROUP");
+                let info = parse_release_name(&name);
 
-                    prop_assert_eq!(info.source, Some(source), "source not recovered from {}", name);
-                    prop_assert!(
-                        info.hdr_flags.contains(&hdr),
-                        "hdr flag {:?} not recovered from {}",
-                        hdr,
-                        name
-                    );
+                prop_assert_eq!(
+                    info.source,
+                    Some(source),
+                    "source not recovered from {}",
+                    name
+                );
+                prop_assert!(
+                    info.hdr_flags.contains(&hdr),
+                    "hdr flag {:?} not recovered from {}",
+                    hdr,
+                    name
+                );
 
-                    Ok(())
-                },
-            )
+                Ok(())
+            })
             .unwrap();
     }
 }

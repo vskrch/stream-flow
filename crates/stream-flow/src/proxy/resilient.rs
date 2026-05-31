@@ -232,10 +232,10 @@ impl ResilientStream {
             },
             StatusClass::Fatal(status) => {
                 self.state = StreamState::Failed;
-                Err(
-                    AppError::upstream_unavailable(format!("upstream returned status {status} on open"))
-                        .with_upstream_status(status),
-                )
+                Err(AppError::upstream_unavailable(format!(
+                    "upstream returned status {status} on open"
+                ))
+                .with_upstream_status(status))
             }
         }
     }
@@ -356,7 +356,11 @@ impl ResilientStream {
                 Some(total) if total > 0 => {
                     let effective = n.min(total);
                     let start = total - effective;
-                    (start, Some(total - 1), RangeSpec::Inclusive(start, total - 1))
+                    (
+                        start,
+                        Some(total - 1),
+                        RangeSpec::Inclusive(start, total - 1),
+                    )
                 }
                 _ => (0, None, RangeSpec::Suffix(n)),
             },
@@ -640,11 +644,22 @@ mod tests {
             self.body_drops.lock().unwrap().len()
         }
 
-        fn make_body(&self, range: &RangeSpec, status: u16, chunk_size: usize, deliver: Option<usize>, drop_after: bool) -> UpstreamBody {
+        fn make_body(
+            &self,
+            range: &RangeSpec,
+            status: u16,
+            chunk_size: usize,
+            deliver: Option<usize>,
+            drop_after: bool,
+        ) -> UpstreamBody {
             let total = self.data.len() as u64;
             // A 200 ignores the requested range and replays from byte 0; a 206
             // honours it.
-            let body_start = if status == 200 { 0 } else { start_of(range, total) } as usize;
+            let body_start = if status == 200 {
+                0
+            } else {
+                start_of(range, total)
+            } as usize;
             let body_start = body_start.min(self.data.len());
             let slice = &self.data[body_start..];
 
@@ -709,9 +724,7 @@ mod tests {
                 .push((range, tokio::time::Instant::now()));
             let ep = self.script.lock().unwrap().pop_front();
             match ep {
-                Some(Episode::OpenError) => {
-                    Err(AppError::upstream_unavailable("mock open error"))
-                }
+                Some(Episode::OpenError) => Err(AppError::upstream_unavailable("mock open error")),
                 Some(Episode::Body {
                     status,
                     chunk_size,
@@ -754,7 +767,11 @@ mod tests {
                 "last_delivered_offset regressed: {now} < {prev}"
             );
             // Each delivered chunk advances the offset by exactly its length.
-            assert_eq!(now - prev, chunk.len() as u64, "offset advance must equal bytes delivered");
+            assert_eq!(
+                now - prev,
+                chunk.len() as u64,
+                "offset advance must equal bytes delivered"
+            );
             prev = now;
             out.extend_from_slice(&chunk);
         }
@@ -766,10 +783,8 @@ mod tests {
     #[tokio::test]
     async fn last_delivered_offset_is_monotonic_and_reaches_total() {
         let data: Vec<u8> = (0..200u32).map(|i| i as u8).collect();
-        let source = Arc::new(
-            MockSource::new(data.clone())
-                .with_script(vec![body(206, 33, None, false)]),
-        );
+        let source =
+            Arc::new(MockSource::new(data.clone()).with_script(vec![body(206, 33, None, false)]));
         let mut stream = ResilientStream::new(source.clone());
         stream.open(RangeSpec::Full).await.expect("open succeeds");
         assert_eq!(stream.last_delivered_offset(), 0);
@@ -795,7 +810,10 @@ mod tests {
         stream.open(RangeSpec::Full).await.expect("open succeeds");
 
         let out = drain_monotonic(&mut stream).await.expect("resume succeeds");
-        assert_eq!(out, data, "resumed stream equals the source exactly (no gap/dup/reorder)");
+        assert_eq!(
+            out, data,
+            "resumed stream equals the source exactly (no gap/dup/reorder)"
+        );
         assert_eq!(stream.last_delivered_offset(), 100);
         // 1 initial open + 1 resume open.
         assert_eq!(source.open_count(), 2);
@@ -865,7 +883,10 @@ mod tests {
         assert_eq!(deltas[2], Duration::from_millis(600));
         assert_eq!(deltas[3], Duration::from_millis(2600));
         // Total resume time is the full 2.6s schedule.
-        assert_eq!(tokio::time::Instant::now() - start, Duration::from_millis(2600));
+        assert_eq!(
+            tokio::time::Instant::now() - start,
+            Duration::from_millis(2600)
+        );
     }
 
     // -- seek aborts the current read and reopens at the seek offset (Req 37.4)
@@ -893,7 +914,10 @@ mod tests {
         assert_eq!(stream.state(), StreamState::Streaming);
         assert_eq!(stream.last_delivered_offset(), 60);
         // The first body was dropped (its read aborted, connection released).
-        assert!(source.body_dropped(0), "seek must abort/drop the current read");
+        assert!(
+            source.body_dropped(0),
+            "seek must abort/drop the current read"
+        );
 
         let rest = drain_monotonic(&mut stream).await.expect("post-seek drain");
         assert_eq!(rest, data[60..100], "delivers exactly from the seek offset");
@@ -905,9 +929,7 @@ mod tests {
     #[tokio::test]
     async fn client_disconnect_drops_upstream_body() {
         let data: Vec<u8> = (0..100u32).map(|i| i as u8).collect();
-        let source = Arc::new(
-            MockSource::new(data).with_script(vec![body(206, 10, None, false)]),
-        );
+        let source = Arc::new(MockSource::new(data).with_script(vec![body(206, 10, None, false)]));
         let mut stream = ResilientStream::new(source.clone());
         stream.open(RangeSpec::Full).await.expect("open succeeds");
 
@@ -943,8 +965,13 @@ mod tests {
         let mut stream = ResilientStream::new(source.clone());
         stream.open(RangeSpec::Full).await.expect("open succeeds");
 
-        let out = drain_monotonic(&mut stream).await.expect("renew + resume succeeds");
-        assert_eq!(out, data, "renewed stream is gap-free and equals the source");
+        let out = drain_monotonic(&mut stream)
+            .await
+            .expect("renew + resume succeeds");
+        assert_eq!(
+            out, data,
+            "renewed stream is gap-free and equals the source"
+        );
         assert_eq!(source.renew_count(), 1, "the link was renewed exactly once");
         assert_eq!(stream.state(), StreamState::Completed);
     }
@@ -980,7 +1007,11 @@ mod tests {
         assert_eq!(stream.state(), StreamState::Failed);
         assert_eq!(source.renew_count(), 1, "renew attempted once then gave up");
         // Initial open + a single reconnect attempt (it did not burn all 3).
-        assert_eq!(source.open_count(), 2, "non-renewable expiry stops immediately");
+        assert_eq!(
+            source.open_count(),
+            2,
+            "non-renewable expiry stops immediately"
+        );
     }
 
     // -- a non-resumable status on the initial open fails fast (Req 5.8) -----
@@ -988,9 +1019,8 @@ mod tests {
     #[tokio::test]
     async fn fatal_status_on_open_moves_to_failed() {
         let data = vec![0u8; 10];
-        let source = Arc::new(
-            MockSource::new(data).with_script(vec![body(404, 1, Some(0), false)]),
-        );
+        let source =
+            Arc::new(MockSource::new(data).with_script(vec![body(404, 1, Some(0), false)]));
         let mut stream = ResilientStream::new(source.clone());
         let err = stream
             .open(RangeSpec::Full)
@@ -1006,9 +1036,8 @@ mod tests {
     #[tokio::test]
     async fn bounded_range_stops_at_inclusive_end() {
         let data: Vec<u8> = (0..100u32).map(|i| i as u8).collect();
-        let source = Arc::new(
-            MockSource::new(data.clone()).with_script(vec![body(206, 1000, None, false)]),
-        );
+        let source =
+            Arc::new(MockSource::new(data.clone()).with_script(vec![body(206, 1000, None, false)]));
         let mut stream = ResilientStream::new(source.clone());
         // Request bytes [10, 49] — 40 bytes.
         stream

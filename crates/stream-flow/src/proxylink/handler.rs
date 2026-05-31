@@ -92,10 +92,7 @@ impl<'de> Deserialize<'de> for IndexedOrShared {
                 })
             }
 
-            fn visit_map<M: de::MapAccess<'de>>(
-                self,
-                mut map: M,
-            ) -> Result<Self::Value, M::Error> {
+            fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
                 let mut indexed = BTreeMap::new();
                 let mut shared = None;
                 while let Some(key) = map.next_key::<String>()? {
@@ -274,10 +271,7 @@ pub fn proxify(
     let use_token_format = req.token.as_deref().is_some_and(|t| !t.is_empty());
 
     // Parse expiration (Req 21.3)
-    let exp = req
-        .expiration
-        .as_deref()
-        .and_then(parse_expiration);
+    let exp = req.expiration.as_deref().and_then(parse_expiration);
 
     let mut links = Vec::with_capacity(req.url.len());
 
@@ -444,7 +438,10 @@ mod tests {
     }
 
     fn auth_header() -> (&'static str, String) {
-        ("X-StremThru-Authorization", format!("{PROXY_USER}:{PROXY_PASS}"))
+        (
+            "X-StremThru-Authorization",
+            format!("{PROXY_USER}:{PROXY_PASS}"),
+        )
     }
 
     // Build the in-memory test service. This is a `macro_rules!` rather than a
@@ -669,7 +666,9 @@ mod tests {
         let app = build_app!();
         let (hdr_name, hdr_val) = auth_header();
         let req = test::TestRequest::get()
-            .uri("/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&redirect=true")
+            .uri(
+                "/v0/proxy?url=https://a.com/1.mp4&url=https://b.com/2.mp4&token=yes&redirect=true",
+            )
             .insert_header((hdr_name, hdr_val))
             .to_request();
         let resp = test::call_service(&app, req).await;

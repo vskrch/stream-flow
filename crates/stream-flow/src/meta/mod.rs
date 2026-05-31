@@ -177,18 +177,14 @@ mod tests {
 
     /// Helper to get a future expiry time (1 hour from now).
     fn future_expiry() -> OffsetDateTime {
-        OffsetDateTime::from_unix_timestamp(
-            OffsetDateTime::now_utc().unix_timestamp() + 3600,
-        )
-        .unwrap()
+        OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp() + 3600)
+            .unwrap()
     }
 
     /// Helper to get a past expiry time (1 hour ago).
     fn past_expiry() -> OffsetDateTime {
-        OffsetDateTime::from_unix_timestamp(
-            OffsetDateTime::now_utc().unix_timestamp() - 3600,
-        )
-        .unwrap()
+        OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp() - 3600)
+            .unwrap()
     }
 
     // -- Test: valid mapping returned (Req 22.1) ----------------------------
@@ -372,11 +368,7 @@ mod tests {
             let uri = format!("/v0/meta/id-map/{id_type}/{id}");
             let req = actix_test::TestRequest::get().uri(&uri).to_request();
             let resp = actix_test::call_service(&app, req).await;
-            assert_eq!(
-                resp.status(),
-                200,
-                "expected 200 for {id_type}/{id}"
-            );
+            assert_eq!(resp.status(), 200, "expected 200 for {id_type}/{id}");
 
             let body: IdMapResponse = actix_test::read_body_json(resp).await;
             assert_eq!(body.imdb, Some("tt0111161".into()));

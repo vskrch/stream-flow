@@ -12,8 +12,8 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
-    RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store,
+    StoreName, SubscriptionStatus, User,
 };
 
 const BASE_URL: &str = "https://www.premiumize.me/api";
@@ -52,7 +52,11 @@ impl PremiumizeStore {
         if let Ok(resp) = serde_json::from_str::<PmResponse>(body) {
             if resp.status != "success" && !resp.message.is_empty() {
                 let msg = resp.message.to_ascii_lowercase();
-                if msg.contains("auth") || msg.contains("api key") || msg.contains("token") || msg.contains("invalid") {
+                if msg.contains("auth")
+                    || msg.contains("api key")
+                    || msg.contains("token")
+                    || msg.contains("invalid")
+                {
                     return AppError::unauthorized_for("premiumize", resp.message);
                 }
                 if msg.contains("limit") || msg.contains("fair") {
@@ -91,9 +95,9 @@ impl PremiumizeStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("premiumize")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("premiumize"))
     }
 
     async fn api_post(
@@ -116,9 +120,9 @@ impl PremiumizeStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("premiumize")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("premiumize"))
     }
 }
 
@@ -138,8 +142,14 @@ impl Store for PremiumizeStore {
 
     async fn get_user(&self, _p: &GetUserParams) -> Result<User, AppError> {
         let data = self.api_get("/account/info").await?;
-        let customer_id = data.get("customer_id").and_then(|v| v.as_u64()).unwrap_or(0);
-        let premium_until = data.get("premium_until").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let customer_id = data
+            .get("customer_id")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let premium_until = data
+            .get("premium_until")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
 
         Ok(User {
             id: customer_id.to_string(),
@@ -160,10 +170,8 @@ impl Store for PremiumizeStore {
             .map(|m| super::realdebrid::extract_hash_from_magnet(m).to_lowercase())
             .collect();
 
-        let items_param: Vec<(&str, &str)> = hashes
-            .iter()
-            .map(|h| ("items[]", h.as_str()))
-            .collect();
+        let items_param: Vec<(&str, &str)> =
+            hashes.iter().map(|h| ("items[]", h.as_str())).collect();
 
         let data = self.api_post("/cache/check", &items_param).await?;
         let response_arr = data.get("response").and_then(|v| v.as_array());
@@ -199,7 +207,11 @@ impl Store for PremiumizeStore {
         let data = self
             .api_post("/transfer/create", &[("src", p.magnet.as_str())])
             .await?;
-        let id = data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = data
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let hash = super::realdebrid::extract_hash_from_magnet(&p.magnet).to_lowercase();
 
         Ok(AddMagnetData {
@@ -220,16 +232,30 @@ impl Store for PremiumizeStore {
         let transfers = data.get("transfers").and_then(|v| v.as_array());
 
         let transfer = transfers
-            .and_then(|arr| arr.iter().find(|t| t.get("id").and_then(|v| v.as_str()) == Some(&p.id)))
+            .and_then(|arr| {
+                arr.iter()
+                    .find(|t| t.get("id").and_then(|v| v.as_str()) == Some(&p.id))
+            })
             .cloned()
             .unwrap_or_default();
 
-        let native_status = transfer.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let native_status = transfer
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
 
         Ok(GetMagnetData {
             id: p.id.clone(),
-            name: transfer.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            hash: transfer.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: transfer
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            hash: transfer
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             size: transfer.get("size").and_then(|v| v.as_i64()).unwrap_or(-1),
             status: MagnetStatus::from_native(native_status),
             files: vec![],
@@ -246,11 +272,26 @@ impl Store for PremiumizeStore {
             .map(|arr| {
                 arr.iter()
                     .map(|t| {
-                        let native_status = t.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let native_status = t
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
                         crate::store::ListMagnetItem {
-                            id: t.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            hash: t.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            id: t
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            name: t
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            hash: t
+                                .get("hash")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             size: t.get("size").and_then(|v| v.as_i64()).unwrap_or(-1),
                             status: MagnetStatus::from_native(native_status),
                         }

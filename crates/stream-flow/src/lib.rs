@@ -12,12 +12,9 @@
 //! (defined in [`app`]) and mounts the dual-surface
 //! [`router`](http::router): the two disjoint `mediaflow` / `stremthru` path
 //! namespaces plus the shared routes onto one handler set (Req 36.1, 36.2).
-//! Endpoint behaviour is filled in by later tasks; this is the router skeleton
-//! (task 11.2).
 
 pub mod acestream;
 pub mod app;
-pub mod health_score;
 pub mod auth;
 pub mod cache;
 pub mod config;
@@ -27,18 +24,19 @@ pub mod egress;
 pub mod epg;
 pub mod errors;
 pub mod extractor;
-pub mod integrations;
 pub mod health;
+pub mod health_score;
 pub mod hls;
 pub mod http;
+pub mod integrations;
 pub mod meta;
 pub mod mpd;
-pub mod quality;
 pub mod observability;
 pub mod persistence;
 pub mod prebuffer;
 pub mod proxy;
 pub mod proxylink;
+pub mod quality;
 pub mod rate_limit;
 pub mod resilience;
 pub mod security;
@@ -50,6 +48,8 @@ pub mod supervisor;
 pub mod telegram;
 pub mod transcode;
 pub mod utils;
+pub mod warmup;
+pub mod web_ui;
 pub mod xtream;
 
 use actix_web::{dev::HttpServiceFactory, web};
@@ -76,8 +76,9 @@ use crate::http::PanicBoundary;
 /// the scope so every route (except `/health` and `/metrics`, which are exempt
 /// per Req 40.6) is subject to per-user / per-IP token-bucket enforcement.
 pub fn build_app(state: AppState) -> impl HttpServiceFactory {
-    use std::sync::Arc;
+    use http::degradation::DegradationGuard;
     use rate_limit::{RateLimiter, RateLimiterMiddleware};
+    use std::sync::Arc;
 
     // Build the rate limiter from the config. When disabled, the limiter is
     // still constructed but the middleware checks `is_exempt` for all paths
@@ -90,6 +91,7 @@ pub fn build_app(state: AppState) -> impl HttpServiceFactory {
 
     web::scope("")
         .wrap(PanicBoundary)
+        .wrap(DegradationGuard::new(state.load_controller().clone()))
         .wrap(RateLimiterMiddleware::new(limiter))
         .configure(move |cfg| http::router::configure(cfg, &state))
 }

@@ -65,10 +65,7 @@ fn arb_namespace_value() -> impl Strategy<Value = String> {
 /// Strategy for an optional namespace value: present (`Some`) or absent
 /// (`None`) independently.
 fn arb_namespace_field() -> impl Strategy<Value = Option<String>> {
-    prop_oneof![
-        Just(None),
-        arb_namespace_value().prop_map(Some),
-    ]
+    prop_oneof![Just(None), arb_namespace_value().prop_map(Some),]
 }
 
 /// Strategy producing an arbitrary partial id-map record: each of the four

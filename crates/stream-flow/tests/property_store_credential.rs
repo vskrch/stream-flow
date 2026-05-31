@@ -103,11 +103,7 @@ fn arb_case() -> impl Strategy<Value = (Vec<(String, String, String)>, String, S
 /// Independent oracle for the spec's resolution order. Builds a
 /// `(user, store) -> token` map from the tuples with the same last-write-wins
 /// semantics as `Auth::from_config`, then applies exact → `*` → none.
-fn expected(
-    entries: &[(String, String, String)],
-    user: &str,
-    store: &str,
-) -> Option<String> {
+fn expected(entries: &[(String, String, String)], user: &str, store: &str) -> Option<String> {
     let mut map: HashMap<(String, String), String> = HashMap::new();
     for (u, s, t) in entries {
         map.insert((u.clone(), s.clone()), t.clone());

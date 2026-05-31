@@ -69,21 +69,16 @@ impl GitHubAdapter {
     /// (Req 27.5).
     pub async fn fetch_list(&self) -> Result<IntegrationList, AppError> {
         let cache_key = format!("github:{}", self.raw_url);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let raw_url = self.raw_url.clone();
-                async move { fetch_raw_content(&client, &raw_url).await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let raw_url = self.raw_url.clone();
+            async move { fetch_raw_content(&client, &raw_url).await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("GitHub: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("GitHub: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 }
@@ -114,8 +109,9 @@ async fn fetch_raw_content(client: &OutboundClient, raw_url: &str) -> Result<Byt
 
     // Try to parse as a JSON array of items, or wrap raw bytes in a list.
     let list = parse_github_content(&body, raw_url)?;
-    let serialized = serde_json::to_vec(&list)
-        .map_err(|e| AppError::upstream_unavailable(format!("GitHub: serialization failed: {e}")))?;
+    let serialized = serde_json::to_vec(&list).map_err(|e| {
+        AppError::upstream_unavailable(format!("GitHub: serialization failed: {e}"))
+    })?;
     Ok(Bytes::from(serialized))
 }
 
@@ -124,7 +120,7 @@ async fn fetch_raw_content(client: &OutboundClient, raw_url: &str) -> Result<Byt
 /// Supports two formats:
 /// 1. A JSON array of objects with `title`, `imdb_id`, `type`, `year` fields.
 /// 2. A plain text file with one title per line.
-pub fn parse_github_content(data: &[u8], source_url: &str) -> Result<IntegrationList, AppError> {
+pub fn parse_github_content(data: &[u8], _source_url: &str) -> Result<IntegrationList, AppError> {
     // Try JSON array first.
     if let Ok(items) = serde_json::from_slice::<Vec<GitHubListItem>>(data) {
         let list_items = items
@@ -214,7 +210,11 @@ mod tests {
             { "title": "Breaking Bad", "type": "series", "year": 2008 }
         ]);
         let bytes = serde_json::to_vec(&data).unwrap();
-        let list = parse_github_content(&bytes, "https://raw.githubusercontent.com/test/repo/main/list.json").unwrap();
+        let list = parse_github_content(
+            &bytes,
+            "https://raw.githubusercontent.com/test/repo/main/list.json",
+        )
+        .unwrap();
 
         assert_eq!(list.source, INTEGRATION_GITHUB);
         assert_eq!(list.items.len(), 2);
@@ -231,7 +231,11 @@ mod tests {
     #[test]
     fn parses_plain_text_format() {
         let text = b"# My list\nThe Matrix\nBreaking Bad\n\nInception\n";
-        let list = parse_github_content(text, "https://raw.githubusercontent.com/test/repo/main/list.txt").unwrap();
+        let list = parse_github_content(
+            text,
+            "https://raw.githubusercontent.com/test/repo/main/list.txt",
+        )
+        .unwrap();
 
         assert_eq!(list.source, INTEGRATION_GITHUB);
         assert_eq!(list.items.len(), 3);

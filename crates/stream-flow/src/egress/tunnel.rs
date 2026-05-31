@@ -245,7 +245,9 @@ impl Tunnel {
         if observed == host {
             LeakCheck::Leaking { ip: observed }
         } else {
-            LeakCheck::Verified { egress_ip: observed }
+            LeakCheck::Verified {
+                egress_ip: observed,
+            }
         }
     }
 }
@@ -436,7 +438,12 @@ mod tests {
         let tunnel = Tunnel::proxy("http://proxy:8888", reflector);
 
         let check = tunnel.verify().await;
-        assert_eq!(check, LeakCheck::Verified { egress_ip: ip("203.0.113.7") });
+        assert_eq!(
+            check,
+            LeakCheck::Verified {
+                egress_ip: ip("203.0.113.7")
+            }
+        );
         assert!(check.is_verified());
         assert!(!check.is_leaking());
         assert_eq!(check.egress_ip(), Some(ip("203.0.113.7")));
@@ -449,7 +456,12 @@ mod tests {
         let tunnel = Tunnel::netns(None, reflector);
 
         let check = tunnel.verify().await;
-        assert_eq!(check, LeakCheck::Leaking { ip: ip("198.51.100.1") });
+        assert_eq!(
+            check,
+            LeakCheck::Leaking {
+                ip: ip("198.51.100.1")
+            }
+        );
         assert!(check.is_leaking());
         assert!(!check.is_verified());
         // A leaking tunnel exposes no usable Egress_IP.

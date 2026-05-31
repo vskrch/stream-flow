@@ -371,7 +371,10 @@ impl TaskHandle {
 
     /// The task's current [`TaskStatus`].
     pub fn status(&self) -> TaskStatus {
-        self.shared.lock().expect("supervisor state poisoned").status
+        self.shared
+            .lock()
+            .expect("supervisor state poisoned")
+            .status
     }
 
     /// The number of restarts performed so far.
@@ -617,9 +620,12 @@ impl Supervisor {
             .map(|task| {
                 let task = task.clone();
                 let name = task.name();
-                spawn_monitor(name, self.policy.clone(), self.signal.token(), move |token| {
-                    task.run(token)
-                })
+                spawn_monitor(
+                    name,
+                    self.policy.clone(),
+                    self.signal.token(),
+                    move |token| task.run(token),
+                )
             })
             .collect()
     }
@@ -736,7 +742,11 @@ mod tests {
         guard.on_exit(0);
         guard.on_exit(10);
         guard.on_exit(20);
-        assert_eq!(guard.on_exit(30), RestartDecision::Park, "cap hit within window");
+        assert_eq!(
+            guard.on_exit(30),
+            RestartDecision::Park,
+            "cap hit within window"
+        );
 
         // At t=1100 the restarts at 0/10/20 are all >= 1000ms old ⇒ pruned, so
         // a restart is authorized again.
@@ -819,14 +829,21 @@ mod tests {
         handle.wait().await;
 
         // 1 initial run + 3 restarts = 4 runs, then parked.
-        assert_eq!(runs.load(Ordering::SeqCst), 4, "initial run + max_restarts runs");
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            4,
+            "initial run + max_restarts runs"
+        );
         assert_eq!(handle.restart_count(), 3);
         assert_eq!(handle.status(), TaskStatus::Failed);
 
         let events = handle.events();
         assert_eq!(events.len(), 3, "one restart event recorded per restart");
         for event in &events {
-            assert!(event.backoff <= Duration::from_millis(100), "backoff within max");
+            assert!(
+                event.backoff <= Duration::from_millis(100),
+                "backoff within max"
+            );
             assert!(matches!(event.reason, ExitReason::Panicked(_)));
         }
 
@@ -842,13 +859,14 @@ mod tests {
         let signal = ShutdownSignal::new();
         let r = runs.clone();
 
-        let mut handle = spawn_supervised("early-exit", fast_policy(2), signal.token(), move || {
-            let r = r.clone();
-            async move {
-                r.fetch_add(1, Ordering::SeqCst);
-                // returns () immediately => early exit
-            }
-        });
+        let mut handle =
+            spawn_supervised("early-exit", fast_policy(2), signal.token(), move || {
+                let r = r.clone();
+                async move {
+                    r.fetch_add(1, Ordering::SeqCst);
+                    // returns () immediately => early exit
+                }
+            });
 
         handle.wait().await;
 
@@ -916,8 +934,16 @@ mod tests {
         tokio::time::advance(Duration::from_secs(3600)).await;
         settle().await;
 
-        assert_eq!(started.load(Ordering::SeqCst), 1, "task entered exactly once");
-        assert_eq!(handle.restart_count(), 0, "a running task is never restarted");
+        assert_eq!(
+            started.load(Ordering::SeqCst),
+            1,
+            "task entered exactly once"
+        );
+        assert_eq!(
+            handle.restart_count(),
+            0,
+            "a running task is never restarted"
+        );
         assert_eq!(handle.status(), TaskStatus::Running);
 
         handle.abort();
@@ -991,12 +1017,20 @@ mod tests {
 
         let mut handles = supervisor.spawn_all();
         settle().await;
-        assert_eq!(runs.load(Ordering::SeqCst), 1, "task started once and is running");
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            1,
+            "task started once and is running"
+        );
 
         supervisor.shutdown();
         handles[0].wait().await;
 
-        assert_eq!(runs.load(Ordering::SeqCst), 1, "no restart on graceful shutdown");
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            1,
+            "no restart on graceful shutdown"
+        );
         assert_eq!(handles[0].restart_count(), 0);
         assert_eq!(handles[0].status(), TaskStatus::Stopped);
     }

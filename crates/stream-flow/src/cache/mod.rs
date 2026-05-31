@@ -116,7 +116,10 @@ mod tests {
     #[test]
     fn namespaced_key_prefixes_with_separator() {
         assert_eq!(namespaced_key("ns", "k"), "ns:k");
-        assert_eq!(namespaced_key("stream-flow", "magnet:abc"), "stream-flow:magnet:abc");
+        assert_eq!(
+            namespaced_key("stream-flow", "magnet:abc"),
+            "stream-flow:magnet:abc"
+        );
     }
 
     #[test]

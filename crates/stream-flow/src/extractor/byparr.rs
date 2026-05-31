@@ -126,10 +126,11 @@ impl Byparr {
             .with_upstream_status(status.as_u16()));
         }
 
-        let parsed: SolveResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::hoster_unavailable(format!("Byparr solver returned an unparseable response: {e}")))?;
+        let parsed: SolveResponse = resp.json().await.map_err(|e| {
+            AppError::hoster_unavailable(format!(
+                "Byparr solver returned an unparseable response: {e}"
+            ))
+        })?;
 
         if parsed.status != "ok" {
             return Err(AppError::hoster_unavailable(format!(
@@ -200,7 +201,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let byparr = Byparr::new(outbound(EgressPolicy::FailOpen), format!("{}/v1", server.uri()), 30);
+        let byparr = Byparr::new(
+            outbound(EgressPolicy::FailOpen),
+            format!("{}/v1", server.uri()),
+            30,
+        );
         let html = byparr
             .fetch(&url("https://protected.example/watch"), &BTreeMap::new())
             .await
@@ -220,7 +225,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let byparr = Byparr::new(outbound(EgressPolicy::FailOpen), format!("{}/v1", server.uri()), 30);
+        let byparr = Byparr::new(
+            outbound(EgressPolicy::FailOpen),
+            format!("{}/v1", server.uri()),
+            30,
+        );
         let err = byparr
             .fetch(&url("https://protected.example/watch"), &BTreeMap::new())
             .await
@@ -238,7 +247,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let byparr = Byparr::new(outbound(EgressPolicy::FailOpen), format!("{}/v1", server.uri()), 30);
+        let byparr = Byparr::new(
+            outbound(EgressPolicy::FailOpen),
+            format!("{}/v1", server.uri()),
+            30,
+        );
         let err = byparr
             .fetch(&url("https://protected.example/watch"), &BTreeMap::new())
             .await
@@ -249,7 +262,11 @@ mod tests {
 
     #[tokio::test]
     async fn solver_request_is_gated_by_fail_closed_egress() {
-        let byparr = Byparr::new(outbound(EgressPolicy::FailClosed), "http://byparr:8191/v1".to_string(), 30);
+        let byparr = Byparr::new(
+            outbound(EgressPolicy::FailClosed),
+            "http://byparr:8191/v1".to_string(),
+            30,
+        );
         let err = byparr
             .fetch(&url("https://protected.example/watch"), &BTreeMap::new())
             .await

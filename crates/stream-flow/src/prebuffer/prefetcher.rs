@@ -67,12 +67,7 @@ pub struct Prefetcher {
 impl Prefetcher {
     /// Build a prefetcher for the media playlist at `base`, writing prefetched
     /// segments into `cache`, fetching up to `count` segments ahead (Req 7.1).
-    pub fn new(
-        client: Arc<OutboundClient>,
-        cache: SegmentCache,
-        base: Url,
-        count: usize,
-    ) -> Self {
+    pub fn new(client: Arc<OutboundClient>, cache: SegmentCache, base: Url, count: usize) -> Self {
         Self {
             client,
             cache,
@@ -111,11 +106,7 @@ impl Prefetcher {
     /// Returns the number of segments successfully prefetched this call.
     /// Per-segment fetch failures are skipped (best-effort) so a speculative
     /// miss never breaks playback.
-    pub async fn prefetch_ahead(
-        &self,
-        playlist: &MediaPlaylist,
-        position: Option<u64>,
-    ) -> usize {
+    pub async fn prefetch_ahead(&self, playlist: &MediaPlaylist, position: Option<u64>) -> usize {
         // Stay ahead of the requested position without re-fetching what we
         // already have: plan after the larger of the position and the
         // watermark.
@@ -161,8 +152,8 @@ impl Prefetcher {
     /// Fetch one segment's full bytes + content type through the egress seam
     /// (Req 51.1), capped at [`MAX_SEGMENT_BYTES`].
     async fn fetch_segment(&self, url: &Url) -> Result<CachedSegment, AppError> {
-        let source =
-            DirectSource::new(self.client.clone(), url.clone()).with_headers(to_header_map(&self.headers));
+        let source = DirectSource::new(self.client.clone(), url.clone())
+            .with_headers(to_header_map(&self.headers));
         let body = source.open(RangeSpec::Full).await?;
 
         // A non-2xx upstream is not a cacheable segment.
@@ -232,7 +223,12 @@ mod tests {
 
     /// A media playlist of `n` segments served by `server`, named
     /// `seg{media_sequence+i}.ts`.
-    fn playlist_on(server: &MockServer, media_sequence: u64, n: u64, end_list: bool) -> MediaPlaylist {
+    fn playlist_on(
+        server: &MockServer,
+        media_sequence: u64,
+        n: u64,
+        end_list: bool,
+    ) -> MediaPlaylist {
         let _ = server;
         let segments = (0..n)
             .map(|i| MediaSegment {
@@ -321,9 +317,16 @@ mod tests {
 
         // seg0 was already cached → only seg1, seg2 fetched.
         assert_eq!(fetched, 2);
-        assert_eq!(hits.load(Ordering::SeqCst), 2, "cached segment not re-fetched (Req 7.4)");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "cached segment not re-fetched (Req 7.4)"
+        );
         // The pre-seeded value is untouched.
-        let seg0 = cache.get(&format!("{}/v/seg0.ts", server.uri())).await.unwrap();
+        let seg0 = cache
+            .get(&format!("{}/v/seg0.ts", server.uri()))
+            .await
+            .unwrap();
         assert_eq!(seg0.body, Bytes::from_static(b"existing"));
     }
 
@@ -404,7 +407,10 @@ mod tests {
         let pl = playlist_on(&server, 0, 3, true);
 
         let fetched = pf.prefetch_ahead(&pl, None).await;
-        assert_eq!(fetched, 2, "the failing segment is skipped, the rest cached");
+        assert_eq!(
+            fetched, 2,
+            "the failing segment is skipped, the rest cached"
+        );
         assert!(cache.contains(&format!("{}/v/seg0.ts", server.uri())).await);
         assert!(!cache.contains(&format!("{}/v/seg1.ts", server.uri())).await);
         assert!(cache.contains(&format!("{}/v/seg2.ts", server.uri())).await);

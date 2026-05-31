@@ -121,7 +121,10 @@ pub fn classify_path(path: &str) -> RequestClass {
         "/v0/proxy",        // stremthru content proxy / byte serving (Req 36.2)
         "/v0/events",       // SSE long-lived stream (Req 36.2)
     ];
-    if STREAM_PREFIXES.iter().any(|prefix| path.starts_with(prefix)) {
+    if STREAM_PREFIXES
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+    {
         return RequestClass::Stream;
     }
 
@@ -223,6 +226,100 @@ pub fn next_load_state(
 /// ([`LoadState::Degraded`]). Streams and exempt endpoints are never shed.
 pub fn shed_new_request(state: LoadState, class: RequestClass, enabled: bool) -> bool {
     enabled && class == RequestClass::Sheddable && state.sheds_traffic()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DegradationLevel {
+    L0Normal = 0,
+    L1StopWarmup = 1,
+    L2ShrinkCaches = 2,
+    L3ShedNonStreaming = 3,
+    L4ShedNewStreams = 4,
+    L5Emergency = 5,
+}
+
+impl DegradationLevel {
+    pub fn protects_active_streams(self) -> bool {
+        self < DegradationLevel::L5Emergency
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => DegradationLevel::L0Normal,
+            1 => DegradationLevel::L1StopWarmup,
+            2 => DegradationLevel::L2ShrinkCaches,
+            3 => DegradationLevel::L3ShedNonStreaming,
+            4 => DegradationLevel::L4ShedNewStreams,
+            _ => DegradationLevel::L5Emergency,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DegradationLadder {
+    /// Rising thresholds for L1..L5.
+    pub on_thresholds: [u64; 5],
+    /// Falling thresholds for L1..L5. Each value must be below the matching
+    /// `on_thresholds` value to create a hysteresis gap.
+    pub off_thresholds: [u64; 5],
+    /// Seconds the signal must remain below the lower threshold before relaxing.
+    pub cooldown_hold_secs: u64,
+}
+
+impl Default for DegradationLadder {
+    fn default() -> Self {
+        Self {
+            on_thresholds: [70, 80, 90, 95, 99],
+            off_thresholds: [60, 70, 80, 90, 95],
+            cooldown_hold_secs: 30,
+        }
+    }
+}
+
+impl DegradationLadder {
+    pub fn next_level(
+        &self,
+        current: DegradationLevel,
+        pressure: u64,
+        below_off_since_secs: Option<u64>,
+    ) -> DegradationLevel {
+        let mut target = DegradationLevel::L0Normal;
+        for (idx, threshold) in self.on_thresholds.iter().enumerate() {
+            if pressure >= *threshold {
+                target = DegradationLevel::from_index(idx + 1);
+            }
+        }
+        if target > current {
+            return DegradationLevel::from_index((current as usize + 1).min(target as usize));
+        }
+        if target == current {
+            return current;
+        }
+        let idx = current as usize;
+        if idx == 0 {
+            return current;
+        }
+        let off = self.off_thresholds[idx - 1];
+        let hold_satisfied = below_off_since_secs
+            .map(|secs| secs >= self.cooldown_hold_secs)
+            .unwrap_or(false);
+        if pressure < off && hold_satisfied {
+            DegradationLevel::from_index(idx - 1)
+        } else {
+            current
+        }
+    }
+
+    pub fn action(level: DegradationLevel) -> &'static str {
+        match level {
+            DegradationLevel::L0Normal => "normal",
+            DegradationLevel::L1StopWarmup => "stop_warmup",
+            DegradationLevel::L2ShrinkCaches => "shrink_prebuffer_and_evict_segment_cache",
+            DegradationLevel::L3ShedNonStreaming => "shed_non_streaming",
+            DegradationLevel::L4ShedNewStreams => "shed_new_stream_starts",
+            DegradationLevel::L5Emergency => "shed_idle_or_excess_streams",
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -498,7 +595,11 @@ pub trait RssReader: Send + 'static {
 impl<R: RssReader> RssSampler<R> {
     /// Build a sampler over an explicit reader and sampling interval.
     pub fn new(controller: LoadController, reader: R, interval: Duration) -> Self {
-        Self { controller, reader, interval }
+        Self {
+            controller,
+            reader,
+            interval,
+        }
     }
 
     /// Take one sample now, updating the controller's RSS gauge and
@@ -551,10 +652,8 @@ impl RssReader for SysinfoRssReader {
     fn read_rss_bytes(&mut self) -> Option<u64> {
         let pid = self.pid?;
         // Refresh only the current process (cheap), then read its RSS.
-        self.system.refresh_processes(
-            sysinfo::ProcessesToUpdate::Some(&[pid]),
-            true,
-        );
+        self.system
+            .refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
         self.system.process(pid).map(|proc_| proc_.memory())
     }
 }
@@ -642,7 +741,9 @@ where
                  streams are protected",
             )
             .with_retry_after(Duration::from_secs(RETRY_AFTER_SECS));
-            let resp = req.into_response(err.error_response()).map_into_right_body();
+            let resp = req
+                .into_response(err.error_response())
+                .map_into_right_body();
             return Box::pin(async move { Ok(resp) });
         }
 
@@ -653,7 +754,10 @@ where
         Box::pin(async move {
             let resp = fut.await?;
             Ok(resp.map_body(move |_, body| {
-                EitherBody::left(GuardedBody { body, _guard: guard })
+                EitherBody::left(GuardedBody {
+                    body,
+                    _guard: guard,
+                })
             }))
         })
     }
@@ -750,17 +854,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn ladder_engages_one_level_at_a_time_and_relaxes_in_reverse() {
+        let ladder = DegradationLadder {
+            on_thresholds: [10, 20, 30, 40, 50],
+            off_thresholds: [5, 15, 25, 35, 45],
+            cooldown_hold_secs: 10,
+        };
+        let l1 = ladder.next_level(DegradationLevel::L0Normal, 55, None);
+        assert_eq!(l1, DegradationLevel::L1StopWarmup);
+        let l2 = ladder.next_level(l1, 55, None);
+        assert_eq!(l2, DegradationLevel::L2ShrinkCaches);
+        assert_eq!(
+            ladder.next_level(l2, 14, Some(9)),
+            DegradationLevel::L2ShrinkCaches
+        );
+        assert_eq!(
+            ladder.next_level(l2, 14, Some(10)),
+            DegradationLevel::L1StopWarmup
+        );
+    }
+
+    #[test]
+    fn ladder_protects_active_streams_until_l5() {
+        assert!(DegradationLevel::L4ShedNewStreams.protects_active_streams());
+        assert!(!DegradationLevel::L5Emergency.protects_active_streams());
+        assert_eq!(
+            DegradationLadder::action(DegradationLevel::L2ShrinkCaches),
+            "shrink_prebuffer_and_evict_segment_cache"
+        );
+    }
+
     // -- next_load_state hysteresis (Req 44.1, 44.4) ------------------------
 
     #[test]
     fn enters_degraded_at_conn_high_water() {
         let t = test_thresholds();
         // Just below high-water: stays Normal.
-        assert_eq!(next_load_state(LoadState::Normal, 9, 0, &t), LoadState::Normal);
+        assert_eq!(
+            next_load_state(LoadState::Normal, 9, 0, &t),
+            LoadState::Normal
+        );
         // At high-water: enters Degraded.
-        assert_eq!(next_load_state(LoadState::Normal, 10, 0, &t), LoadState::Degraded);
+        assert_eq!(
+            next_load_state(LoadState::Normal, 10, 0, &t),
+            LoadState::Degraded
+        );
         // Above high-water: Degraded.
-        assert_eq!(next_load_state(LoadState::Normal, 50, 0, &t), LoadState::Degraded);
+        assert_eq!(
+            next_load_state(LoadState::Normal, 50, 0, &t),
+            LoadState::Degraded
+        );
     }
 
     #[test]
@@ -795,8 +939,14 @@ mod tests {
     fn returns_to_normal_below_low_water() {
         let t = test_thresholds();
         // Strictly below low-water (5) AND RSS clear → relax to Normal.
-        assert_eq!(next_load_state(LoadState::Degraded, 4, 0, &t), LoadState::Normal);
-        assert_eq!(next_load_state(LoadState::Degraded, 0, 0, &t), LoadState::Normal);
+        assert_eq!(
+            next_load_state(LoadState::Degraded, 4, 0, &t),
+            LoadState::Normal
+        );
+        assert_eq!(
+            next_load_state(LoadState::Degraded, 0, 0, &t),
+            LoadState::Normal
+        );
     }
 
     #[test]
@@ -813,25 +963,51 @@ mod tests {
     fn disabled_guard_is_always_normal() {
         let mut t = test_thresholds();
         t.enabled = false;
-        assert_eq!(next_load_state(LoadState::Normal, 10_000, u64::MAX, &t), LoadState::Normal);
-        assert_eq!(next_load_state(LoadState::Degraded, 10_000, u64::MAX, &t), LoadState::Normal);
+        assert_eq!(
+            next_load_state(LoadState::Normal, 10_000, u64::MAX, &t),
+            LoadState::Normal
+        );
+        assert_eq!(
+            next_load_state(LoadState::Degraded, 10_000, u64::MAX, &t),
+            LoadState::Normal
+        );
     }
 
     // -- shed_new_request (Req 44.1, 44.3) ----------------------------------
 
     #[test]
     fn sheds_only_sheddable_requests_while_degraded() {
-        assert!(shed_new_request(LoadState::Degraded, RequestClass::Sheddable, true));
+        assert!(shed_new_request(
+            LoadState::Degraded,
+            RequestClass::Sheddable,
+            true
+        ));
         // Protected + exempt classes are never shed (Req 44.3).
-        assert!(!shed_new_request(LoadState::Degraded, RequestClass::Stream, true));
-        assert!(!shed_new_request(LoadState::Degraded, RequestClass::Exempt, true));
+        assert!(!shed_new_request(
+            LoadState::Degraded,
+            RequestClass::Stream,
+            true
+        ));
+        assert!(!shed_new_request(
+            LoadState::Degraded,
+            RequestClass::Exempt,
+            true
+        ));
     }
 
     #[test]
     fn sheds_nothing_while_normal_or_disabled() {
-        assert!(!shed_new_request(LoadState::Normal, RequestClass::Sheddable, true));
+        assert!(!shed_new_request(
+            LoadState::Normal,
+            RequestClass::Sheddable,
+            true
+        ));
         // Disabled guard never sheds even while (impossibly) marked degraded.
-        assert!(!shed_new_request(LoadState::Degraded, RequestClass::Sheddable, false));
+        assert!(!shed_new_request(
+            LoadState::Degraded,
+            RequestClass::Sheddable,
+            false
+        ));
     }
 
     // -- LoadController admit/release + transition accounting ----------------
@@ -857,7 +1033,11 @@ mod tests {
         // Drop down into the hysteresis gap (to 6 connections): stays Degraded.
         guards.truncate(6);
         assert_eq!(ctrl.active_connections(), 6);
-        assert_eq!(ctrl.load_state(), LoadState::Degraded, "within gap stays degraded");
+        assert_eq!(
+            ctrl.load_state(),
+            LoadState::Degraded,
+            "within gap stays degraded"
+        );
         assert_eq!(ctrl.degraded_exits(), 0);
 
         // Drop below low-water (to 4): relaxes back to Normal (one exit).
@@ -880,7 +1060,11 @@ mod tests {
         let s = ctrl.admit(RequestClass::Stream);
         let a = ctrl.admit(RequestClass::Sheddable);
         assert_eq!(ctrl.active_connections(), 2);
-        assert_eq!(ctrl.active_streams(), 1, "only the stream counts as protected");
+        assert_eq!(
+            ctrl.active_streams(),
+            1,
+            "only the stream counts as protected"
+        );
         drop(s);
         assert_eq!(ctrl.active_streams(), 0);
         drop(a);
@@ -893,7 +1077,9 @@ mod tests {
         // Normal: nothing shed.
         assert!(!ctrl.should_shed(RequestClass::Sheddable));
 
-        let _guards: Vec<_> = (0..10).map(|_| ctrl.admit(RequestClass::Sheddable)).collect();
+        let _guards: Vec<_> = (0..10)
+            .map(|_| ctrl.admit(RequestClass::Sheddable))
+            .collect();
         assert_eq!(ctrl.load_state(), LoadState::Degraded);
         // Degraded: sheddable shed, protected/exempt not (Req 44.1, 44.3).
         assert!(ctrl.should_shed(RequestClass::Sheddable));
@@ -932,7 +1118,9 @@ mod tests {
 
     impl FakeRssReader {
         fn new(readings: Vec<Option<u64>>) -> Self {
-            Self { readings: std::cell::RefCell::new(readings) }
+            Self {
+                readings: std::cell::RefCell::new(readings),
+            }
         }
     }
 
@@ -1013,7 +1201,9 @@ mod tests {
         // Drive the controller to Degraded, then build the health snapshot the
         // way the registry does, and confirm `/health` reflects the degraded
         // load (readiness sheds traffic — Req 44.3, 44.6).
-        let _guards: Vec<_> = (0..10).map(|_| ctrl.admit(RequestClass::Sheddable)).collect();
+        let _guards: Vec<_> = (0..10)
+            .map(|_| ctrl.admit(RequestClass::Sheddable))
+            .collect();
         assert_eq!(probes.load_state(), LoadState::Degraded);
 
         let inputs = HealthInputs {
@@ -1027,7 +1217,10 @@ mod tests {
             extra: vec![],
         };
         assert!(inputs.load.sheds_traffic());
-        assert!(!inputs.readiness_ready(), "degraded load → not ready (Req 44.3)");
+        assert!(
+            !inputs.readiness_ready(),
+            "degraded load → not ready (Req 44.3)"
+        );
         let load_component = inputs
             .components()
             .into_iter()
@@ -1072,7 +1265,11 @@ mod middleware_tests {
 
         let req = test::TestRequest::get().uri("/v0/store/check").to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status().as_u16(), 503, "sheddable request shed with 503");
+        assert_eq!(
+            resp.status().as_u16(),
+            503,
+            "sheddable request shed with 503"
+        );
         assert!(
             resp.headers().contains_key("retry-after"),
             "shed 503 carries Retry-After"
@@ -1131,7 +1328,11 @@ mod middleware_tests {
 
         let req = test::TestRequest::get().uri("/health").to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status().as_u16(), 200, "health always answers (Req 44.6)");
+        assert_eq!(
+            resp.status().as_u16(),
+            200,
+            "health always answers (Req 44.6)"
+        );
     }
 
     #[actix_web::test]
@@ -1157,7 +1358,11 @@ mod middleware_tests {
         assert_eq!(resp.status().as_u16(), 200);
         // Consume the body so the GuardedBody (and its ConnectionGuard) drops.
         let _ = test::read_body(resp).await;
-        assert_eq!(ctrl.active_connections(), 0, "connection released after delivery");
+        assert_eq!(
+            ctrl.active_connections(),
+            0,
+            "connection released after delivery"
+        );
     }
 
     #[actix_web::test]
@@ -1169,7 +1374,11 @@ mod middleware_tests {
             memory_high_water_bytes: 1,
         });
         ctrl.set_rss_bytes(u64::MAX); // would degrade if enabled
-        assert_eq!(ctrl.load_state(), LoadState::Normal, "disabled → always Normal");
+        assert_eq!(
+            ctrl.load_state(),
+            LoadState::Normal,
+            "disabled → always Normal"
+        );
 
         let app = test::init_service(
             App::new()

@@ -77,11 +77,7 @@ pub struct StoreAddon {
 
 impl StoreAddon {
     /// Build a Store addon backed by a live, configured [`Store`].
-    pub fn new(
-        store: Arc<dyn Store>,
-        codec: ProxyCodec,
-        base_url: impl Into<String>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn Store>, codec: ProxyCodec, base_url: impl Into<String>) -> Self {
         let store_name = store.get_name();
         Self {
             store_name,
@@ -228,7 +224,8 @@ impl StoreAddon {
         }
 
         let store = self.require_store()?;
-        let params = ListMagnetsParams::new(ctx.clone(), Some(ListMagnetsParams::LIMIT_MAX), offset);
+        let params =
+            ListMagnetsParams::new(ctx.clone(), Some(ListMagnetsParams::LIMIT_MAX), offset);
         let data = store
             .list_magnets(&params)
             .await
@@ -286,7 +283,9 @@ impl StoreAddon {
 
     /// The live store, or the Req 23.5 "not configured" [`StremioError`].
     fn require_store(&self) -> Result<&Arc<dyn Store>, StremioError> {
-        self.store.as_ref().ok_or_else(|| self.not_configured_error())
+        self.store
+            .as_ref()
+            .ok_or_else(|| self.not_configured_error())
     }
 
     /// The canonical "store is not configured" Stremio error (Req 23.5).
@@ -309,7 +308,10 @@ impl StoreAddon {
             ErrorCategory::Unauthorized
             | ErrorCategory::Forbidden
             | ErrorCategory::PaymentRequired => self.not_configured_error(),
-            _ => StremioError::new(format!("store `{}` error: {}", self.store_name, err.message)),
+            _ => StremioError::new(format!(
+                "store `{}` error: {}",
+                self.store_name, err.message
+            )),
         }
     }
 
@@ -335,11 +337,7 @@ impl StoreAddon {
 
     /// Build a playable [`Stream`] for one magnet file, wrapping its store link
     /// in a proxy link (Req 23.4; Property 26).
-    fn stream_for_file(
-        &self,
-        store_link: &str,
-        file: &MagnetFile,
-    ) -> Result<Stream, StremioError> {
+    fn stream_for_file(&self, store_link: &str, file: &MagnetFile) -> Result<Stream, StremioError> {
         let mut payload = ProxyPayload::new(store_link.to_string());
         payload.filename = Some(file.name.clone());
 
@@ -637,7 +635,11 @@ mod tests {
         let names: Vec<&str> = resp.metas.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(
             names,
-            vec!["The Matrix (1999)", "Inception (2010)", "Interstellar (2014)"]
+            vec![
+                "The Matrix (1999)",
+                "Inception (2010)",
+                "Interstellar (2014)"
+            ]
         );
         // Every entry id carries the addon's prefix so streams route back here.
         let prefix = addon.item_prefix();
@@ -683,7 +685,10 @@ mod tests {
         let addon = addon_with(store);
 
         // Case-insensitive substring match.
-        let resp = addon.search_catalog(&ctx(), "INCEPTION", None).await.unwrap();
+        let resp = addon
+            .search_catalog(&ctx(), "INCEPTION", None)
+            .await
+            .unwrap();
         assert_eq!(resp.metas.len(), 1);
         assert_eq!(resp.metas[0].name, "Inception (2010)");
 
@@ -736,10 +741,7 @@ mod tests {
 
         // The unknown-size file omits videoSize (the -1 sentinel is not leaked).
         let s1 = &resp.streams[1];
-        assert_eq!(
-            s1.behavior_hints.as_ref().and_then(|h| h.video_size),
-            None
-        );
+        assert_eq!(s1.behavior_hints.as_ref().and_then(|h| h.video_size), None);
     }
 
     #[tokio::test]
@@ -748,7 +750,12 @@ mod tests {
             StoreName::RealDebrid,
             vec![],
             vec![
-                file(0, "playable.mkv", Some("https://store.example.com/dl/x.mkv"), 10),
+                file(
+                    0,
+                    "playable.mkv",
+                    Some("https://store.example.com/dl/x.mkv"),
+                    10,
+                ),
                 file(1, "nfo.txt", None, 1),
             ],
         );
@@ -756,7 +763,11 @@ mod tests {
         let item_id = format!("{}magnet123", addon.item_prefix());
 
         let resp = addon.streams(&ctx(), "other", &item_id).await.unwrap();
-        assert_eq!(resp.streams.len(), 1, "only the file with a link is playable");
+        assert_eq!(
+            resp.streams.len(),
+            1,
+            "only the file with a link is playable"
+        );
     }
 
     // -- Req 23.5: missing/invalid creds -> Stremio error -------------------
@@ -769,9 +780,15 @@ mod tests {
         assert!(addon.manifest().is_valid());
 
         let explore_err = addon.explore_catalog(&ctx(), None, None).await.unwrap_err();
-        assert!(explore_err.err.contains("not configured"), "{explore_err:?}");
+        assert!(
+            explore_err.err.contains("not configured"),
+            "{explore_err:?}"
+        );
 
-        let search_err = addon.search_catalog(&ctx(), "matrix", None).await.unwrap_err();
+        let search_err = addon
+            .search_catalog(&ctx(), "matrix", None)
+            .await
+            .unwrap_err();
         assert!(search_err.err.contains("not configured"));
 
         let stream_err = addon
@@ -788,7 +805,10 @@ mod tests {
 
         // A store auth failure (invalid creds) surfaces as the Req 23.5 error.
         let explore_err = addon.explore_catalog(&ctx(), None, None).await.unwrap_err();
-        assert!(explore_err.err.contains("not configured"), "{explore_err:?}");
+        assert!(
+            explore_err.err.contains("not configured"),
+            "{explore_err:?}"
+        );
 
         let stream_err = addon
             .streams(&ctx(), "other", "st:sf:rd:magnet123")
@@ -802,7 +822,10 @@ mod tests {
         let addon = StoreAddon::unconfigured(StoreName::TorBox, codec(), BASE_URL);
         let err = addon.explore_catalog(&ctx(), None, None).await.unwrap_err();
         let value = serde_json::to_value(&err).unwrap();
-        assert!(value.get("err").is_some(), "Stremio error shape is {{\"err\": ..}}");
+        assert!(
+            value.get("err").is_some(),
+            "Stremio error shape is {{\"err\": ..}}"
+        );
     }
 
     // -- item-id prefix round trip ------------------------------------------
@@ -812,8 +835,484 @@ mod tests {
         let store = MockStore::new(StoreName::RealDebrid, vec![], vec![]);
         let addon = addon_with(store);
         let prefix = addon.item_prefix();
-        assert_eq!(addon.magnet_id_from_item(&format!("{prefix}abc123")), "abc123");
+        assert_eq!(
+            addon.magnet_id_from_item(&format!("{prefix}abc123")),
+            "abc123"
+        );
         // An id without the prefix is used verbatim (lenient).
         assert_eq!(addon.magnet_id_from_item("raw-id"), "raw-id");
     }
 }
+
+// ---------------------------------------------------------------------------
+// HTTP handlers — Stremio addon protocol routes (Req 23.1–23.5)
+// ---------------------------------------------------------------------------
+//
+// Routes (registered by [`configure_store_addon_routes`]):
+//
+//   GET /stremio/store/{store_code}/manifest.json
+//   GET /stremio/store/{store_code}/catalog/{type}/{id}.json
+//   GET /stremio/store/{store_code}/stream/{type}/{id}.json
+//
+// Each handler:
+//   1. Parses the store code from the URL path.
+//   2. Resolves the store token from the configured `*` wildcard credential.
+//   3. Builds the appropriate store impl via `OutboundClient`.
+//   4. Builds a `StoreAddon` and serves the Stremio protocol response.
+//
+// The `base_url` for proxy links is taken from `StremioConfig::base_url` when
+// configured, or derived from the incoming request's `Host` header.
+
+pub mod handlers {
+    use actix_web::{web, HttpRequest, HttpResponse};
+    use serde::Deserialize;
+    use std::sync::Arc;
+
+    use crate::app::AppState;
+    use crate::auth::Auth;
+    use crate::errors::AppError;
+    use crate::proxylink::ProxyCodec;
+    use crate::store::impls::{
+        AllDebridStore, DebridLinkStore, DebriderStore, EasyDebridStore, OffcloudStore,
+        PikPakStore, PremiumizeStore, RealDebridStore, TorBoxStore,
+    };
+    use crate::store::{Store, StoreName};
+    use crate::stremio::types::StremioError;
+
+    use super::StoreAddon;
+
+    // -----------------------------------------------------------------------
+    // Path / query parameter types
+    // -----------------------------------------------------------------------
+
+    /// Path params for all store addon routes.
+    #[derive(Debug, Deserialize)]
+    pub struct StoreAddonPath {
+        /// Two-letter store code (e.g. `rd`, `ad`, `tb`).
+        pub store_code: String,
+    }
+
+    /// Path params for catalog routes.
+    #[derive(Debug, Deserialize)]
+    pub struct CatalogPath {
+        pub store_code: String,
+        /// Stremio content type (e.g. `other`).
+        pub r#type: String,
+        /// Catalog id (e.g. `streamflow-store-rd`).
+        pub id: String,
+    }
+
+    /// Path params for stream routes.
+    #[derive(Debug, Deserialize)]
+    pub struct StreamPath {
+        pub store_code: String,
+        /// Stremio content type.
+        pub r#type: String,
+        /// Item id (e.g. `st:sf:rd:magnet123`).
+        pub id: String,
+    }
+
+    /// Query params for catalog routes (search + pagination).
+    #[derive(Debug, Deserialize, Default)]
+    pub struct CatalogQuery {
+        /// Optional search query (Req 23.3).
+        pub search: Option<String>,
+        /// Pagination offset (Req 23.2).
+        pub skip: Option<u32>,
+    }
+
+    // -----------------------------------------------------------------------
+    // Store builder
+    // -----------------------------------------------------------------------
+
+    /// Build a [`Store`] impl for the given store code and token, using the
+    /// shared egress [`OutboundClient`](crate::egress::OutboundClient) from
+    /// `AppState` (Req 51.1).
+    fn build_store(store_name: StoreName, token: String, state: &AppState) -> Arc<dyn Store> {
+        let client = state.egress().clone();
+        match store_name {
+            StoreName::AllDebrid => Arc::new(AllDebridStore::new(client, token)),
+            StoreName::Debrider => Arc::new(DebriderStore::new(client, token)),
+            StoreName::DebridLink => Arc::new(DebridLinkStore::new(client, token)),
+            StoreName::EasyDebrid => Arc::new(EasyDebridStore::new(client, token)),
+            StoreName::Offcloud => Arc::new(OffcloudStore::new(client, token)),
+            StoreName::PikPak => Arc::new(PikPakStore::new(client, token)),
+            StoreName::Premiumize => Arc::new(PremiumizeStore::new(client, token)),
+            StoreName::RealDebrid => Arc::new(RealDebridStore::new(client, token)),
+            StoreName::TorBox => Arc::new(TorBoxStore::new(client, token)),
+        }
+    }
+
+    /// Build a [`StoreAddon`] for the given store code from the `AppState`.
+    ///
+    /// Resolves the store token from the configured `*` wildcard credential
+    /// (Req 28.4). When no token is configured, returns an unconfigured addon
+    /// that answers every resource with the "not configured" error (Req 23.5).
+    fn build_addon(store_name: StoreName, state: &AppState, base_url: &str) -> StoreAddon {
+        let auth = Auth::from_config(&state.config().auth);
+        let codec = build_codec(state);
+
+        // Resolve the token using the `*` wildcard user (Req 28.4).
+        match auth.resolve_store_credential("*", store_name.as_str()) {
+            Some(token) => {
+                let store = build_store(store_name, token.to_string(), state);
+                StoreAddon::new(store, codec, base_url)
+            }
+            None => StoreAddon::unconfigured(store_name, codec, base_url),
+        }
+    }
+
+    /// Build the [`ProxyCodec`] from the `AppState` config.
+    ///
+    /// Uses the `api_password` as the mediaflow AES-CBC key and derives a
+    /// stremthru token key from the same secret (the token key is a separate
+    /// HMAC key derived from the api_password with a fixed domain separator).
+    fn build_codec(state: &AppState) -> ProxyCodec {
+        let api_password = state
+            .config()
+            .auth
+            .api_password
+            .as_ref()
+            .map(|s| s.expose().to_string())
+            .unwrap_or_default();
+        let token_secret = state
+            .config()
+            .auth
+            .proxy_auth
+            .first()
+            .and_then(|entry| entry.split_once(':').map(|(_, pass)| pass))
+            .unwrap_or(&api_password);
+        ProxyCodec::from_secrets(&api_password, token_secret)
+    }
+
+    /// Derive the public base URL for proxy links from the request or config.
+    ///
+    /// Prefers `StremioConfig::base_url` when configured; falls back to
+    /// `{scheme}://{host}` derived from the incoming request's `Host` header.
+    fn base_url(req: &HttpRequest, state: &AppState) -> String {
+        if let Some(configured) = state.config().stremio.base_url.as_deref() {
+            if !configured.is_empty() {
+                return configured.trim_end_matches('/').to_string();
+            }
+        }
+        // Derive from the request.
+        let scheme = if req.connection_info().scheme() == "https" {
+            "https"
+        } else {
+            "http"
+        };
+        let host = req.connection_info().host().to_string();
+        format!("{scheme}://{host}")
+    }
+
+    // -----------------------------------------------------------------------
+    // Handler: GET /stremio/store/{store_code}/manifest.json (Req 23.1)
+    // -----------------------------------------------------------------------
+
+    /// Serve the Store addon manifest (Req 23.1).
+    ///
+    /// The manifest is always served — even when the store is not configured —
+    /// so a Stremio client can install the addon and see the "not configured"
+    /// error only when it tries to use it (Req 23.5).
+    pub async fn manifest_endpoint(
+        path: web::Path<StoreAddonPath>,
+        req: HttpRequest,
+        state: web::Data<AppState>,
+    ) -> Result<HttpResponse, AppError> {
+        let store_name = StoreName::require(&path.store_code)?;
+        let base = base_url(&req, &state);
+        let addon = build_addon(store_name, &state, &base);
+        Ok(HttpResponse::Ok().json(addon.manifest()))
+    }
+
+    // -----------------------------------------------------------------------
+    // Handler: GET /stremio/store/{store_code}/catalog/{type}/{id}.json (Req 23.2, 23.3)
+    // -----------------------------------------------------------------------
+
+    /// Serve the Store addon catalog (explore or search, Req 23.2, 23.3).
+    ///
+    /// When the `search` query parameter is present and non-empty, the catalog
+    /// is filtered to entries whose title matches the query (Req 23.3).
+    /// Otherwise the full explore catalog is returned (Req 23.2).
+    pub async fn catalog_endpoint(
+        path: web::Path<CatalogPath>,
+        query: web::Query<CatalogQuery>,
+        req: HttpRequest,
+        state: web::Data<AppState>,
+    ) -> HttpResponse {
+        let store_name = match StoreName::require(&path.store_code) {
+            Ok(n) => n,
+            Err(e) => return stremio_error_response(StremioError::new(e.message)),
+        };
+        let base = base_url(&req, &state);
+        let addon = build_addon(store_name, &state, &base);
+        let ctx = crate::store::types::Ctx::default();
+
+        let result = if let Some(search) = query.search.as_deref().filter(|s| !s.trim().is_empty())
+        {
+            addon.search_catalog(&ctx, search, query.skip).await
+        } else {
+            addon.explore_catalog(&ctx, None, query.skip).await
+        };
+
+        match result {
+            Ok(resp) => HttpResponse::Ok().json(resp),
+            Err(e) => stremio_error_response(e),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Handler: GET /stremio/store/{store_code}/stream/{type}/{id}.json (Req 23.4)
+    // -----------------------------------------------------------------------
+
+    /// Serve the Store addon stream resource (Req 23.4).
+    ///
+    /// Returns one [`Stream`] per playable file in the magnet, each with a
+    /// proxy-link URL (Req 23.4; Property 26). Missing/invalid credentials
+    /// surface as a Stremio error (Req 23.5).
+    pub async fn stream_endpoint(
+        path: web::Path<StreamPath>,
+        req: HttpRequest,
+        state: web::Data<AppState>,
+    ) -> HttpResponse {
+        let store_name = match StoreName::require(&path.store_code) {
+            Ok(n) => n,
+            Err(e) => return stremio_error_response(StremioError::new(e.message)),
+        };
+        let base = base_url(&req, &state);
+        let addon = build_addon(store_name, &state, &base);
+        let ctx = crate::store::types::Ctx::default();
+
+        match addon.streams(&ctx, &path.r#type, &path.id).await {
+            Ok(resp) => HttpResponse::Ok().json(resp),
+            Err(e) => stremio_error_response(e),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper: convert a StremioError to an HttpResponse
+    // -----------------------------------------------------------------------
+
+    /// Convert a [`StremioError`] to an HTTP 200 response carrying the Stremio
+    /// error JSON shape `{"err": "..."}`.
+    ///
+    /// Stremio addons return HTTP 200 with an `err` field rather than a 4xx
+    /// status for application-level errors (the Stremio client reads the `err`
+    /// field and surfaces it to the user). The exception is the not-found
+    /// convention (HTTP 404) for undeclared resources (Req 26.3).
+    fn stremio_error_response(err: StremioError) -> HttpResponse {
+        // The not-found convention uses HTTP 404 (Req 26.3).
+        if err.err.contains("not found") {
+            return HttpResponse::NotFound().json(err);
+        }
+        // All other Stremio errors are returned as HTTP 200 with the error body
+        // so the Stremio client can display the message.
+        HttpResponse::Ok().json(err)
+    }
+
+    // -----------------------------------------------------------------------
+    // Route registration
+    // -----------------------------------------------------------------------
+
+    /// Register the Store addon routes onto an actix [`ServiceConfig`].
+    ///
+    /// Registers:
+    /// - `GET /stremio/store/{store_code}/manifest.json`
+    /// - `GET /stremio/store/{store_code}/catalog/{type}/{id}.json`
+    /// - `GET /stremio/store/{store_code}/stream/{type}/{id}.json`
+    pub fn configure_store_addon_routes(cfg: &mut web::ServiceConfig) {
+        cfg.route(
+            "/stremio/store/{store_code}/manifest.json",
+            web::get().to(manifest_endpoint),
+        )
+        .route(
+            "/stremio/store/{store_code}/catalog/{type}/{id}.json",
+            web::get().to(catalog_endpoint),
+        )
+        .route(
+            "/stremio/store/{store_code}/stream/{type}/{id}.json",
+            web::get().to(stream_endpoint),
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for the HTTP handlers
+    // -----------------------------------------------------------------------
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::config::Config;
+        use actix_web::{test as actix_test, App};
+
+        fn test_state() -> AppState {
+            AppState::new(Config::default())
+        }
+
+        #[actix_web::test]
+        async fn manifest_endpoint_returns_valid_manifest_for_known_store() {
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            let req = actix_test::TestRequest::get()
+                .uri("/stremio/store/rd/manifest.json")
+                .to_request();
+            let resp = actix_test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 200);
+
+            let body: serde_json::Value = actix_test::read_body_json(resp).await;
+            assert_eq!(body["id"], "st.streamflow.store.realdebrid");
+            assert!(!body["name"].as_str().unwrap_or("").is_empty());
+            assert!(!body["version"].as_str().unwrap_or("").is_empty());
+            // Manifest declares catalog and stream resources (Req 23.1).
+            let resources = body["resources"].as_array().unwrap();
+            let resource_names: Vec<&str> = resources
+                .iter()
+                .map(|r| {
+                    if let Some(s) = r.as_str() {
+                        s
+                    } else {
+                        r["name"].as_str().unwrap_or("")
+                    }
+                })
+                .collect();
+            assert!(resource_names.contains(&"catalog"), "must declare catalog");
+            assert!(resource_names.contains(&"stream"), "must declare stream");
+        }
+
+        #[actix_web::test]
+        async fn manifest_endpoint_returns_400_for_unknown_store_code() {
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            let req = actix_test::TestRequest::get()
+                .uri("/stremio/store/zz/manifest.json")
+                .to_request();
+            let resp = actix_test::call_service(&app, req).await;
+            // Unknown store code -> 400 Bad Request (invalid-store-name error).
+            assert_eq!(resp.status(), 400);
+        }
+
+        #[actix_web::test]
+        async fn catalog_endpoint_returns_stremio_error_when_unconfigured() {
+            // No store credentials configured -> unconfigured addon -> Stremio error.
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            let req = actix_test::TestRequest::get()
+                .uri("/stremio/store/rd/catalog/other/streamflow-store-rd.json")
+                .to_request();
+            let resp = actix_test::call_service(&app, req).await;
+            // Stremio errors are returned as HTTP 200 with an `err` field.
+            assert_eq!(resp.status(), 200);
+            let body: serde_json::Value = actix_test::read_body_json(resp).await;
+            assert!(
+                body.get("err").is_some(),
+                "Stremio error must have an `err` field"
+            );
+            assert!(
+                body["err"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("not configured"),
+                "error must mention 'not configured'"
+            );
+        }
+
+        #[actix_web::test]
+        async fn stream_endpoint_returns_stremio_error_when_unconfigured() {
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            let req = actix_test::TestRequest::get()
+                .uri("/stremio/store/rd/stream/other/st:sf:rd:magnet123.json")
+                .to_request();
+            let resp = actix_test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 200);
+            let body: serde_json::Value = actix_test::read_body_json(resp).await;
+            assert!(body.get("err").is_some());
+            assert!(body["err"]
+                .as_str()
+                .unwrap_or("")
+                .contains("not configured"));
+        }
+
+        #[actix_web::test]
+        async fn manifest_endpoint_install_url_round_trip() {
+            // The manifest URL is the install URL for the Stremio addon.
+            // Verify the manifest id encodes the store code so a client can
+            // derive the install URL from the manifest id (Req 23.1).
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            for (code, expected_slug) in [
+                ("rd", "realdebrid"),
+                ("ad", "alldebrid"),
+                ("tb", "torbox"),
+                ("pm", "premiumize"),
+            ] {
+                let req = actix_test::TestRequest::get()
+                    .uri(&format!("/stremio/store/{code}/manifest.json"))
+                    .to_request();
+                let resp = actix_test::call_service(&app, req).await;
+                assert_eq!(resp.status(), 200, "store code {code}");
+                let body: serde_json::Value = actix_test::read_body_json(resp).await;
+                let id = body["id"].as_str().unwrap_or("");
+                assert!(
+                    id.contains(expected_slug),
+                    "manifest id {id:?} must contain store slug {expected_slug:?}"
+                );
+            }
+        }
+
+        #[actix_web::test]
+        async fn catalog_endpoint_search_query_param_is_forwarded() {
+            // When `?search=...` is present, the search catalog is served.
+            // With no credentials configured, both paths return the same
+            // "not configured" error — but the route must accept the query param.
+            let state = test_state();
+            let app = actix_test::init_service(
+                App::new()
+                    .app_data(web::Data::new(state))
+                    .configure(configure_store_addon_routes),
+            )
+            .await;
+
+            let req = actix_test::TestRequest::get()
+                .uri("/stremio/store/rd/catalog/other/streamflow-store-rd.json?search=matrix")
+                .to_request();
+            let resp = actix_test::call_service(&app, req).await;
+            // Route accepted the request (200 with Stremio error body).
+            assert_eq!(resp.status(), 200);
+            let body: serde_json::Value = actix_test::read_body_json(resp).await;
+            assert!(body.get("err").is_some());
+        }
+    }
+}
+
+pub use handlers::configure_store_addon_routes;

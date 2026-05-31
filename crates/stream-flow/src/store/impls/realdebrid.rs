@@ -68,18 +68,20 @@ impl RealDebridStore {
         if let Ok(err) = serde_json::from_str::<RdErrorResponse>(body) {
             return match err.error_code {
                 8 => AppError::unauthorized_for("realdebrid", "bad token"),
-                9 => AppError::ip_restricted_for("realdebrid", "permission denied / IP not allowed"),
-                35 => AppError::infringing_content("infringing file")
-                    .with_store("realdebrid"),
+                9 => {
+                    AppError::ip_restricted_for("realdebrid", "permission denied / IP not allowed")
+                }
+                35 => AppError::infringing_content("infringing file").with_store("realdebrid"),
                 34 => AppError::store_limit_exceeded("too many active downloads")
                     .with_store("realdebrid"),
                 _ => {
                     // Check for traffic/fair-usage keywords in the error message
                     let msg = err.error.to_ascii_lowercase();
                     if msg.contains("traffic") || msg.contains("fair") || msg.contains("usage") {
-                        AppError::store_limit_exceeded(err.error)
-                            .with_store("realdebrid")
-                    } else if msg.contains("ip") && (msg.contains("not allowed") || msg.contains("restricted")) {
+                        AppError::store_limit_exceeded(err.error).with_store("realdebrid")
+                    } else if msg.contains("ip")
+                        && (msg.contains("not allowed") || msg.contains("restricted"))
+                    {
                         AppError::ip_restricted_for("realdebrid", err.error)
                     } else {
                         AppError::unknown(err.error)
@@ -116,13 +118,13 @@ impl RealDebridStore {
         Ok(builder.header(header_name, header_value))
     }
 
-    async fn get_json<T: for<'de> Deserialize<'de>>(
-        &self,
-        path: &str,
-    ) -> Result<T, AppError> {
-        let resp = self.request(Method::GET, path).await?.send().await.map_err(|e| {
-            AppError::upstream_unavailable_for("realdebrid", e.to_string())
-        })?;
+    async fn get_json<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T, AppError> {
+        let resp = self
+            .request(Method::GET, path)
+            .await?
+            .send()
+            .await
+            .map_err(|e| AppError::upstream_unavailable_for("realdebrid", e.to_string()))?;
         let status = resp.status().as_u16();
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -242,11 +244,18 @@ impl Store for RealDebridStore {
 
     async fn check_magnet(&self, p: &CheckMagnetParams<'_>) -> Result<CheckMagnetData, AppError> {
         // RealDebrid instant availability check
-        let hashes: Vec<&str> = p.magnets.iter().map(|m| extract_hash_from_magnet(m)).collect();
+        let hashes: Vec<&str> = p
+            .magnets
+            .iter()
+            .map(|m| extract_hash_from_magnet(m))
+            .collect();
         let hash_path = format!("/torrents/instantAvailability/{}", hashes.join("/"));
-        let resp = self.request(Method::GET, &hash_path).await?.send().await.map_err(|e| {
-            AppError::upstream_unavailable_for("realdebrid", e.to_string())
-        })?;
+        let resp = self
+            .request(Method::GET, &hash_path)
+            .await?
+            .send()
+            .await
+            .map_err(|e| AppError::upstream_unavailable_for("realdebrid", e.to_string()))?;
         let status = resp.status().as_u16();
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -319,12 +328,15 @@ impl Store for RealDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let add_resp: RdAddMagnetResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("realdebrid")
-        })?;
+        let add_resp: RdAddMagnetResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("realdebrid"))?;
 
         // Fetch the torrent info to get full details
-        let info: RdTorrentInfo = self.get_json(&format!("/torrents/info/{}", add_resp.id)).await?;
+        let info: RdTorrentInfo = self
+            .get_json(&format!("/torrents/info/{}", add_resp.id))
+            .await?;
         let magnet_status = MagnetStatus::from_native(&info.status);
         let files = info
             .files
@@ -383,22 +395,23 @@ impl Store for RealDebridStore {
     }
 
     async fn list_magnets(&self, p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
-        let path = format!(
-            "/torrents?limit={}&offset={}",
-            p.limit, p.offset
-        );
-        let resp = self.request(Method::GET, &path).await?.send().await.map_err(|e| {
-            AppError::upstream_unavailable_for("realdebrid", e.to_string())
-        })?;
+        let path = format!("/torrents?limit={}&offset={}", p.limit, p.offset);
+        let resp = self
+            .request(Method::GET, &path)
+            .await?
+            .send()
+            .await
+            .map_err(|e| AppError::upstream_unavailable_for("realdebrid", e.to_string()))?;
         let status = resp.status().as_u16();
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
 
-        let torrents: Vec<RdTorrentInfo> = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("realdebrid")
-        })?;
+        let torrents: Vec<RdTorrentInfo> = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("realdebrid"))?;
 
         let items = torrents
             .into_iter()
@@ -463,9 +476,10 @@ impl Store for RealDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let unrestrict: RdUnrestrictResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("realdebrid")
-        })?;
+        let unrestrict: RdUnrestrictResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("realdebrid"))?;
 
         Ok(GenerateLinkData {
             link: unrestrict.download,
@@ -621,7 +635,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "t1".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.status, MagnetStatus::Failed);
@@ -679,7 +696,8 @@ mod tests {
     #[test]
     fn map_error_covers_rd_numeric_codes() {
         assert_eq!(
-            RealDebridStore::map_error(403, r#"{"error":"ip_not_allowed","error_code":9}"#).category,
+            RealDebridStore::map_error(403, r#"{"error":"ip_not_allowed","error_code":9}"#)
+                .category,
             ErrorCategory::Forbidden
         );
         assert!(

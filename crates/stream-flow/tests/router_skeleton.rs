@@ -2,17 +2,14 @@
 //!
 //! Asserts that [`stream_flow::build_app`] wires the **two disjoint path
 //! namespaces** (the `mediaflow-proxy-light` surface and the `stremthru`
-//! surface) plus the **shared** routes (`/health`, `/metrics`, `/v0/events`)
-//! onto one routing tree, and that this is the *identical* `build_app(state)`
-//! factory the binary boots from (Req 49.6).
+//! surface) plus the **shared** routes (`/health`, `/metrics`, `/v0/events`,
+//! web UI) onto one routing tree, and that this is the *identical*
+//! `build_app(state)` factory the binary boots from (Req 49.6).
 //!
 //! This is an **external** integration crate: it can only see the crate's
 //! *public* surface (`stream_flow::AppState`, `stream_flow::build_app`), which
 //! is exactly the reuse path the binary, the FFI bridge, and the SDKs rely on
-//! (Req 49.6). A route from each namespace must be *registered* (not `404`);
-//! the placeholder handlers whose real logic lands in later tasks answer
-//! `501 Not Implemented`, so "registered but unimplemented" is cleanly
-//! distinguishable from "no such route".
+//! (Req 49.6). A route from each namespace must be *registered* (not `404`).
 
 use actix_web::{http::StatusCode, test, App};
 use stream_flow::config::Config;
@@ -27,17 +24,23 @@ async fn shared_surface_serves_health() {
 
     let req = test::TestRequest::get().uri("/health").to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), StatusCode::OK, "shared /health should be 200");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "shared /health should be 200"
+    );
 }
 
 /// The mediaflow namespace is registered: representative mediaflow paths route
-/// to a handler (placeholder `501`) rather than `404` (Req 36.1).
+/// to production handlers rather than `404` (Req 36.1).
 #[actix_web::test]
 async fn mediaflow_surface_routes_are_registered() {
     let state = AppState::new(Config::default());
     let app = test::init_service(App::new().service(build_app(state))).await;
 
-    // `/proxy/stream` is still a skeleton placeholder (`501`).
+    // `/proxy/stream` is backed by the real content-proxy endpoint. Without a
+    // `d`/`token` parameter it rejects the request as malformed, proving the
+    // route is registered and no longer a placeholder.
     let req = test::TestRequest::get().uri("/proxy/stream").to_request();
     let resp = test::call_service(&app, req).await;
     assert_ne!(
@@ -47,8 +50,8 @@ async fn mediaflow_surface_routes_are_registered() {
     );
     assert_eq!(
         resp.status(),
-        StatusCode::NOT_IMPLEMENTED,
-        "mediaflow route /proxy/stream is a skeleton placeholder"
+        StatusCode::BAD_REQUEST,
+        "mediaflow route /proxy/stream validates proxy-link input"
     );
 
     // `/proxy/ip` is backed by its real handler (task 14.2): registered (not

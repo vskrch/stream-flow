@@ -465,6 +465,8 @@ impl Default for DbConfig {
 pub struct StremioConfig {
     pub addon_name: Option<String>,
     pub base_url: Option<String>,
+    /// Upstream Stremio addon manifest/root URLs aggregated by the Wrap addon.
+    pub wrap_upstreams: Vec<String>,
 }
 
 /// Third-party integration credentials (Trakt/MDBList/etc — Req 27).
@@ -494,11 +496,30 @@ impl Default for RateLimitConfig {
 }
 
 /// Warmup-pool settings (Req 45).
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct WarmupConfig {
     pub enabled: bool,
     pub pool_size: usize,
+    pub popularity_threshold: u64,
+    pub min_refresh_interval_secs: u64,
+    pub link_validity_secs: u64,
+    pub allow_costly_stores: bool,
+    pub per_store_max_refresh_per_minute: u32,
+}
+
+impl Default for WarmupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            pool_size: 100,
+            popularity_threshold: 3,
+            min_refresh_interval_secs: 300,
+            link_validity_secs: 12 * 60 * 60,
+            allow_costly_stores: false,
+            per_store_max_refresh_per_minute: 30,
+        }
+    }
 }
 
 /// Quality-selection settings (Req 38).
@@ -769,8 +790,8 @@ impl Config {
         if let Some(raw) = env_lookup(opts, "APP__PROXY__TRANSPORT_ROUTES") {
             let routes: HashMap<String, TransportRouteConfig> = serde_json::from_str(&raw)
                 .map_err(|e| ConfigLoadError::InvalidTransportRoutes(e.to_string()))?;
-            builder = builder
-                .set_override("proxy.transport_routes", transport_routes_value(&routes))?;
+            builder =
+                builder.set_override("proxy.transport_routes", transport_routes_value(&routes))?;
         }
 
         let built = builder.build()?;
@@ -798,7 +819,9 @@ impl Config {
     fn validate(&self) -> Result<(), ConfigLoadError> {
         match &self.auth.api_password {
             Some(secret) if !secret.is_empty() => Ok(()),
-            _ => Err(ConfigLoadError::MissingRequired("auth.api_password".to_string())),
+            _ => Err(ConfigLoadError::MissingRequired(
+                "auth.api_password".to_string(),
+            )),
         }?;
         self.validate_transport_routes()
     }
@@ -837,9 +860,7 @@ fn app_env_source(opts: &LoadOptions) -> ::config::Environment {
 
 /// Convert parsed transport routes into a `config::Value` nested map so they
 /// can be injected via `set_override` ahead of deserialization (Req 31.6).
-fn transport_routes_value(
-    routes: &HashMap<String, TransportRouteConfig>,
-) -> ::config::Value {
+fn transport_routes_value(routes: &HashMap<String, TransportRouteConfig>) -> ::config::Value {
     use ::config::{Map, Value};
     let map: Map<String, Value> = routes
         .iter()
@@ -938,7 +959,9 @@ mod tests {
         env.insert("APP__AUTH__API_PASSWORD".to_string(), String::new());
         let opts = LoadOptions::new().with_env(env);
         let err = Config::load(&opts).expect_err("empty api_password must abort");
-        assert!(matches!(err, ConfigLoadError::MissingRequired(name) if name == "auth.api_password"));
+        assert!(
+            matches!(err, ConfigLoadError::MissingRequired(name) if name == "auth.api_password")
+        );
     }
 
     // -- Req 31.6: transport_routes JSON parse + reject-on-invalid ----------
@@ -1009,7 +1032,10 @@ mod tests {
             .expect_err("invalid route pattern must abort load");
         match err {
             ConfigLoadError::InvalidTransportRoute(msg) => {
-                assert!(msg.contains("bad.host/path"), "must name the offending pattern: {msg}");
+                assert!(
+                    msg.contains("bad.host/path"),
+                    "must name the offending pattern: {msg}"
+                );
             }
             other => panic!("expected InvalidTransportRoute, got {other:?}"),
         }
@@ -1074,10 +1100,15 @@ mod tests {
     #[test]
     fn file_overrides_defaults() {
         let file = write_temp_toml("[auth]\napi_password = \"frompw\"\n[server]\nport = 9000\n");
-        let opts = LoadOptions::new().with_file(file.path()).with_env(HashMap::new());
+        let opts = LoadOptions::new()
+            .with_file(file.path())
+            .with_env(HashMap::new());
         let config = Config::load(&opts).expect("load should succeed");
         assert_eq!(config.server.port, 9000, "file value overrides default");
-        assert_eq!(config.auth.api_password.as_ref().unwrap().expose(), "frompw");
+        assert_eq!(
+            config.auth.api_password.as_ref().unwrap().expose(),
+            "frompw"
+        );
     }
 
     #[test]

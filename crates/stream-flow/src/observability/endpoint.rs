@@ -61,7 +61,9 @@ fn authorize_metrics(req: &HttpRequest, state: &AppState) -> Result<(), AppError
     let presented = extract_metrics_password(req);
     match presented {
         Some(p) if constant_time_eq(expected.as_bytes(), p.as_bytes()) => Ok(()),
-        _ => Err(AppError::unauthorized("invalid or missing metrics password")),
+        _ => Err(AppError::unauthorized(
+            "invalid or missing metrics password",
+        )),
     }
 }
 

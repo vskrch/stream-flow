@@ -89,9 +89,7 @@ fn extract_query_value(query: &str, key: &str) -> Option<String> {
     for pair in query.split('&') {
         if let Some((k, v)) = pair.split_once('=') {
             if k == key {
-                return Some(
-                    urlencoding_decode(v).unwrap_or_else(|| v.to_string()),
-                );
+                return Some(urlencoding_decode(v).unwrap_or_else(|| v.to_string()));
             }
         }
     }
@@ -145,10 +143,7 @@ mod tests {
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
 
-    fn auth_with(
-        api_password: Option<&str>,
-        proxy_auth: &[&str],
-    ) -> Auth {
+    fn auth_with(api_password: Option<&str>, proxy_auth: &[&str]) -> Auth {
         let config = AuthConfig {
             api_password: api_password.map(Into::into),
             metrics_password: None,

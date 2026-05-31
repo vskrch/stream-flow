@@ -181,12 +181,12 @@ impl From<ExtractorError> for AppError {
             ExtractorError::UnsupportedHost(host) => {
                 AppError::bad_request(format!("unsupported extractor host: {host}"))
             }
-            ExtractorError::NotImplemented { host } => {
-                AppError::not_found(format!("extractor for host `{host}` is not yet implemented"))
-            }
-            ExtractorError::ExtractionFailed { host, reason } => {
-                AppError::hoster_unavailable(format!("extraction failed for host `{host}`: {reason}"))
-            }
+            ExtractorError::NotImplemented { host } => AppError::not_found(format!(
+                "extractor for host `{host}` is not yet implemented"
+            )),
+            ExtractorError::ExtractionFailed { host, reason } => AppError::hoster_unavailable(
+                format!("extraction failed for host `{host}`: {reason}"),
+            ),
             ExtractorError::BadRequest(message) => AppError::bad_request(message),
             ExtractorError::Upstream(app) => app,
         }
@@ -274,6 +274,9 @@ mod tests {
     fn extra_params_helpers_build_header_maps() {
         assert!(ExtraParams::empty().headers.is_empty());
         let p = ExtraParams::with_headers([("Referer".to_string(), "https://x/".to_string())]);
-        assert_eq!(p.headers.get("Referer").map(String::as_str), Some("https://x/"));
+        assert_eq!(
+            p.headers.get("Referer").map(String::as_str),
+            Some("https://x/")
+        );
     }
 }

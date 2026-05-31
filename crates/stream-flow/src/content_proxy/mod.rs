@@ -39,10 +39,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::http::header;
 use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
+use actix_web::{web, HttpRequest, HttpResponse};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
@@ -52,10 +53,12 @@ use url::Url;
 use crate::config::PrebufferConfig;
 use crate::egress::OutboundClient;
 use crate::errors::AppError;
+use crate::http::client_ip::client_ip;
 use crate::proxy::range::RangeSpec;
 use crate::proxy::source::{DirectSource, UpstreamBody, UpstreamSource};
 use crate::proxy::AdaptiveJitterBuffer;
 use crate::proxylink::ProxyCodec;
+use crate::AppState;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -579,6 +582,75 @@ pub struct ContentProxyRequest<'a> {
     pub limit_placeholder: &'a str,
 }
 
+/// Actix endpoint for `/proxy/stream`.
+///
+/// Accepts either `d=<mediaflow encrypted payload>` or `token=<stremthru signed
+/// payload>`, enforces embedded expiry/IP binding, applies request `Range`, and
+/// relays the upstream through the shared egress/content-proxy path.
+pub async fn content_proxy_endpoint(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    let query = web::Query::<HashMap<String, String>>::from_query(req.query_string())
+        .map_err(|e| AppError::bad_request(format!("invalid proxy query: {e}")))?
+        .into_inner();
+    let range = RangeSpec::from_header(
+        req.headers()
+            .get(header::RANGE)
+            .and_then(|value| value.to_str().ok()),
+    )?;
+    let api_password = state
+        .config()
+        .auth
+        .api_password
+        .as_ref()
+        .map(|secret| secret.expose())
+        .unwrap_or_default();
+    let token_secret = state
+        .config()
+        .auth
+        .proxy_auth
+        .first()
+        .and_then(|entry| entry.split_once(':').map(|(_, pass)| pass))
+        .unwrap_or(api_password);
+    let codec = ProxyCodec::from_secrets(api_password, token_secret);
+    let now_unix_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let is_head = req.method() == actix_web::http::Method::HEAD;
+    let cacheability = match query.get("cached").map(|v| v.as_str()) {
+        Some("1") | Some("true") | Some("yes") => Cacheability::Cached,
+        _ => Cacheability::Uncached,
+    };
+    let user = query.get("user").map(String::as_str).unwrap_or("anonymous");
+    let limit_placeholder = query
+        .get("limit_placeholder")
+        .map(String::as_str)
+        .unwrap_or("/limit-reached");
+    let config = ContentProxyConfig::default();
+
+    serve(
+        state.egress(),
+        &codec,
+        state.content_connections(),
+        &config,
+        &state.config().prebuffer,
+        ContentProxyRequest {
+            user,
+            token: query.get("token").map(String::as_str),
+            d: query.get("d").map(String::as_str),
+            range,
+            is_head,
+            client_ip: client_ip(&req),
+            now_unix_secs,
+            cacheability,
+            limit_placeholder,
+        },
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,7 +760,10 @@ mod tests {
         .expect("token resolves");
 
         assert_eq!(target.url, "https://cdn.example.com/movie.mkv");
-        assert_eq!(target.headers.get("Referer").unwrap(), "https://example.com/");
+        assert_eq!(
+            target.headers.get("Referer").unwrap(),
+            "https://example.com/"
+        );
         assert_eq!(target.filename.as_deref(), Some("movie.mkv"));
         // No per-host override → Full tunnel (proxy bytes).
         assert_eq!(target.tunnel, TunnelMode::Full);
@@ -831,7 +906,12 @@ mod tests {
             &registry,
             &ContentProxyConfig::default(),
             &PrebufferConfig::default(),
-            request("alice", Some(&token), RangeSpec::Inclusive(100, 199), "/placeholder"),
+            request(
+                "alice",
+                Some(&token),
+                RangeSpec::Inclusive(100, 199),
+                "/placeholder",
+            ),
         )
         .await
         .expect("serve ok");
@@ -910,7 +990,10 @@ mod tests {
         let codec = codec();
         // A bogus upstream URL: if the proxy ever opened it the test would fail,
         // proving the cap short-circuits before any upstream connection.
-        let token = token_for(&codec, &ProxyPayload::new("https://must-not-dial.example/x.mkv"));
+        let token = token_for(
+            &codec,
+            &ProxyPayload::new("https://must-not-dial.example/x.mkv"),
+        );
         let registry = Arc::new(ConnectionRegistry::new());
         let config = ContentProxyConfig {
             max_connections_per_user: 1,
@@ -934,7 +1017,11 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::FOUND);
         assert_eq!(
-            resp.headers().get(header::LOCATION).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "/limit-reached",
         );
         // The held slot is unchanged — no new connection was opened (Req 19.4).
@@ -946,7 +1033,11 @@ mod tests {
         let resp = limit_reached_redirect("/limit-reached");
         assert_eq!(resp.status(), StatusCode::FOUND);
         assert_eq!(
-            resp.headers().get(header::LOCATION).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "/limit-reached",
         );
     }
@@ -1074,7 +1165,11 @@ mod tests {
         // 302 to the direct link; no upstream byte proxying (Req 19.6).
         assert_eq!(resp.status(), StatusCode::FOUND);
         assert_eq!(
-            resp.headers().get(header::LOCATION).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             direct,
         );
         // No connection slot was consumed for an api-only target.
@@ -1086,7 +1181,11 @@ mod tests {
         let resp = api_only_redirect("https://cdn.example.com/direct.mkv");
         assert_eq!(resp.status(), StatusCode::FOUND);
         assert_eq!(
-            resp.headers().get(header::LOCATION).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "https://cdn.example.com/direct.mkv",
         );
     }
@@ -1138,7 +1237,11 @@ mod tests {
         )
         .expect("build ok");
         assert_eq!(
-            resp.headers().get(header::CACHE_CONTROL).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CACHE_CONTROL)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "public, max-age=7200",
         );
 
@@ -1155,7 +1258,11 @@ mod tests {
         )
         .expect("build ok");
         assert_eq!(
-            resp.headers().get(header::CACHE_CONTROL).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CACHE_CONTROL)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "public, max-age=30",
         );
     }
@@ -1286,11 +1393,19 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
-            resp.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_LENGTH)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "5000",
         );
         assert_eq!(
-            resp.headers().get(header::ACCEPT_RANGES).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::ACCEPT_RANGES)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes",
         );
         // The guard is dropped for a HEAD response (no body to hold it).
@@ -1357,7 +1472,11 @@ mod tests {
         )
         .expect("206 ok");
         assert_eq!(
-            resp.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_RANGE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes 0-99/*",
         );
     }

@@ -235,7 +235,10 @@ mod tests {
     /// `refresh`/`on_reconnect` deterministically).
     fn resolver_with(reflector: MockReflector) -> (Arc<EgressResolver>, MockReflector) {
         let tunnel = Tunnel::proxy("http://proxy:8888", Arc::new(reflector.clone()));
-        let resolver = Arc::new(EgressResolver::new(Arc::new(tunnel), Duration::from_secs(3600)));
+        let resolver = Arc::new(EgressResolver::new(
+            Arc::new(tunnel),
+            Duration::from_secs(3600),
+        ));
         (resolver, reflector)
     }
 
@@ -258,7 +261,12 @@ mod tests {
             resolver_with(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
 
         let outcome = resolver.refresh().await;
-        assert_eq!(outcome, LeakCheck::Verified { egress_ip: ip("203.0.113.7") });
+        assert_eq!(
+            outcome,
+            LeakCheck::Verified {
+                egress_ip: ip("203.0.113.7")
+            }
+        );
 
         // Cached: subsequent reads are served from the ArcSwap with no extra
         // reflection call.
@@ -277,11 +285,15 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_flags_leak_when_tunnel_ip_equals_host_ip() {
-        let (resolver, _) =
-            resolver_with(MockReflector::isolated("198.51.100.1", "198.51.100.1"));
+        let (resolver, _) = resolver_with(MockReflector::isolated("198.51.100.1", "198.51.100.1"));
 
         let outcome = resolver.refresh().await;
-        assert_eq!(outcome, LeakCheck::Leaking { ip: ip("198.51.100.1") });
+        assert_eq!(
+            outcome,
+            LeakCheck::Leaking {
+                ip: ip("198.51.100.1")
+            }
+        );
         assert!(resolver.is_leaking());
         // A leaking tunnel exposes no usable Egress_IP (fail-closed).
         assert_eq!(resolver.egress_ip(), None);
@@ -343,7 +355,12 @@ mod tests {
         // not wait for the next interval tick.
         reflector.set_observed(Some(ip("203.0.113.42")));
         let outcome = resolver.on_reconnect().await;
-        assert_eq!(outcome, LeakCheck::Verified { egress_ip: ip("203.0.113.42") });
+        assert_eq!(
+            outcome,
+            LeakCheck::Verified {
+                egress_ip: ip("203.0.113.42")
+            }
+        );
         assert_eq!(resolver.egress_ip(), Some(ip("203.0.113.42")));
     }
 
@@ -390,7 +407,9 @@ mod tests {
     async fn from_config_disabled_yields_no_resolver() {
         let cfg = EgressConfig::default(); // tunnel_mode = Disabled
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
-        assert!(EgressResolver::from_config(&cfg, reflector).unwrap().is_none());
+        assert!(EgressResolver::from_config(&cfg, reflector)
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -408,6 +427,11 @@ mod tests {
         assert_eq!(resolver.refresh_interval(), Duration::from_secs(42));
 
         let outcome = resolver.refresh().await;
-        assert_eq!(outcome, LeakCheck::Verified { egress_ip: ip("203.0.113.7") });
+        assert_eq!(
+            outcome,
+            LeakCheck::Verified {
+                egress_ip: ip("203.0.113.7")
+            }
+        );
     }
 }

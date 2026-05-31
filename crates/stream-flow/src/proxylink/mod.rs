@@ -363,9 +363,7 @@ mod tests {
             ProxyLink::Token { token } => token,
             _ => unreachable!(),
         };
-        let decoded = codec
-            .resolve_params(Some(&token), None, None, now)
-            .unwrap();
+        let decoded = codec.resolve_params(Some(&token), None, None, now).unwrap();
         assert_eq!(decoded, plain_payload());
 
         // Mediaflow encrypted via the `d` parameter.

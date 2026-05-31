@@ -108,7 +108,9 @@ pub struct SystemClock {
 impl SystemClock {
     /// Anchor the clock at "now".
     pub fn new() -> Self {
-        Self { base: Instant::now() }
+        Self {
+            base: Instant::now(),
+        }
     }
 }
 
@@ -134,12 +136,15 @@ pub struct ManualClock {
 impl ManualClock {
     /// Start at `t = 0`.
     pub fn new() -> Self {
-        Self { now_ms: AtomicU64::new(0) }
+        Self {
+            now_ms: AtomicU64::new(0),
+        }
     }
 
     /// Advance the clock by `delta`.
     pub fn advance(&self, delta: Duration) {
-        self.now_ms.fetch_add(delta.as_millis() as u64, Ordering::SeqCst);
+        self.now_ms
+            .fetch_add(delta.as_millis() as u64, Ordering::SeqCst);
     }
 }
 
@@ -284,7 +289,9 @@ impl BreakerPermit {
 
     /// A probe permit issued while `HalfOpen`, owning a probe slot in `shared`.
     fn probe(shared: Arc<Shared>) -> Self {
-        Self { probe_guard: Some(shared) }
+        Self {
+            probe_guard: Some(shared),
+        }
     }
 
     /// Was this a `HalfOpen` trial probe?
@@ -342,7 +349,9 @@ impl Shared {
     /// never itself panic (Req 50 robustness — "never panics over any op
     /// sequence").
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -729,8 +738,12 @@ mod tests {
     /// not (design: Pattern 1 classification).
     #[test]
     fn trip_eligibility_matches_health_categories_only() {
-        assert!(CircuitBreaker::is_trip_eligible(&AppError::upstream_unavailable("x")));
-        assert!(CircuitBreaker::is_trip_eligible(&AppError::hoster_unavailable("x")));
+        assert!(CircuitBreaker::is_trip_eligible(
+            &AppError::upstream_unavailable("x")
+        ));
+        assert!(CircuitBreaker::is_trip_eligible(
+            &AppError::hoster_unavailable("x")
+        ));
         // Timeouts fold into UpstreamUnavailable and remain eligible.
         assert!(CircuitBreaker::is_trip_eligible(
             &AppError::upstream_unavailable("slow").into_deadline_exceeded()
@@ -858,7 +871,11 @@ mod tests {
         assert!(err.circuit_open, "tripped error carries circuit_open");
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
         assert_eq!(err.store.as_deref(), Some("realdebrid"));
-        assert_eq!(calls.load(Ordering::SeqCst), 0, "op must NOT be invoked while Open");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "op must NOT be invoked while Open"
+        );
     }
 
     /// `acquire` itself short-circuits while `Open` (the low-level contract
@@ -884,7 +901,9 @@ mod tests {
         fail_eligible(&breaker);
         clock.advance(Duration::from_secs(10)); // cooldown elapsed
 
-        let probe = breaker.acquire().expect("cooldown elapsed → one probe admitted");
+        let probe = breaker
+            .acquire()
+            .expect("cooldown elapsed → one probe admitted");
         assert!(probe.is_probe());
         assert_eq!(breaker.state(), BreakerState::HalfOpen);
 
@@ -934,7 +953,10 @@ mod tests {
 
         // Cooldown restarted from the reopen instant: a partial wait still rejects.
         clock.advance(Duration::from_secs(9));
-        assert!(breaker.acquire().is_err(), "cooldown restarted, not yet elapsed");
+        assert!(
+            breaker.acquire().is_err(),
+            "cooldown restarted, not yet elapsed"
+        );
 
         // Once the full restarted cooldown elapses, a fresh probe is admitted.
         clock.advance(Duration::from_secs(1));
@@ -1026,8 +1048,8 @@ mod tests {
             BreakerState::HalfOpen => {
                 breaker.on_failure(breaker.acquire().unwrap(), &eligible());
                 clock.advance(Duration::from_secs(10)); // cooldown elapsed
-                // Admitting a probe transitions Open → HalfOpen; dropping the
-                // probe releases the slot but leaves the observed state HalfOpen.
+                                                        // Admitting a probe transitions Open → HalfOpen; dropping the
+                                                        // probe releases the slot but leaves the observed state HalfOpen.
                 let _probe = breaker.acquire().expect("probe admitted");
             }
         }
@@ -1045,7 +1067,11 @@ mod tests {
 
         let set = [a, b, c];
         let chosen = select_available(&set).expect("a healthy store exists");
-        assert_eq!(chosen.key().label(), "ad", "skip Open rd, pick first healthy ad");
+        assert_eq!(
+            chosen.key().label(),
+            "ad",
+            "skip Open rd, pick first healthy ad"
+        );
     }
 
     /// A `HalfOpen` breaker is in rotation (it admits a recovery probe), so
@@ -1129,20 +1155,25 @@ mod tests {
         let policy = fast_policy(5);
         let calls = AtomicUsize::new(0);
 
-        let result: Result<&str, AppError> = with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
-            let n = calls.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n < 2 {
-                    Err(eligible())
-                } else {
-                    Ok("ok")
+        let result: Result<&str, AppError> =
+            with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if n < 2 {
+                        Err(eligible())
+                    } else {
+                        Ok("ok")
+                    }
                 }
-            }
-        })
-        .await;
+            })
+            .await;
 
         assert_eq!(result.unwrap(), "ok");
-        assert_eq!(calls.load(Ordering::SeqCst), 3, "2 transient failures + 1 success");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "2 transient failures + 1 success"
+        );
     }
 
     /// A permanent error performs zero retries through `with_retry`.
@@ -1152,11 +1183,12 @@ mod tests {
         let policy = fast_policy(5);
         let calls = AtomicUsize::new(0);
 
-        let result: Result<(), AppError> = with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
-            calls.fetch_add(1, Ordering::SeqCst);
-            async { Err(AppError::not_found("permanent")) }
-        })
-        .await;
+        let result: Result<(), AppError> =
+            with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Err(AppError::not_found("permanent")) }
+            })
+            .await;
 
         assert!(result.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -1172,11 +1204,12 @@ mod tests {
 
         let policy = fast_policy(5);
         let calls = AtomicUsize::new(0);
-        let result: Result<(), AppError> = with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
-            calls.fetch_add(1, Ordering::SeqCst);
-            async { Ok(()) }
-        })
-        .await;
+        let result: Result<(), AppError> =
+            with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Ok(()) }
+            })
+            .await;
 
         let err = result.expect_err("open breaker short-circuits");
         assert!(err.circuit_open);
@@ -1194,11 +1227,12 @@ mod tests {
         let policy = fast_policy(5);
         let calls = AtomicUsize::new(0);
 
-        let result: Result<(), AppError> = with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
-            calls.fetch_add(1, Ordering::SeqCst);
-            async { Err(eligible()) }
-        })
-        .await;
+        let result: Result<(), AppError> =
+            with_retry_seeded(&policy, &breaker, far_deadline(), 1, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Err(eligible()) }
+            })
+            .await;
 
         let err = result.expect_err("all attempts fail");
         assert!(err.circuit_open, "final error is the breaker short-circuit");
@@ -1225,11 +1259,12 @@ mod tests {
         let deadline = Deadline::after(Duration::from_secs(1));
         let calls = AtomicUsize::new(0);
 
-        let result: Result<(), AppError> = with_retry_seeded(&policy, &breaker, deadline, 1, || {
-            calls.fetch_add(1, Ordering::SeqCst);
-            async { Err(eligible()) }
-        })
-        .await;
+        let result: Result<(), AppError> =
+            with_retry_seeded(&policy, &breaker, deadline, 1, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Err(eligible()) }
+            })
+            .await;
 
         let err = result.expect_err("budget too small for a retry");
         assert!(err.deadline_exceeded, "must remap to deadline-exceeded");
@@ -1253,24 +1288,34 @@ mod tests {
     async fn with_retry_retries_within_a_generous_deadline() {
         let (breaker, _clock) = store_breaker(100, Duration::from_secs(60));
         // 100ms backoff, well inside the 10s budget.
-        let policy = RetryPolicy::new(5, Duration::from_millis(100), Duration::from_millis(100), 2.0);
+        let policy = RetryPolicy::new(
+            5,
+            Duration::from_millis(100),
+            Duration::from_millis(100),
+            2.0,
+        );
         let deadline = Deadline::after(Duration::from_secs(10));
         let calls = AtomicUsize::new(0);
 
-        let result: Result<&str, AppError> = with_retry_seeded(&policy, &breaker, deadline, 1, || {
-            let n = calls.fetch_add(1, Ordering::SeqCst);
-            async move {
-                if n < 2 {
-                    Err(eligible())
-                } else {
-                    Ok("ok")
+        let result: Result<&str, AppError> =
+            with_retry_seeded(&policy, &breaker, deadline, 1, || {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if n < 2 {
+                        Err(eligible())
+                    } else {
+                        Ok("ok")
+                    }
                 }
-            }
-        })
-        .await;
+            })
+            .await;
 
         assert_eq!(result.unwrap(), "ok");
-        assert_eq!(calls.load(Ordering::SeqCst), 3, "2 retries within budget + success");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "2 retries within budget + success"
+        );
     }
 
     /// An already-expired deadline permits no backoff at all: the first
@@ -1285,14 +1330,19 @@ mod tests {
         assert!(deadline.expired());
         let calls = AtomicUsize::new(0);
 
-        let result: Result<(), AppError> = with_retry_seeded(&policy, &breaker, deadline, 1, || {
-            calls.fetch_add(1, Ordering::SeqCst);
-            async { Err(eligible()) }
-        })
-        .await;
+        let result: Result<(), AppError> =
+            with_retry_seeded(&policy, &breaker, deadline, 1, || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Err(eligible()) }
+            })
+            .await;
 
         assert!(result.expect_err("expired").deadline_exceeded);
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "no retry past an expired deadline");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "no retry past an expired deadline"
+        );
     }
 
     // -- Robustness ---------------------------------------------------------

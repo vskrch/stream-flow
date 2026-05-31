@@ -292,11 +292,7 @@ impl Repos {
     }
 
     /// Fetch the [`IdMapRow`] for `id_type`+`id`, or `None`.
-    pub async fn get_id_map(
-        &self,
-        id_type: &str,
-        id: &str,
-    ) -> Result<Option<IdMapRow>, AppError> {
+    pub async fn get_id_map(&self, id_type: &str, id: &str) -> Result<Option<IdMapRow>, AppError> {
         let row = self
             .run_busy(|| async {
                 sqlx::query(
@@ -324,10 +320,7 @@ impl Repos {
     // -- integration_list ---------------------------------------------------
 
     /// Insert or replace an [`IntegrationListRow`] (key `source`+`key`).
-    pub async fn upsert_integration_list(
-        &self,
-        row: &IntegrationListRow,
-    ) -> Result<(), AppError> {
+    pub async fn upsert_integration_list(&self, row: &IntegrationListRow) -> Result<(), AppError> {
         let fetched_at = row.fetched_at.unix_timestamp();
         let stale_at = row.stale_at.unix_timestamp();
         self.run_busy(|| async {
@@ -401,10 +394,7 @@ impl Repos {
     }
 
     /// Fetch the [`TraktTokenRow`] for `username`, or `None`.
-    pub async fn get_trakt_token(
-        &self,
-        username: &str,
-    ) -> Result<Option<TraktTokenRow>, AppError> {
+    pub async fn get_trakt_token(&self, username: &str) -> Result<Option<TraktTokenRow>, AppError> {
         let row = self
             .run_busy(|| async {
                 sqlx::query(
@@ -471,9 +461,11 @@ impl Repos {
     pub async fn list_enabled_peers(&self) -> Result<Vec<PeerRow>, AppError> {
         let rows = self
             .run_busy(|| async {
-                sqlx::query("SELECT url, token_enc, enabled FROM peer WHERE enabled = 1 ORDER BY url")
-                    .fetch_all(&self.pool)
-                    .await
+                sqlx::query(
+                    "SELECT url, token_enc, enabled FROM peer WHERE enabled = 1 ORDER BY url",
+                )
+                .fetch_all(&self.pool)
+                .await
             })
             .await?;
 
@@ -545,8 +537,9 @@ fn is_busy_or_locked(err: &sqlx::Error) -> bool {
 /// Convert a stored unix-second timestamp into an [`OffsetDateTime`], mapping a
 /// nonsensical value onto a typed [`AppError`] rather than panicking.
 fn unix_to_odt(secs: i64) -> Result<OffsetDateTime, AppError> {
-    OffsetDateTime::from_unix_timestamp(secs)
-        .map_err(|e| AppError::unknown(format!("persistence: invalid stored timestamp {secs}: {e}")))
+    OffsetDateTime::from_unix_timestamp(secs).map_err(|e| {
+        AppError::unknown(format!("persistence: invalid stored timestamp {secs}: {e}"))
+    })
 }
 
 #[cfg(test)]
@@ -781,7 +774,11 @@ mod tests {
         repos.upsert_peer(&disabled).await.expect("upsert b");
 
         assert_eq!(
-            repos.get_peer("https://peer-a.example").await.expect("get").unwrap(),
+            repos
+                .get_peer("https://peer-a.example")
+                .await
+                .expect("get")
+                .unwrap(),
             enabled,
         );
 
@@ -838,7 +835,10 @@ mod tests {
             app_err.category,
         );
 
-        sqlx::query("COMMIT").execute(&mut *held).await.expect("commit");
+        sqlx::query("COMMIT")
+            .execute(&mut *held)
+            .await
+            .expect("commit");
     }
 
     /// Req 50.6: a write that initially hits a held lock is **retried within
@@ -881,7 +881,10 @@ mod tests {
                 .expect("begin immediate");
             tx.send(()).expect("signal lock held");
             tokio::time::sleep(Duration::from_millis(40)).await;
-            sqlx::query("COMMIT").execute(&mut *conn).await.expect("commit");
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
+                .await
+                .expect("commit");
         });
 
         // Wait until the lock is actually held, then issue the contended write.

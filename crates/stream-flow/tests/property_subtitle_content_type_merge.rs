@@ -131,9 +131,8 @@ fn arb_lang() -> impl Strategy<Value = String> {
 /// Strategy: produce a subtitle URL (simple, no duplicates within a single
 /// generated value — uniqueness across lists is handled by the merge test).
 fn arb_subtitle_url() -> impl Strategy<Value = String> {
-    ("[a-z]{3,8}", "[a-z]{3,8}", arb_supported_ext()).prop_map(|(host, path, ext)| {
-        format!("https://{host}.example.com/{path}.{ext}")
-    })
+    ("[a-z]{3,8}", "[a-z]{3,8}", arb_supported_ext())
+        .prop_map(|(host, path, ext)| format!("https://{host}.example.com/{path}.{ext}"))
 }
 
 /// Strategy: produce a single [`Subtitle`] with arbitrary lang and url.
@@ -415,8 +414,7 @@ fn unsupported_extensions_fall_back_to_octet_stream_exhaustively() {
         let url = format!("https://cdn.example.com/track.{ext}");
         let ct = content_type_for_url(&url);
         assert_eq!(
-            ct,
-            "application/octet-stream",
+            ct, "application/octet-stream",
             "extension {ext:?} should fall back to application/octet-stream, got {ct:?}"
         );
     }
@@ -480,13 +478,34 @@ fn merge_three_lists_with_known_overlaps() {
     assert_eq!(result.len(), 4);
 
     // First occurrences are kept.
-    assert!(result.iter().any(|s| s.id == "1"), "id=1 (en/a.com) must be present");
-    assert!(result.iter().any(|s| s.id == "2"), "id=2 (fr/a.com) must be present");
-    assert!(result.iter().any(|s| s.id == "3"), "id=3 (de/b.com) must be present");
-    assert!(result.iter().any(|s| s.id == "5"), "id=5 (es/c.com) must be present");
+    assert!(
+        result.iter().any(|s| s.id == "1"),
+        "id=1 (en/a.com) must be present"
+    );
+    assert!(
+        result.iter().any(|s| s.id == "2"),
+        "id=2 (fr/a.com) must be present"
+    );
+    assert!(
+        result.iter().any(|s| s.id == "3"),
+        "id=3 (de/b.com) must be present"
+    );
+    assert!(
+        result.iter().any(|s| s.id == "5"),
+        "id=5 (es/c.com) must be present"
+    );
 
     // Duplicates are dropped.
-    assert!(!result.iter().any(|s| s.id == "4"), "id=4 is a dup and must be dropped");
-    assert!(!result.iter().any(|s| s.id == "6"), "id=6 is a dup and must be dropped");
-    assert!(!result.iter().any(|s| s.id == "7"), "id=7 is a dup and must be dropped");
+    assert!(
+        !result.iter().any(|s| s.id == "4"),
+        "id=4 is a dup and must be dropped"
+    );
+    assert!(
+        !result.iter().any(|s| s.id == "6"),
+        "id=6 is a dup and must be dropped"
+    );
+    assert!(
+        !result.iter().any(|s| s.id == "7"),
+        "id=7 is a dup and must be dropped"
+    );
 }

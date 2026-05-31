@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 use crate::cache::CacheBackend;
@@ -70,64 +70,49 @@ impl TmdbAdapter {
     /// and logging errors when the upstream fails (Req 27.5).
     pub async fn fetch_list(&self) -> Result<IntegrationList, AppError> {
         let cache_key = format!("tmdb:list:{}", self.list_id);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let api_token = self.api_token.clone();
-                let list_id = self.list_id.clone();
-                async move { fetch_tmdb_list(&client, &api_token, &list_id).await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let api_token = self.api_token.clone();
+            let list_id = self.list_id.clone();
+            async move { fetch_tmdb_list(&client, &api_token, &list_id).await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 
     /// Fetch trending movies from TMDB, serving from cache when fresh.
     pub async fn fetch_trending_movies(&self) -> Result<IntegrationList, AppError> {
         let cache_key = "tmdb:trending:movies".to_string();
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let api_token = self.api_token.clone();
-                async move { fetch_tmdb_trending(&client, &api_token, "movie").await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let api_token = self.api_token.clone();
+            async move { fetch_tmdb_trending(&client, &api_token, "movie").await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 
     /// Fetch trending TV shows from TMDB, serving from cache when fresh.
     pub async fn fetch_trending_shows(&self) -> Result<IntegrationList, AppError> {
         let cache_key = "tmdb:trending:shows".to_string();
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let api_token = self.api_token.clone();
-                async move { fetch_tmdb_trending(&client, &api_token, "tv").await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let api_token = self.api_token.clone();
+            async move { fetch_tmdb_trending(&client, &api_token, "tv").await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("TMDB: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 }
@@ -216,8 +201,9 @@ pub fn parse_tmdb_list_response(data: &[u8]) -> Result<IntegrationList, AppError
         first_air_date: Option<String>,
     }
 
-    let resp: Response = serde_json::from_slice(data)
-        .map_err(|e| AppError::upstream_unavailable(format!("TMDB: failed to parse list response: {e}")))?;
+    let resp: Response = serde_json::from_slice(data).map_err(|e| {
+        AppError::upstream_unavailable(format!("TMDB: failed to parse list response: {e}"))
+    })?;
 
     let items = resp
         .items
@@ -254,7 +240,10 @@ pub fn parse_tmdb_list_response(data: &[u8]) -> Result<IntegrationList, AppError
 }
 
 /// Parse a TMDB trending response.
-pub fn parse_tmdb_trending_response(data: &[u8], media_type: &str) -> Result<IntegrationList, AppError> {
+pub fn parse_tmdb_trending_response(
+    data: &[u8],
+    media_type: &str,
+) -> Result<IntegrationList, AppError> {
     #[derive(Deserialize)]
     struct Response {
         results: Vec<TmdbResult>,
@@ -268,10 +257,15 @@ pub fn parse_tmdb_trending_response(data: &[u8], media_type: &str) -> Result<Int
         first_air_date: Option<String>,
     }
 
-    let resp: Response = serde_json::from_slice(data)
-        .map_err(|e| AppError::upstream_unavailable(format!("TMDB: failed to parse trending response: {e}")))?;
+    let resp: Response = serde_json::from_slice(data).map_err(|e| {
+        AppError::upstream_unavailable(format!("TMDB: failed to parse trending response: {e}"))
+    })?;
 
-    let content_type = if media_type == "tv" { "series" } else { "movie" };
+    let content_type = if media_type == "tv" {
+        "series"
+    } else {
+        "movie"
+    };
 
     let items = resp
         .results

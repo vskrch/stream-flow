@@ -136,11 +136,7 @@ fn case_strategy() -> impl Strategy<Value = (usize, usize, Vec<Op>)> {
                 Op::Touch(key)
             }
         });
-        (
-            Just(cap),
-            Just(universe),
-            prop::collection::vec(op, 1..=60),
-        )
+        (Just(cap), Just(universe), prop::collection::vec(op, 1..=60))
     })
 }
 

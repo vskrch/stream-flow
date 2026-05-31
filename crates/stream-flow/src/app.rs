@@ -36,10 +36,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::cache::{CacheBackend, FailoverCache, FailoverConfig, LocalCache, RedisCache};
 use crate::config::Config;
+use crate::content_proxy::ConnectionRegistry;
 use crate::egress::{HttpIpReflector, OutboundClient};
 use crate::health::{ComponentHealth, HealthProbes, HealthRegistry, LoadState, StoreBreaker};
+use crate::http::degradation::LoadController;
 use crate::observability::Metrics;
+use crate::resilience::breaker::{BreakerConfig, BreakerKey, CircuitBreaker};
 use crate::sse::SseRegistry;
 
 /// Default liveness-heartbeat staleness bound for the skeleton registry.
@@ -76,6 +80,13 @@ struct AppStateInner {
     /// obtains an HTTP client for an upstream call, and the source of the
     /// tunnel-observed Egress_IP backing `/proxy/ip` (Req 51.11, task 14.2).
     egress: Arc<OutboundClient>,
+    /// Shared cache backend. Redis is wrapped by `FailoverCache`; when Redis is
+    /// absent or down, callers still use the local tier.
+    cache: Arc<dyn CacheBackend>,
+    /// Shared degradation/load controller used by middleware and health probes.
+    load: LoadController,
+    /// Per-user active content-proxy connection counters.
+    content_connections: Arc<ConnectionRegistry>,
     /// The SSE registry backing `/v0/events` (Req 41.1, task 28.4).
     sse: SseRegistry,
 }
@@ -89,8 +100,9 @@ impl AppState {
     /// [`HealthProbes`]; concrete probe sources are injected by later tasks via
     /// [`AppState::with_health`].
     pub fn new(config: Config) -> Self {
+        let load = LoadController::from_config(&config.degradation);
         let health = HealthRegistry::new(
-            Arc::new(SkeletonHealthProbes),
+            Arc::new(RuntimeHealthProbes { load: load.clone() }),
             DEFAULT_LIVENESS_BOUND,
         );
         // A skeleton instance has no pending migrations and no one-time startup
@@ -102,7 +114,7 @@ impl AppState {
         // [`AppState::with_health`]).
         health.set_migrations_applied(true);
         health.set_startup_probes_done(true);
-        Self::with_health(config, health)
+        Self::from_parts(config, health, None, load)
     }
 
     /// Build the shared state from a loaded [`Config`] and an already-wired
@@ -112,16 +124,8 @@ impl AppState {
     /// Degradation Guard, breaker registry) exist, so the registry reflects
     /// live signals instead of the skeleton defaults.
     pub fn with_health(config: Config, health: HealthRegistry) -> Self {
-        let egress = Arc::new(build_egress(&config));
-        Self {
-            inner: Arc::new(AppStateInner {
-                config,
-                health,
-                metrics: Metrics::new(),
-                egress,
-                sse: SseRegistry::new(),
-            }),
-        }
+        let load = LoadController::from_config(&config.degradation);
+        Self::from_parts(config, health, None, load)
     }
 
     /// Build the shared state from a loaded [`Config`], an already-wired
@@ -136,12 +140,27 @@ impl AppState {
         health: HealthRegistry,
         egress: Arc<OutboundClient>,
     ) -> Self {
+        let load = LoadController::from_config(&config.degradation);
+        Self::from_parts(config, health, Some(egress), load)
+    }
+
+    fn from_parts(
+        config: Config,
+        health: HealthRegistry,
+        egress: Option<Arc<OutboundClient>>,
+        load: LoadController,
+    ) -> Self {
+        let egress = egress.unwrap_or_else(|| Arc::new(build_egress(&config)));
+        let cache = build_cache_backend(&config);
         Self {
             inner: Arc::new(AppStateInner {
                 config,
                 health,
                 metrics: Metrics::new(),
                 egress,
+                cache,
+                load,
+                content_connections: Arc::new(ConnectionRegistry::new()),
                 sse: SseRegistry::new(),
             }),
         }
@@ -173,16 +192,26 @@ impl AppState {
         &self.inner.egress
     }
 
-    /// Return the optional Redis-backed [`CacheBackend`] for the rate limiter
-    /// (Req 40.5). When Redis is configured the rate limiter uses this shared
-    /// backend so all replicas share one quota per key; when `None` the limiter
-    /// uses in-process state only.
-    ///
-    /// Currently returns `None` (the Redis cache wiring lands with the full
-    /// cache-layer task); the rate limiter falls back to in-process state.
+    /// Return the shared cache backend for the rate limiter (Req 40.5). When
+    /// Redis is configured this is a Redis+local failover backend; otherwise it
+    /// is local-only.
     pub fn rate_limit_cache(&self) -> Option<Arc<dyn crate::cache::CacheBackend>> {
-        // TODO(task 4.3): return the FailoverCache when wired into AppState.
-        None
+        Some(Arc::clone(&self.inner.cache))
+    }
+
+    /// Borrow the shared cache backend.
+    pub fn cache(&self) -> &Arc<dyn CacheBackend> {
+        &self.inner.cache
+    }
+
+    /// Borrow the shared degradation/load controller.
+    pub fn load_controller(&self) -> &LoadController {
+        &self.inner.load
+    }
+
+    /// Borrow the content-proxy connection registry.
+    pub fn content_connections(&self) -> &Arc<ConnectionRegistry> {
+        &self.inner.content_connections
     }
 
     /// Borrow the shared SSE registry backing `/v0/events` (Req 41.1).
@@ -241,6 +270,40 @@ fn disabled_fail_closed_egress() -> OutboundClient {
         .expect("disabled-mode OutboundClient always builds")
 }
 
+fn build_cache_backend(config: &Config) -> Arc<dyn CacheBackend> {
+    let namespace = config.cache.namespace.clone();
+    let local = LocalCache::new(namespace.clone());
+    match config
+        .cache
+        .redis_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+    {
+        Some(url) => match RedisCache::from_url(url, namespace) {
+            Ok(redis) => {
+                let breaker = CircuitBreaker::new(
+                    BreakerKey::Integration("redis-cache".to_string()),
+                    BreakerConfig::new(5, Duration::from_secs(30)),
+                );
+                Arc::new(FailoverCache::with_redis(
+                    local,
+                    redis,
+                    breaker,
+                    FailoverConfig::default(),
+                ))
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "redis cache misconfigured; using local cache only"
+                );
+                Arc::new(FailoverCache::local_only(local))
+            }
+        },
+        None => Arc::new(FailoverCache::local_only(local)),
+    }
+}
+
 /// A skeleton [`HealthProbes`] used until the concrete signal sources are
 /// wired in: SQLite is reported reachable, load is `Normal`, and no store
 /// breakers are configured. With no stores, readiness is never failed on the
@@ -255,6 +318,28 @@ impl HealthProbes for SkeletonHealthProbes {
 
     fn load_state(&self) -> LoadState {
         LoadState::Normal
+    }
+
+    fn store_breakers(&self) -> Vec<StoreBreaker> {
+        Vec::new()
+    }
+
+    fn extra_components(&self) -> Vec<ComponentHealth> {
+        Vec::new()
+    }
+}
+
+struct RuntimeHealthProbes {
+    load: LoadController,
+}
+
+impl HealthProbes for RuntimeHealthProbes {
+    fn sqlite_reachable(&self) -> bool {
+        true
+    }
+
+    fn load_state(&self) -> LoadState {
+        self.load.load_state()
     }
 
     fn store_breakers(&self) -> Vec<StoreBreaker> {

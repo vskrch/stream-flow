@@ -36,11 +36,9 @@ pub mod segments;
 
 pub use convert::{init_segment_ref, to_hls_master, to_hls_media, HlsMediaOptions, MediaSegment};
 pub use error::MpdError;
-pub use segments::{
-    resolve_segments, ByteRange, InitRef, ResolvedRepresentation, ResolvedSegment,
-};
 pub use model::{
     AdaptationSet, Mpd, Period, PresentationType, Representation, SegmentAddressing, SegmentBase,
     SegmentList, SegmentTemplate, SegmentTimeline, SegmentUrl, TimelineEntry, UrlRange,
 };
 pub use parser::parse_mpd;
+pub use segments::{resolve_segments, ByteRange, InitRef, ResolvedRepresentation, ResolvedSegment};

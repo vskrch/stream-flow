@@ -61,7 +61,10 @@ impl RedisCache {
     /// is created, but no connection is opened until the first operation — so
     /// this never blocks on or fails because of an unreachable server. A URL
     /// that cannot be parsed surfaces as an [`AppError`].
-    pub fn from_url(url: impl Into<String>, namespace: impl Into<String>) -> Result<Self, AppError> {
+    pub fn from_url(
+        url: impl Into<String>,
+        namespace: impl Into<String>,
+    ) -> Result<Self, AppError> {
         let cfg = Config::from_url(url.into());
         let pool = cfg
             .create_pool(Some(Runtime::Tokio1))
@@ -174,7 +177,10 @@ mod tests {
             Ok(_) => panic!("a malformed URL must be rejected"),
             Err(e) => e,
         };
-        assert_eq!(err.category, crate::errors::ErrorCategory::UpstreamUnavailable);
+        assert_eq!(
+            err.category,
+            crate::errors::ErrorCategory::UpstreamUnavailable
+        );
     }
 
     // -- Integration tests (gated on a reachable Redis) ---------------------
@@ -199,8 +205,7 @@ mod tests {
         // than fails the suite.
         match cache.pool.get().await {
             Ok(mut conn) => {
-                let pong: Result<String, _> =
-                    redis::cmd("PING").query_async(&mut *conn).await;
+                let pong: Result<String, _> = redis::cmd("PING").query_async(&mut *conn).await;
                 if let Err(e) = pong {
                     eprintln!("skipping redis integration test (PING failed): {e}");
                     return None;

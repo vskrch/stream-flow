@@ -154,7 +154,11 @@ mod tests {
     async fn keys_are_namespace_prefixed() {
         let cache = LocalCache::new("my-namespace");
         cache
-            .set("session:42", Bytes::from_static(b"v"), Duration::from_secs(60))
+            .set(
+                "session:42",
+                Bytes::from_static(b"v"),
+                Duration::from_secs(60),
+            )
             .await
             .unwrap();
 
@@ -185,8 +189,14 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(a.get("k").await.unwrap(), Some(Bytes::from_static(b"a-val")));
-        assert_eq!(b.get("k").await.unwrap(), Some(Bytes::from_static(b"b-val")));
+        assert_eq!(
+            a.get("k").await.unwrap(),
+            Some(Bytes::from_static(b"a-val"))
+        );
+        assert_eq!(
+            b.get("k").await.unwrap(),
+            Some(Bytes::from_static(b"b-val"))
+        );
     }
 
     /// Req 30.4: once an entry's TTL elapses it is treated as absent.
@@ -224,6 +234,9 @@ mod tests {
             .set("k", Bytes::from_static(b"new"), Duration::from_secs(60))
             .await
             .unwrap();
-        assert_eq!(cache.get("k").await.unwrap(), Some(Bytes::from_static(b"new")));
+        assert_eq!(
+            cache.get("k").await.unwrap(),
+            Some(Bytes::from_static(b"new"))
+        );
     }
 }

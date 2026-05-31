@@ -33,7 +33,9 @@ async fn library_exposes_reusable_build_app() {
     let app = actix_web::test::init_service(App::new().service(factory(state))).await;
 
     // The reused factory produces a live routing tree.
-    let req = actix_web::test::TestRequest::get().uri("/health").to_request();
+    let req = actix_web::test::TestRequest::get()
+        .uri("/health")
+        .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert!(
         resp.status().is_success(),

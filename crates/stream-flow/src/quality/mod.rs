@@ -346,13 +346,7 @@ pub fn parse_release_name(name: &str) -> ReleaseInfo {
     // Normalize: replace dots, underscores, and brackets with spaces, then
     // split into tokens. This handles the common `Movie.Name.2023.1080p`
     // and `Movie_Name_[1080p]` patterns.
-    let normalized = name
-        .replace('.', " ")
-        .replace('_', " ")
-        .replace('[', " ")
-        .replace(']', " ")
-        .replace('(', " ")
-        .replace(')', " ");
+    let normalized = name.replace(['.', '_', '[', ']', '(', ')'], " ");
 
     // Extract release group: the segment after the last `-` in the *original*
     // name (before normalization), provided it looks like a group tag
@@ -661,8 +655,7 @@ impl QualityRanker {
             // Secondary: quality score descending.
             let qa = quality_score(a, prefs);
             let qb = quality_score(b, prefs);
-            qb.partial_cmp(&qa)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            qb.partial_cmp(&qa).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         files
@@ -731,7 +724,11 @@ fn quality_score(file: &RankedFile, prefs: &QualityPrefs) -> f64 {
     if !prefs.preferred_video_codecs.is_empty() {
         if let Some(codec) = file.release_info.video_codec {
             let n = prefs.preferred_video_codecs.len() as f64;
-            if let Some(pos) = prefs.preferred_video_codecs.iter().position(|&c| c == codec) {
+            if let Some(pos) = prefs
+                .preferred_video_codecs
+                .iter()
+                .position(|&c| c == codec)
+            {
                 score += (n - pos as f64) / n * 200.0;
             }
         }
@@ -867,7 +864,10 @@ mod tests {
         assert_eq!(HdrFlag::from_token("HDR10"), Some(HdrFlag::HDR10));
         assert_eq!(HdrFlag::from_token("HDR10+"), Some(HdrFlag::HDR10Plus));
         assert_eq!(HdrFlag::from_token("DV"), Some(HdrFlag::DolbyVision));
-        assert_eq!(HdrFlag::from_token("DolbyVision"), Some(HdrFlag::DolbyVision));
+        assert_eq!(
+            HdrFlag::from_token("DolbyVision"),
+            Some(HdrFlag::DolbyVision)
+        );
         assert_eq!(HdrFlag::from_token("HLG"), Some(HdrFlag::HLG));
         assert_eq!(HdrFlag::from_token("SDR"), None);
     }
@@ -879,9 +879,15 @@ mod tests {
     #[test]
     fn parse_extracts_resolution_from_common_patterns() {
         let cases = [
-            ("Movie.2023.1080p.BluRay.x265-GROUP", Some(Resolution::R1080p)),
+            (
+                "Movie.2023.1080p.BluRay.x265-GROUP",
+                Some(Resolution::R1080p),
+            ),
             ("Show.S01E01.720p.WEB-DL.AAC-TEAM", Some(Resolution::R720p)),
-            ("Film.2022.2160p.UHD.BluRay.HDR-RELEASE", Some(Resolution::R2160p)),
+            (
+                "Film.2022.2160p.UHD.BluRay.HDR-RELEASE",
+                Some(Resolution::R2160p),
+            ),
             ("Old.Movie.480p.DVDRip.XviD", Some(Resolution::R480p)),
             ("No.Resolution.Here.BluRay.x264", None),
         ];
@@ -909,7 +915,11 @@ mod tests {
     #[test]
     fn parse_extracts_audio_codecs() {
         let info = parse_release_name("Movie.2023.1080p.BluRay.x265.DTS-GROUP");
-        assert!(info.audio_codecs.contains(&AudioCodec::DTS), "{:?}", info.audio_codecs);
+        assert!(
+            info.audio_codecs.contains(&AudioCodec::DTS),
+            "{:?}",
+            info.audio_codecs
+        );
 
         let info = parse_release_name("Movie.2023.1080p.BluRay.TrueHD.Atmos.x265");
         assert!(info.audio_codecs.contains(&AudioCodec::TrueHD));
@@ -1007,7 +1017,10 @@ mod tests {
         // First two should be 1080p (larger first), then 720p, then 480p.
         assert_eq!(ranked[0].release_info.resolution, Some(Resolution::R1080p));
         assert_eq!(ranked[1].release_info.resolution, Some(Resolution::R1080p));
-        assert!(ranked[0].size >= ranked[1].size, "larger 1080p file should rank first");
+        assert!(
+            ranked[0].size >= ranked[1].size,
+            "larger 1080p file should rank first"
+        );
         assert_eq!(ranked[2].release_info.resolution, Some(Resolution::R720p));
         assert_eq!(ranked[3].release_info.resolution, Some(Resolution::R480p));
     }
@@ -1026,9 +1039,9 @@ mod tests {
         };
         let ranked = QualityRanker::rank(files, &prefs, None);
         assert_eq!(ranked.len(), 2, "2160p should be excluded");
-        assert!(ranked.iter().all(|f| {
-            f.release_info.resolution.map_or(true, |r| r <= Resolution::R1080p)
-        }));
+        assert!(ranked
+            .iter()
+            .all(|f| f.release_info.resolution.is_none_or(|r| r <= Resolution::R1080p)));
     }
 
     #[test]
@@ -1077,7 +1090,10 @@ mod tests {
         let ranked = QualityRanker::rank(files, &prefs, None);
         assert_eq!(ranked.len(), 2);
         assert!(
-            ranked[0].release_info.audio_codecs.contains(&AudioCodec::DTS),
+            ranked[0]
+                .release_info
+                .audio_codecs
+                .contains(&AudioCodec::DTS),
             "DTS file should rank first"
         );
     }
@@ -1096,7 +1112,10 @@ mod tests {
         let ranked = QualityRanker::rank(files, &prefs, None);
         assert_eq!(ranked.len(), 2);
         assert!(
-            ranked[0].release_info.audio_languages.contains(&"en".to_string()),
+            ranked[0]
+                .release_info
+                .audio_languages
+                .contains(&"en".to_string()),
             "English file should rank first"
         );
     }
@@ -1111,11 +1130,7 @@ mod tests {
         ];
         let prefs = QualityPrefs {
             // Prefer 1080p over 4K (e.g. user wants 1080p for bandwidth reasons).
-            preferred_resolutions: vec![
-                Resolution::R1080p,
-                Resolution::R720p,
-                Resolution::R2160p,
-            ],
+            preferred_resolutions: vec![Resolution::R1080p, Resolution::R720p, Resolution::R2160p],
             ..Default::default()
         };
         let ranked = QualityRanker::rank(files, &prefs, None);

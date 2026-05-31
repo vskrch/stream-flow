@@ -11,6 +11,7 @@
 pub mod client_ip;
 pub mod degradation;
 pub mod panic_boundary;
+pub mod protocol;
 pub mod router;
 
 pub use client_ip::{client_ip, resolve_client_ip};
@@ -20,5 +21,9 @@ pub use panic_boundary::PanicBoundary;
 // the public crate surface (mirrors the `client_ip`/`PanicBoundary` re-exports
 // above). The property test (task 11.5, Property 46) drives these directly.
 pub use degradation::{
-    classify_path, next_load_state, shed_new_request, LoadController, LoadThresholds, RequestClass,
+    classify_path, next_load_state, shed_new_request, DegradationLadder, DegradationLevel,
+    LoadController, LoadThresholds, RequestClass,
+};
+pub use protocol::{
+    bulk_media_uses_http2, control_plane_protocol, upstream_api_uses_http2, ProtocolMode,
 };

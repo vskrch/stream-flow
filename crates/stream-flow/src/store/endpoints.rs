@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 use crate::errors::AppError;
 use crate::store::{
-    AddMagnetParams, CheckMagnetParams, Ctx, GetMagnetParams, GetUserParams,
-    ListMagnetsParams, MagnetFile, MagnetStatus, RemoveMagnetParams, Store,
+    AddMagnetParams, CheckMagnetParams, Ctx, GetMagnetParams, GetUserParams, ListMagnetsParams,
+    MagnetFile, MagnetStatus, RemoveMagnetParams, Store,
 };
 
 // ---------------------------------------------------------------------------
@@ -380,10 +380,7 @@ pub fn configure_store_routes(cfg: &mut web::ServiceConfig) {
         )
         .route("/v0/store/magnets", web::post().to(add_magnet_endpoint))
         .route("/v0/store/magnets", web::get().to(list_magnets_endpoint))
-        .route(
-            "/v0/store/magnets/{id}",
-            web::get().to(get_magnet_endpoint),
-        )
+        .route("/v0/store/magnets/{id}", web::get().to(get_magnet_endpoint))
         .route(
             "/v0/store/magnets/{id}",
             web::delete().to(remove_magnet_endpoint),
@@ -483,10 +480,7 @@ mod tests {
             })
         }
 
-        async fn list_magnets(
-            &self,
-            p: &ListMagnetsParams,
-        ) -> Result<ListMagnetsData, AppError> {
+        async fn list_magnets(&self, p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
             // Return items respecting limit, with a genuine total of 42
             let total = 42i64;
             let items: Vec<ListMagnetItem> = (0..p.limit.min(total as u32))
@@ -498,7 +492,10 @@ mod tests {
                     status: MagnetStatus::Cached,
                 })
                 .collect();
-            Ok(ListMagnetsData { items, total_items: total })
+            Ok(ListMagnetsData {
+                items,
+                total_items: total,
+            })
         }
 
         async fn remove_magnet(
@@ -571,7 +568,9 @@ mod tests {
         )
         .await;
 
-        let req = actix_test::TestRequest::get().uri("/v0/store/user").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/user")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status(), 200);
 
@@ -585,14 +584,10 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_returns_items_for_valid_magnets() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         let req = actix_test::TestRequest::get()
@@ -610,14 +605,10 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_validates_cardinality_zero_is_bad_request() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         // No magnets supplied
@@ -630,22 +621,15 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_validates_cardinality_over_500_is_bad_request() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         // 501 magnets
         let magnets: Vec<String> = (0..501).map(|i| format!("magnet{i}")).collect();
-        let uri = format!(
-            "/v0/store/magnets/check?magnet={}",
-            magnets.join(",")
-        );
+        let uri = format!("/v0/store/magnets/check?magnet={}", magnets.join(","));
         let req = actix_test::TestRequest::get().uri(&uri).to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status(), 400);
@@ -653,23 +637,17 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_accepts_500_magnets() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         // Exactly 500 magnets
-        let magnets: Vec<String> =
-            (0..500).map(|i| format!("magnet:?xt=urn:btih:h{i}")).collect();
-        let uri = format!(
-            "/v0/store/magnets/check?magnet={}",
-            magnets.join(",")
-        );
+        let magnets: Vec<String> = (0..500)
+            .map(|i| format!("magnet:?xt=urn:btih:h{i}"))
+            .collect();
+        let uri = format!("/v0/store/magnets/check?magnet={}", magnets.join(","));
         let req = actix_test::TestRequest::get().uri(&uri).to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status(), 200);
@@ -680,14 +658,10 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_sid_valid_is_accepted() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         let req = actix_test::TestRequest::get()
@@ -699,14 +673,10 @@ mod tests {
 
     #[actix_web::test]
     async fn check_magnets_sid_malformed_is_ignored_not_rejected() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/check",
-                    web::get().to(check_magnets_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/check",
+            web::get().to(check_magnets_endpoint),
+        ))
         .await;
 
         // Malformed sid should be ignored, not cause a rejection (Req 17.13)
@@ -868,10 +838,7 @@ mod tests {
         let app = actix_test::init_service(
             App::new()
                 .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/{id}",
-                    web::get().to(get_magnet_endpoint),
-                ),
+                .route("/v0/store/magnets/{id}", web::get().to(get_magnet_endpoint)),
         )
         .await;
 
@@ -892,14 +859,10 @@ mod tests {
 
     #[actix_web::test]
     async fn remove_magnet_returns_removed_id() {
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(mock_store())
-                .route(
-                    "/v0/store/magnets/{id}",
-                    web::delete().to(remove_magnet_endpoint),
-                ),
-        )
+        let app = actix_test::init_service(App::new().app_data(mock_store()).route(
+            "/v0/store/magnets/{id}",
+            web::delete().to(remove_magnet_endpoint),
+        ))
         .await;
 
         let req = actix_test::TestRequest::delete()
@@ -924,7 +887,9 @@ mod tests {
         .await;
 
         // GET /v0/store/user
-        let req = actix_test::TestRequest::get().uri("/v0/store/user").to_request();
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/user")
+            .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status(), 200);
 

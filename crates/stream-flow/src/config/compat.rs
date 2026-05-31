@@ -136,7 +136,10 @@ impl ::config::Source for CompatSource {
             .get("APP__EGRESS__FAIL_POLICY")
             .or_else(|| self.get("STREMTHRU_EGRESS_FAIL_POLICY"))
         {
-            out.insert("egress.policy".into(), Value::from(normalize_policy(&policy)));
+            out.insert(
+                "egress.policy".into(),
+                Value::from(normalize_policy(&policy)),
+            );
         }
 
         // -- egress tunnel URL + mode. Overlapping scalar → `APP__` wins:
@@ -287,10 +290,12 @@ mod tests {
     /// including the one required value (`auth.api_password`) unless the caller
     /// already supplied one.
     fn load_with(pairs: &[(&str, &str)]) -> Config {
-        let mut env: HashMap<String, String> =
-            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        let has_pw = env.contains_key("APP__AUTH__API_PASSWORD")
-            || env.contains_key("APP__API_PASSWORD");
+        let mut env: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let has_pw =
+            env.contains_key("APP__AUTH__API_PASSWORD") || env.contains_key("APP__API_PASSWORD");
         if !has_pw {
             env.insert("APP__AUTH__API_PASSWORD".to_string(), "secret".to_string());
         }
@@ -303,7 +308,12 @@ mod tests {
     fn app_api_password_legacy_maps_to_auth_api_password() {
         let config = load_with(&[("APP__API_PASSWORD", "legacy-pw")]);
         assert_eq!(
-            config.auth.api_password.as_ref().expect("api_password set").expose(),
+            config
+                .auth
+                .api_password
+                .as_ref()
+                .expect("api_password set")
+                .expose(),
             "legacy-pw"
         );
     }
@@ -381,7 +391,10 @@ mod tests {
     #[test]
     fn stremthru_redis_uri_maps_to_cache_redis_url() {
         let config = load_with(&[("STREMTHRU_REDIS_URI", "redis://localhost:6379/0")]);
-        assert_eq!(config.cache.redis_url.as_deref(), Some("redis://localhost:6379/0"));
+        assert_eq!(
+            config.cache.redis_url.as_deref(),
+            Some("redis://localhost:6379/0")
+        );
     }
 
     // -- egress tunnel (`STREMTHRU_HTTP_PROXY` + `STREMTHRU_TUNNEL`) --------
@@ -396,11 +409,18 @@ mod tests {
             ),
         ]);
         // Global proxy → tunnel_url + proxy mode.
-        assert_eq!(config.egress.tunnel_url.as_deref(), Some("http://proxy:8888"));
+        assert_eq!(
+            config.egress.tunnel_url.as_deref(),
+            Some("http://proxy:8888")
+        );
         assert_eq!(config.egress.tunnel_mode, EgressTunnelMode::Proxy);
         // `host:true` reuses the global proxy URL.
         assert_eq!(
-            config.egress.per_host.get("example.com").map(String::as_str),
+            config
+                .egress
+                .per_host
+                .get("example.com")
+                .map(String::as_str),
             Some("http://proxy:8888")
         );
         // `host:<url>` uses the explicit per-host URL.
@@ -484,7 +504,10 @@ mod tests {
             ("APP__PROXY__PROXY_URL", "http://app-gw:3128"),
             ("APP__PROXY__ALL_PROXY", "true"),
         ]);
-        assert_eq!(config.egress.tunnel_url.as_deref(), Some("http://app-gw:3128"));
+        assert_eq!(
+            config.egress.tunnel_url.as_deref(),
+            Some("http://app-gw:3128")
+        );
     }
 
     // -- both auth mechanisms remain active simultaneously (Req 36.4) -------
@@ -497,7 +520,12 @@ mod tests {
         ]);
         // mediaflow API password is active …
         assert_eq!(
-            config.auth.api_password.as_ref().expect("api_password set").expose(),
+            config
+                .auth
+                .api_password
+                .as_ref()
+                .expect("api_password set")
+                .expose(),
             "mediaflow-pw"
         );
         // … and the stremthru proxy-auth list is *also* active (not dropped).

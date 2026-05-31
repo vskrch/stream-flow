@@ -615,13 +615,14 @@ mod tests {
     }
 
     /// Build a `senc` payload from per-sample (iv, subsamples) tuples.
-    fn senc_payload(
-        use_subsamples: bool,
-        samples: &[(Vec<u8>, Vec<(u16, u32)>)],
-    ) -> Vec<u8> {
+    fn senc_payload(use_subsamples: bool, samples: &[(Vec<u8>, Vec<(u16, u32)>)]) -> Vec<u8> {
         let mut p = Vec::new();
         p.push(0); // version
-        let flags: u32 = if use_subsamples { SENC_FLAG_USE_SUBSAMPLES } else { 0 };
+        let flags: u32 = if use_subsamples {
+            SENC_FLAG_USE_SUBSAMPLES
+        } else {
+            0
+        };
         p.extend_from_slice(&flags.to_be_bytes()[1..]); // 3-byte flags
         p.extend_from_slice(&(samples.len() as u32).to_be_bytes());
         for (iv, subs) in samples {
@@ -693,7 +694,11 @@ mod tests {
 
         let err = read_boxes(&buf).unwrap_err();
         assert_eq!(err.category, crate::errors::ErrorCategory::BadRequest);
-        assert!(err.message.contains("moof"), "error names the box: {}", err.message);
+        assert!(
+            err.message.contains("moof"),
+            "error names the box: {}",
+            err.message
+        );
         assert!(err.message.contains("overrun"));
     }
 
@@ -831,10 +836,7 @@ mod tests {
     #[test]
     fn parse_senc_recovers_subsample_ranges() {
         let s = [
-            (
-                vec![0xAAu8; 16],
-                vec![(100u16, 2048u32), (0u16, 4096u32)],
-            ),
+            (vec![0xAAu8; 16], vec![(100u16, 2048u32), (0u16, 4096u32)]),
             (vec![0xBBu8; 16], vec![(40u16, 512u32)]),
         ];
         let payload = senc_payload(true, &s);

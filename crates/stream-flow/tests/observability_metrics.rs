@@ -104,7 +104,11 @@ fn metrics_registry_records_and_exposes_all_required_series() {
     let metrics = Metrics::new();
 
     metrics.record_proxied_request("success", std::time::Duration::from_millis(12));
-    metrics.record_store_op("realdebrid", "success", std::time::Duration::from_millis(30));
+    metrics.record_store_op(
+        "realdebrid",
+        "success",
+        std::time::Duration::from_millis(30),
+    );
     metrics.record_cache_hit();
     metrics.record_cache_miss();
     metrics.record_upstream_failure("timeout");
@@ -161,8 +165,14 @@ fn redactor_scrubs_sensitive_query_parameters() {
     let redactor = Redactor::new();
     let line = "GET /proxy/stream?d=ENCRYPTED&api_password=hunter2&x=1 HTTP/1.1";
     let redacted = redactor.redact(line);
-    assert!(!redacted.contains("hunter2"), "api_password leaked: {redacted}");
-    assert!(!redacted.contains("ENCRYPTED"), "encrypted d leaked: {redacted}");
+    assert!(
+        !redacted.contains("hunter2"),
+        "api_password leaked: {redacted}"
+    );
+    assert!(
+        !redacted.contains("ENCRYPTED"),
+        "encrypted d leaked: {redacted}"
+    );
     // Non-secret params survive.
     assert!(redacted.contains("x=1"));
 }

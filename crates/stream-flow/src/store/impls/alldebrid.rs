@@ -52,8 +52,11 @@ impl AllDebridStore {
     }
 
     fn api_url(&self, path: &str) -> Url {
-        Url::parse(&format!("{}{}?agent=stream-flow&apikey={}", self.base_url, path, self.token))
-            .expect("valid AllDebrid API URL")
+        Url::parse(&format!(
+            "{}{}?agent=stream-flow&apikey={}",
+            self.base_url, path, self.token
+        ))
+        .expect("valid AllDebrid API URL")
     }
 
     /// Map a native AllDebrid error response into the canonical AppError taxonomy.
@@ -80,7 +83,7 @@ impl AllDebridStore {
 
         match status {
             401 => AppError::unauthorized_for("alldebrid", "authentication failed"),
-            503 | 502 | 504 => {
+            502..=504 => {
                 AppError::upstream_unavailable_for("alldebrid", "service unavailable")
             }
             429 => AppError::too_many_requests("rate limited").with_store("alldebrid"),
@@ -90,10 +93,7 @@ impl AllDebridStore {
         }
     }
 
-    async fn get_json<T: for<'de> Deserialize<'de>>(
-        &self,
-        path: &str,
-    ) -> Result<T, AppError> {
+    async fn get_json<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T, AppError> {
         let url = self.api_url(path);
         let resp = self
             .client
@@ -255,12 +255,19 @@ impl Store for AllDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: AdApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("alldebrid")
-        })?;
+        let api_resp: AdApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("alldebrid"))?;
 
         if let Some(err) = api_resp.error {
-            return Err(Self::map_error(status, &serde_json::to_string(&serde_json::json!({"error": {"code": err.code, "message": err.message}})).unwrap_or_default()));
+            return Err(Self::map_error(
+                status,
+                &serde_json::to_string(
+                    &serde_json::json!({"error": {"code": err.code, "message": err.message}}),
+                )
+                .unwrap_or_default(),
+            ));
         }
 
         let data = api_resp.data.unwrap_or_default();
@@ -340,9 +347,10 @@ impl Store for AllDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: AdApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("alldebrid")
-        })?;
+        let api_resp: AdApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("alldebrid"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let magnets = data.get("magnets").and_then(|v| v.as_array());
@@ -375,7 +383,10 @@ impl Store for AllDebridStore {
     }
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
-        let path = format!("/magnet/status?agent=stream-flow&apikey={}&id={}", self.token, p.id);
+        let path = format!(
+            "/magnet/status?agent=stream-flow&apikey={}&id={}",
+            self.token, p.id
+        );
         let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
@@ -392,9 +403,10 @@ impl Store for AllDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: AdApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("alldebrid")
-        })?;
+        let api_resp: AdApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("alldebrid"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let magnets = data.get("magnets").cloned().unwrap_or_default();
@@ -435,10 +447,7 @@ impl Store for AllDebridStore {
     }
 
     async fn list_magnets(&self, p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
-        let path = format!(
-            "/magnet/status?agent=stream-flow&apikey={}",
-            self.token
-        );
+        let path = format!("/magnet/status?agent=stream-flow&apikey={}", self.token);
         let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
@@ -455,9 +464,10 @@ impl Store for AllDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: AdApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("alldebrid")
-        })?;
+        let api_resp: AdApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("alldebrid"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let magnets_val = data.get("magnets").and_then(|v| v.as_array());
@@ -482,11 +492,7 @@ impl Store for AllDebridStore {
         let total = all_items.len() as i64;
         let offset = p.offset as usize;
         let limit = p.limit as usize;
-        let items = all_items
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
+        let items = all_items.into_iter().skip(offset).take(limit).collect();
 
         Ok(ListMagnetsData {
             items,
@@ -541,9 +547,10 @@ impl Store for AllDebridStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: AdApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("alldebrid")
-        })?;
+        let api_resp: AdApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("alldebrid"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let link = data
@@ -644,7 +651,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "1".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "1".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.status, MagnetStatus::Failed);

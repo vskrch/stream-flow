@@ -98,7 +98,11 @@ struct MpdModel {
 // addressable (Req 2.3).
 type ResSpec = (Option<u64>, Option<u64>);
 type RepSpec = (u64, ResSpec);
-type SetSpec = ((Option<String>, Option<String>), Option<String>, Vec<RepSpec>);
+type SetSpec = (
+    (Option<String>, Option<String>),
+    Option<String>,
+    Vec<RepSpec>,
+);
 type PeriodSpec = (bool, Option<String>, Vec<SetSpec>);
 type MpdSpec = (bool, Option<String>, Option<String>, Vec<PeriodSpec>);
 
@@ -207,7 +211,11 @@ fn build_model(spec: MpdSpec) -> MpdModel {
             });
         }
         periods.push(PeriodModel {
-            id: if has_id { Some(format!("p{p_idx}")) } else { None },
+            id: if has_id {
+                Some(format!("p{p_idx}"))
+            } else {
+                None
+            },
             duration,
             sets,
         });

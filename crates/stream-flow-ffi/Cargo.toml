@@ -17,7 +17,8 @@ crate-type = ["staticlib", "cdylib"]
 # The C-ABI surface is gated behind `ffi` so the crate is a no-op unless an
 # FFI build explicitly opts in (matches mediaflow's `ffi` feature).
 default = []
-ffi = ["dep:stream-flow"]
+ffi = ["dep:stream-flow", "dep:serde_json"]
 
 [dependencies]
 stream-flow = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

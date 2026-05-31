@@ -172,9 +172,8 @@ impl Auth {
     /// challenge header (rendered by the [`AppError`] response impl). The
     /// password comparison is constant-time ([`constant_time_eq`]).
     pub fn verify_proxy_auth(&self, header: Option<&str>) -> Result<UserId, AppError> {
-        let challenge = || {
-            AppError::forbidden("invalid or missing proxy authorization").with_auth_challenge()
-        };
+        let challenge =
+            || AppError::forbidden("invalid or missing proxy authorization").with_auth_challenge();
 
         let raw = header.ok_or_else(challenge)?;
         // Tolerate an optional `Basic ` scheme prefix (case-insensitive).
@@ -232,7 +231,10 @@ impl Auth {
     /// Returns `None` when neither an exact `(user, store)` nor a `(*, store)`
     /// entry is configured.
     pub fn resolve_store_credential(&self, user: &str, store: &str) -> Option<&str> {
-        if let Some(token) = self.per_user_store.get(&(user.to_string(), store.to_string())) {
+        if let Some(token) = self
+            .per_user_store
+            .get(&(user.to_string(), store.to_string()))
+        {
             return Some(token.as_str());
         }
         self.per_user_store
@@ -453,7 +455,9 @@ mod tests {
     fn proxy_auth_garbage_value_is_403() {
         let auth = auth_with(Some("x"), &["alice:wonderland"], &[], &[]);
         // No colon, not valid base64 of a user:pass pair.
-        let err = auth.verify_proxy_auth(Some("not-a-credential")).unwrap_err();
+        let err = auth
+            .verify_proxy_auth(Some("not-a-credential"))
+            .unwrap_err();
         assert_eq!(err.category, ErrorCategory::Forbidden);
     }
 

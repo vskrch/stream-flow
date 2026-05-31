@@ -153,7 +153,10 @@ fn redact_query_params(input: &str) -> String {
                 // Skip + redact the value up to the next delimiter.
                 let value_start = i;
                 while i < bytes.len()
-                    && !matches!(bytes[i], b'&' | b' ' | b'\t' | b'"' | b'\'' | b'#' | b'\n' | b'\r')
+                    && !matches!(
+                        bytes[i],
+                        b'&' | b' ' | b'\t' | b'"' | b'\'' | b'#' | b'\n' | b'\r'
+                    )
                 {
                     i += 1;
                 }
@@ -180,10 +183,7 @@ fn redact_query_params(input: &str) -> String {
 fn match_sensitive_query_key(s: &str) -> Option<(usize, &'static str)> {
     for &key in SENSITIVE_QUERY_KEYS {
         let klen = key.len();
-        if s.len() > klen
-            && s.as_bytes()[klen] == b'='
-            && s[..klen].eq_ignore_ascii_case(key)
-        {
+        if s.len() > klen && s.as_bytes()[klen] == b'=' && s[..klen].eq_ignore_ascii_case(key) {
             return Some((klen + 1, key));
         }
     }
@@ -243,7 +243,10 @@ mod tests {
         let out = r.redact(line);
         assert!(!out.contains("ENCRYPTEDBLOB"));
         assert!(!out.contains("hunter2"));
-        assert!(out.contains("x=keepme"), "non-secret param must survive: {out}");
+        assert!(
+            out.contains("x=keepme"),
+            "non-secret param must survive: {out}"
+        );
         assert!(out.contains("d=[REDACTED]"));
         assert!(out.contains("api_password=[REDACTED]"));
     }
@@ -254,7 +257,10 @@ mod tests {
         // `grandtoken` ends with `token` but is not the `token` param.
         let line = "/x?grandtoken=keepme&token=secret";
         let out = r.redact(line);
-        assert!(out.contains("grandtoken=keepme"), "suffix must not match: {out}");
+        assert!(
+            out.contains("grandtoken=keepme"),
+            "suffix must not match: {out}"
+        );
         assert!(out.contains("token=[REDACTED]"));
         assert!(!out.contains("token=secret"));
     }

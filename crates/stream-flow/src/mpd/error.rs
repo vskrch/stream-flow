@@ -69,10 +69,7 @@ impl MpdError {
 
     /// A [`MissingSegment`](Self::MissingSegment) error naming the
     /// representation and the unresolved segment (Req 3.6).
-    pub fn missing_segment(
-        representation: impl Into<String>,
-        segment: impl Into<String>,
-    ) -> Self {
+    pub fn missing_segment(representation: impl Into<String>, segment: impl Into<String>) -> Self {
         MpdError::MissingSegment {
             representation: representation.into(),
             segment: segment.into(),

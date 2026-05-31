@@ -248,7 +248,11 @@ fn cbc_pattern_enc(
         if len - pos < crypt_bytes {
             break; // trailing partial run left clear
         }
-        cbc_encrypt_blocks(enc, &mut data[pos..pos + crypt_bytes], &mut touched[pos..pos + crypt_bytes]);
+        cbc_encrypt_blocks(
+            enc,
+            &mut data[pos..pos + crypt_bytes],
+            &mut touched[pos..pos + crypt_bytes],
+        );
         pos += crypt_bytes;
         let s = skip_bytes.min(len - pos);
         pos += s;
@@ -350,23 +354,22 @@ fn arb_case() -> impl Strategy<Value = Case> {
             Just(CencScheme::Cbc1),
             Just(CencScheme::Cbcs),
         ],
-        arb_array16(),          // key
-        0u8..=2,                // iv_kind: 0=per-sample16, 1=per-sample8, 2=constant16
-        arb_array16(),          // iv material
-        0u8..=8,                // crypt blocks (pattern schemes)
-        0u8..=8,                // skip blocks (pattern schemes)
-        any::<bool>(),          // whole-sample (no subsample map)
+        arb_array16(),                                             // key
+        0u8..=2,       // iv_kind: 0=per-sample16, 1=per-sample8, 2=constant16
+        arb_array16(), // iv material
+        0u8..=8,       // crypt blocks (pattern schemes)
+        0u8..=8,       // skip blocks (pattern schemes)
+        any::<bool>(), // whole-sample (no subsample map)
         proptest::collection::vec((0u16..=32, 0u32..=160), 0..=6), // subsamples
-        0usize..=24,            // trailing out-of-subsample bytes
-        0usize..=80,            // whole-sample length
+        0usize..=24,   // trailing out-of-subsample bytes
+        0usize..=80,   // whole-sample length
     )
         .prop_flat_map(
             |(scheme, key, iv_kind, ivb, crypt, skip, whole, subs, tail, whole_len)| {
                 let (subsamples, total_len) = if whole {
                     (Vec::new(), whole_len)
                 } else {
-                    let body: usize =
-                        subs.iter().map(|(c, p)| *c as usize + *p as usize).sum();
+                    let body: usize = subs.iter().map(|(c, p)| *c as usize + *p as usize).sum();
                     (subs, body + tail)
                 };
                 let (iv_size, per_sample_iv, constant_iv) = match iv_kind {

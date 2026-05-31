@@ -149,7 +149,9 @@ impl XtreamStreamRef {
         match self.category {
             StreamCategory::Timeshift => {
                 let ts = self.timeshift.as_ref().ok_or_else(|| {
-                    AppError::bad_request("timeshift stream reference is missing its duration/start")
+                    AppError::bad_request(
+                        "timeshift stream reference is missing its duration/start",
+                    )
                 })?;
                 Ok(format!(
                     "{cat}/{}/{}/{}/{}/{file}",
@@ -375,7 +377,10 @@ mod tests {
     #[test]
     fn upstream_url_live_uses_live_segment() {
         let url = live_ref().upstream_url("http://xt.example:8080").unwrap();
-        assert_eq!(url.as_str(), "http://xt.example:8080/live/user1/pass1/12345.ts");
+        assert_eq!(
+            url.as_str(),
+            "http://xt.example:8080/live/user1/pass1/12345.ts"
+        );
     }
 
     #[test]
@@ -387,7 +392,10 @@ mod tests {
         };
         let url = r.upstream_url("http://xt.example:8080/").unwrap();
         // VOD maps to the upstream `movie` segment; trailing base slash trimmed.
-        assert_eq!(url.as_str(), "http://xt.example:8080/movie/user1/pass1/12345.mp4");
+        assert_eq!(
+            url.as_str(),
+            "http://xt.example:8080/movie/user1/pass1/12345.mp4"
+        );
     }
 
     #[test]
@@ -398,7 +406,10 @@ mod tests {
             ..live_ref()
         };
         let url = r.upstream_url("http://xt.example:8080").unwrap();
-        assert_eq!(url.as_str(), "http://xt.example:8080/series/user1/pass1/12345.mkv");
+        assert_eq!(
+            url.as_str(),
+            "http://xt.example:8080/series/user1/pass1/12345.mkv"
+        );
     }
 
     #[test]
@@ -424,7 +435,10 @@ mod tests {
     fn upstream_url_preserves_a_base_path_prefix() {
         let r = live_ref();
         let url = r.upstream_url("http://host/xtream-panel").unwrap();
-        assert_eq!(url.as_str(), "http://host/xtream-panel/live/user1/pass1/12345.ts");
+        assert_eq!(
+            url.as_str(),
+            "http://host/xtream-panel/live/user1/pass1/12345.ts"
+        );
     }
 
     // -- Proxy short URL round-trip (Req 9.4 + 9.6) -------------------------
@@ -445,13 +459,27 @@ mod tests {
     #[test]
     fn proxy_url_round_trips_for_every_category() {
         let cases = [
-            XtreamStreamRef { category: StreamCategory::Live, ..live_ref() },
-            XtreamStreamRef { category: StreamCategory::Vod, ext: Some("mp4".into()), ..live_ref() },
-            XtreamStreamRef { category: StreamCategory::Series, ext: Some("mkv".into()), ..live_ref() },
+            XtreamStreamRef {
+                category: StreamCategory::Live,
+                ..live_ref()
+            },
+            XtreamStreamRef {
+                category: StreamCategory::Vod,
+                ext: Some("mp4".into()),
+                ..live_ref()
+            },
+            XtreamStreamRef {
+                category: StreamCategory::Series,
+                ext: Some("mkv".into()),
+                ..live_ref()
+            },
             XtreamStreamRef {
                 category: StreamCategory::Timeshift,
                 ext: Some("ts".into()),
-                timeshift: Some(Timeshift { duration: "90".into(), start: "s1".into() }),
+                timeshift: Some(Timeshift {
+                    duration: "90".into(),
+                    start: "s1".into(),
+                }),
                 ..live_ref()
             },
         ];
@@ -507,11 +535,9 @@ mod tests {
 
     #[test]
     fn parse_upstream_stream_url_recognises_live() {
-        let r = parse_upstream_stream_url(
-            "http://origin:8080/live/u/p/55.ts",
-            "http://origin:8080",
-        )
-        .expect("recognised");
+        let r =
+            parse_upstream_stream_url("http://origin:8080/live/u/p/55.ts", "http://origin:8080")
+                .expect("recognised");
         assert_eq!(r.category, StreamCategory::Live);
         assert_eq!(r.stream_id, "55");
         assert_eq!(r.ext.as_deref(), Some("ts"));
@@ -577,6 +603,9 @@ mod tests {
             "https://proxy.example",
         );
         // Single line, no trailing newline preserved.
-        assert_eq!(out, "https://proxy.example/proxy/xtream/stream/live/u/p/1.ts");
+        assert_eq!(
+            out,
+            "https://proxy.example/proxy/xtream/stream/live/u/p/1.ts"
+        );
     }
 }

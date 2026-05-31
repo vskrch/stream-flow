@@ -112,7 +112,9 @@ impl HttpIpReflector {
             }
         }
         let tunneled = tunneled_builder.build().map_err(|e| {
-            AppError::unknown(format!("failed to build tunneled IP-reflection client: {e}"))
+            AppError::unknown(format!(
+                "failed to build tunneled IP-reflection client: {e}"
+            ))
         })?;
 
         Ok(Self {
@@ -201,14 +203,23 @@ mod tests {
 
     #[test]
     fn parses_bare_ipv4_body() {
-        assert_eq!(parse_reflected_ip("203.0.113.7").unwrap(), ip("203.0.113.7"));
+        assert_eq!(
+            parse_reflected_ip("203.0.113.7").unwrap(),
+            ip("203.0.113.7")
+        );
         // Tolerates surrounding whitespace / trailing newline.
-        assert_eq!(parse_reflected_ip("  203.0.113.7\n").unwrap(), ip("203.0.113.7"));
+        assert_eq!(
+            parse_reflected_ip("  203.0.113.7\n").unwrap(),
+            ip("203.0.113.7")
+        );
     }
 
     #[test]
     fn parses_bare_ipv6_body() {
-        assert_eq!(parse_reflected_ip("2001:db8::1").unwrap(), ip("2001:db8::1"));
+        assert_eq!(
+            parse_reflected_ip("2001:db8::1").unwrap(),
+            ip("2001:db8::1")
+        );
     }
 
     // -- JSON forms (ipify ?format=json / ipinfo / httpbin) -----------------

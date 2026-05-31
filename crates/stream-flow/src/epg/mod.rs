@@ -356,7 +356,8 @@ fn to_header_map(headers: &BTreeMap<String, String>) -> HeaderMap {
 /// Req 8.7), carrying the upstream status when the error surfaced one.
 fn map_send_error(url: &Url, err: reqwest::Error) -> AppError {
     let host = url.host_str().unwrap_or("<unknown>");
-    let app = AppError::upstream_unavailable(format!("upstream EPG request to {host} failed: {err}"));
+    let app =
+        AppError::upstream_unavailable(format!("upstream EPG request to {host} failed: {err}"));
     match err.status() {
         Some(status) => app.with_upstream_status(status.as_u16()),
         None => app,
@@ -397,8 +398,7 @@ mod tests {
         EpgProxy::new(outbound(policy), cache, ttl)
     }
 
-    const SAMPLE_XMLTV: &[u8] =
-        b"<?xml version=\"1.0\"?>\n<tv><channel id=\"c1\"/></tv>\n";
+    const SAMPLE_XMLTV: &[u8] = b"<?xml version=\"1.0\"?>\n<tv><channel id=\"c1\"/></tv>\n";
 
     // -- Req 8.1: valid upstream URL fetched, body returned unchanged --------
 
@@ -421,7 +421,11 @@ mod tests {
             .await
             .expect("EPG fetch succeeds");
 
-        assert_eq!(&resp.body[..], SAMPLE_XMLTV, "body must be returned unchanged");
+        assert_eq!(
+            &resp.body[..],
+            SAMPLE_XMLTV,
+            "body must be returned unchanged"
+        );
         assert_eq!(resp.content_type.as_deref(), Some("application/xml"));
     }
 
@@ -449,7 +453,11 @@ mod tests {
 
         assert_eq!(resp.cache, EpgCacheStatus::Miss);
         assert_eq!(resp.cache.header_value(), "MISS");
-        assert_eq!(hits.load(Ordering::SeqCst), 1, "first request hits upstream");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "first request hits upstream"
+        );
     }
 
     // -- Req 8.2: TTL>0 + present unexpired cache -> HIT, no upstream call ---
@@ -483,7 +491,11 @@ mod tests {
         assert_eq!(&second.body[..], SAMPLE_XMLTV);
         assert_eq!(second.content_type.as_deref(), Some("application/xml"));
         // The HIT served from cache: upstream was hit exactly once.
-        assert_eq!(hits.load(Ordering::SeqCst), 1, "cache HIT must not re-fetch");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "cache HIT must not re-fetch"
+        );
     }
 
     // -- Req 8.4: TTL==0 -> fetch every request, always MISS, never cached ---
@@ -531,7 +543,10 @@ mod tests {
 
         let params = vec![
             ("h_X-API-Key".to_string(), "secret".to_string()),
-            ("h_Referer".to_string(), "https://guide.example/".to_string()),
+            (
+                "h_Referer".to_string(),
+                "https://guide.example/".to_string(),
+            ),
             // Non-`h_` params are ignored.
             ("api_password".to_string(), "ignored".to_string()),
         ];
@@ -617,7 +632,11 @@ mod tests {
             .await
             .expect_err("a 502 upstream must surface as an error");
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
-        assert_eq!(err.upstream_status, Some(502), "must carry the upstream status");
+        assert_eq!(
+            err.upstream_status,
+            Some(502),
+            "must carry the upstream status"
+        );
     }
 
     #[tokio::test]

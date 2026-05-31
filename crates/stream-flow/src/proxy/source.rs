@@ -312,10 +312,7 @@ impl DirectSource {
         if !headers.is_empty() {
             builder = builder.headers(headers.clone());
         }
-        let resp = builder
-            .send()
-            .await
-            .map_err(|e| map_send_error(&url, e))?;
+        let resp = builder.send().await.map_err(|e| map_send_error(&url, e))?;
 
         let resp_headers = resp.headers();
         let content_type = resp_headers
@@ -485,7 +482,11 @@ mod tests {
     fn content_range_parses_known_total() {
         assert_eq!(
             ContentRange::parse("bytes 100-199/1000"),
-            Some(ContentRange { start: 100, end: 199, total: Some(1000) })
+            Some(ContentRange {
+                start: 100,
+                end: 199,
+                total: Some(1000)
+            })
         );
     }
 
@@ -493,7 +494,11 @@ mod tests {
     fn content_range_parses_unknown_total_star() {
         assert_eq!(
             ContentRange::parse("bytes 0-499/*"),
-            Some(ContentRange { start: 0, end: 499, total: None })
+            Some(ContentRange {
+                start: 0,
+                end: 499,
+                total: None
+            })
         );
     }
 
@@ -509,8 +514,14 @@ mod tests {
 
     #[tokio::test]
     async fn direct_source_renew_returns_not_renewable() {
-        let source = DirectSource::new(outbound(EgressPolicy::FailOpen), url("https://cdn.example/v.mp4"));
-        let err = source.renew().await.expect_err("a plain source cannot renew");
+        let source = DirectSource::new(
+            outbound(EgressPolicy::FailOpen),
+            url("https://cdn.example/v.mp4"),
+        );
+        let err = source
+            .renew()
+            .await
+            .expect_err("a plain source cannot renew");
         assert!(
             err.is_not_renewable(),
             "DirectSource::renew must return the non-renewable signal"
@@ -527,7 +538,10 @@ mod tests {
     #[tokio::test]
     async fn open_is_refused_by_fail_closed_egress_with_no_dial() {
         // No tunnel + FailClosed (the safe default) → the seam refuses.
-        let source = DirectSource::new(outbound(EgressPolicy::FailClosed), url("https://cdn.example/v.mp4"));
+        let source = DirectSource::new(
+            outbound(EgressPolicy::FailClosed),
+            url("https://cdn.example/v.mp4"),
+        );
         let err = source
             .open(RangeSpec::Full)
             .await
@@ -600,7 +614,11 @@ mod tests {
         assert_eq!(body.status, 206);
         assert_eq!(
             body.content_range,
-            Some(ContentRange { start: 100, end: 199, total: Some(1000) })
+            Some(ContentRange {
+                start: 100,
+                end: 199,
+                total: Some(1000)
+            })
         );
         // A 206 implies range support even absent an explicit Accept-Ranges.
         assert!(body.accept_ranges);
@@ -631,7 +649,10 @@ mod tests {
             outbound(EgressPolicy::FailOpen),
             url(&format!("{}/start", server.uri())),
         );
-        let body = source.open(RangeSpec::Full).await.expect("open follows redirect");
+        let body = source
+            .open(RangeSpec::Full)
+            .await
+            .expect("open follows redirect");
 
         // The client transparently followed the 302 to the final origin.
         assert_eq!(body.status, 200);
@@ -666,7 +687,10 @@ mod tests {
             .open(RangeSpec::Full)
             .await
             .expect("open with custom headers succeeds");
-        assert_eq!(body.status, 200, "the custom header must have matched upstream");
+        assert_eq!(
+            body.status, 200,
+            "the custom header must have matched upstream"
+        );
     }
 
     // -- No client-identifying header is ever sent upstream (Req 51.2/51.3) -
@@ -772,7 +796,10 @@ mod tests {
 
     #[tokio::test]
     async fn new_source_reports_unknown_metadata() {
-        let source = DirectSource::new(outbound(EgressPolicy::FailOpen), url("https://cdn.example/v.mp4"));
+        let source = DirectSource::new(
+            outbound(EgressPolicy::FailOpen),
+            url("https://cdn.example/v.mp4"),
+        );
         assert_eq!(source.total_size(), None);
         assert_eq!(source.content_type(), None);
         assert!(!source.accept_ranges());

@@ -172,10 +172,7 @@ fn arb_pat() -> impl Strategy<Value = Pat> {
 
 /// The URL scheme pool.
 fn arb_url_scheme() -> impl Strategy<Value = String> {
-    prop_oneof![
-        Just("http".to_string()),
-        Just("https".to_string()),
-    ]
+    prop_oneof![Just("http".to_string()), Just("https".to_string()),]
 }
 
 /// The URL host pool: exact-match targets, a deep subdomain (matches several
@@ -207,11 +204,7 @@ fn arb_case() -> impl Strategy<Value = (Vec<Pat>, String, String, bool, bool)> {
 /// Build the routing table, giving route `i` the unique proxy
 /// `http://proxy-{i}.local:8080` so the chosen route is recoverable from the
 /// selection. `verify_ssl` alternates by index for extra signal.
-fn build_table(
-    pats: &[Pat],
-    all_proxy: bool,
-    has_default: bool,
-) -> RoutingTable {
+fn build_table(pats: &[Pat], all_proxy: bool, has_default: bool) -> RoutingTable {
     let routes: Vec<TransportRoute> = pats
         .iter()
         .enumerate()

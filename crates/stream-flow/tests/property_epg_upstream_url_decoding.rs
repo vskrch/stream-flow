@@ -77,22 +77,25 @@ fn arb_url() -> impl Strategy<Value = Url> {
         proptest::collection::vec(arb_path_seg(), 0..=4),
         proptest::option::of("[a-zA-Z0-9]{1,6}=[a-zA-Z0-9]{1,6}"),
     )
-        .prop_filter_map("a valid http/https URL", |(scheme, host, port, segs, query)| {
-            let mut s = format!("{scheme}://{host}");
-            if let Some(p) = port {
-                s.push(':');
-                s.push_str(&p.to_string());
-            }
-            s.push('/');
-            s.push_str(&segs.join("/"));
-            if let Some(q) = query {
-                s.push('?');
-                s.push_str(&q);
-            }
-            Url::parse(&s)
-                .ok()
-                .filter(|u| matches!(u.scheme(), "http" | "https"))
-        })
+        .prop_filter_map(
+            "a valid http/https URL",
+            |(scheme, host, port, segs, query)| {
+                let mut s = format!("{scheme}://{host}");
+                if let Some(p) = port {
+                    s.push(':');
+                    s.push_str(&p.to_string());
+                }
+                s.push('/');
+                s.push_str(&segs.join("/"));
+                if let Some(q) = query {
+                    s.push('?');
+                    s.push_str(&q);
+                }
+                Url::parse(&s)
+                    .ok()
+                    .filter(|u| matches!(u.scheme(), "http" | "https"))
+            },
+        )
 }
 
 proptest! {

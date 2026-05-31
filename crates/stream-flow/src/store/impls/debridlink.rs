@@ -91,9 +91,9 @@ impl DebridLinkStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("debridlink")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("debridlink"))
     }
 
     async fn api_post_json(
@@ -116,9 +116,9 @@ impl DebridLinkStore {
             let body_text = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body_text));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("debridlink")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("debridlink"))
     }
 }
 
@@ -139,11 +139,22 @@ impl Store for DebridLinkStore {
     async fn get_user(&self, _p: &GetUserParams) -> Result<User, AppError> {
         let data = self.api_get("/account/infos").await?;
         let value = data.get("value").unwrap_or(&data);
-        let email = value.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let account_type = value.get("accountType").and_then(|v| v.as_u64()).unwrap_or(0);
+        let email = value
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let account_type = value
+            .get("accountType")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
 
         Ok(User {
-            id: value.get("id").and_then(|v| v.as_u64()).unwrap_or(0).to_string(),
+            id: value
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                .to_string(),
             email,
             subscription_status: if account_type >= 2 {
                 SubscriptionStatus::Premium
@@ -180,7 +191,11 @@ impl Store for DebridLinkStore {
                 CheckMagnetItem {
                     hash,
                     magnet: magnet.clone(),
-                    status: if is_cached { MagnetStatus::Cached } else { MagnetStatus::Unknown },
+                    status: if is_cached {
+                        MagnetStatus::Cached
+                    } else {
+                        MagnetStatus::Unknown
+                    },
                     files: vec![],
                 }
             })
@@ -194,15 +209,26 @@ impl Store for DebridLinkStore {
             .api_post_json("/seedbox/add", &serde_json::json!({ "url": p.magnet }))
             .await?;
         let value = data.get("value").unwrap_or(&data);
-        let id = value.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let hash = super::realdebrid::extract_hash_from_magnet(&p.magnet).to_lowercase();
 
         Ok(AddMagnetData {
             id,
             hash,
             magnet: p.magnet.clone(),
-            name: value.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            size: value.get("totalSize").and_then(|v| v.as_i64()).unwrap_or(-1),
+            name: value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            size: value
+                .get("totalSize")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(-1),
             status: MagnetStatus::Queued,
             files: vec![],
             private: false,
@@ -212,8 +238,16 @@ impl Store for DebridLinkStore {
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let data = self.api_get(&format!("/seedbox/list?ids={}", p.id)).await?;
-        let value = data.get("value").and_then(|v| v.as_array()).and_then(|a| a.first()).cloned().unwrap_or_default();
-        let native_status = value.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let value = data
+            .get("value")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .cloned()
+            .unwrap_or_default();
+        let native_status = value
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
 
         let files = value
             .get("files")
@@ -223,9 +257,20 @@ impl Store for DebridLinkStore {
                     .enumerate()
                     .map(|(i, f)| MagnetFile {
                         index: i as i32,
-                        link: f.get("downloadUrl").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        path: f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        name: f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        link: f
+                            .get("downloadUrl")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        path: f
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        name: f
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                         size: f.get("size").and_then(|v| v.as_i64()).unwrap_or(-1),
                         video_hash: None,
                     })
@@ -235,9 +280,20 @@ impl Store for DebridLinkStore {
 
         Ok(GetMagnetData {
             id: p.id.clone(),
-            name: value.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            hash: value.get("hashString").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            size: value.get("totalSize").and_then(|v| v.as_i64()).unwrap_or(-1),
+            name: value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            hash: value
+                .get("hashString")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            size: value
+                .get("totalSize")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(-1),
             status: MagnetStatus::from_native(native_status),
             files,
             private: false,
@@ -253,11 +309,26 @@ impl Store for DebridLinkStore {
             .map(|arr| {
                 arr.iter()
                     .map(|t| {
-                        let native_status = t.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let native_status = t
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
                         crate::store::ListMagnetItem {
-                            id: t.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            hash: t.get("hashString").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            id: t
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            name: t
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            hash: t
+                                .get("hashString")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             size: t.get("totalSize").and_then(|v| v.as_i64()).unwrap_or(-1),
                             status: MagnetStatus::from_native(native_status),
                         }
@@ -267,9 +338,16 @@ impl Store for DebridLinkStore {
             .unwrap_or_default();
 
         let total = all_items.len() as i64;
-        let items = all_items.into_iter().skip(p.offset as usize).take(p.limit as usize).collect();
+        let items = all_items
+            .into_iter()
+            .skip(p.offset as usize)
+            .take(p.limit as usize)
+            .collect();
 
-        Ok(ListMagnetsData { items, total_items: total })
+        Ok(ListMagnetsData {
+            items,
+            total_items: total,
+        })
     }
 
     async fn remove_magnet(&self, p: &RemoveMagnetParams) -> Result<RemoveMagnetData, AppError> {
@@ -293,10 +371,7 @@ impl Store for DebridLinkStore {
 
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
         let data = self
-            .api_post_json(
-                "/downloader/add",
-                &serde_json::json!({ "url": p.link }),
-            )
+            .api_post_json("/downloader/add", &serde_json::json!({ "url": p.link }))
             .await?;
         let value = data.get("value").unwrap_or(&data);
         let link = value

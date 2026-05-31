@@ -53,8 +53,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio::time::interval;
 
-use crate::auth::middleware::verify_proxy_auth_req;
 use crate::app::AppState;
+use crate::auth::middleware::verify_proxy_auth_req;
 use crate::errors::AppError;
 
 /// Capacity of each per-user broadcast channel (number of buffered events
@@ -131,11 +131,7 @@ impl SseEvent {
     /// ```
     pub fn to_sse_bytes(&self) -> Bytes {
         let data_str = serde_json::to_string(&self.data).unwrap_or_else(|_| "{}".to_string());
-        let frame = format!(
-            "event: {}\ndata: {}\n\n",
-            self.kind.event_name(),
-            data_str
-        );
+        let frame = format!("event: {}\ndata: {}\n\n", self.kind.event_name(), data_str);
         Bytes::from(frame)
     }
 }
@@ -324,7 +320,11 @@ mod tests {
     #[tokio::test]
     async fn publish_with_no_subscribers_is_silent() {
         let registry = SseRegistry::new();
-        let event = SseEvent::new("alice", SseEventKind::MagnetStatus, json!({"status": "cached"}));
+        let event = SseEvent::new(
+            "alice",
+            SseEventKind::MagnetStatus,
+            json!({"status": "cached"}),
+        );
         registry.publish(event); // must not panic
         assert_eq!(registry.active_user_count(), 0);
     }
@@ -335,7 +335,11 @@ mod tests {
         let registry = SseRegistry::new();
         let mut rx = registry.subscribe("alice");
 
-        let event = SseEvent::new("alice", SseEventKind::MagnetStatus, json!({"status": "cached"}));
+        let event = SseEvent::new(
+            "alice",
+            SseEventKind::MagnetStatus,
+            json!({"status": "cached"}),
+        );
         registry.publish(event.clone());
 
         let received = rx.recv().await.unwrap();
@@ -366,7 +370,11 @@ mod tests {
         let mut rx1 = registry.subscribe("alice");
         let mut rx2 = registry.subscribe("alice");
 
-        let event = SseEvent::new("alice", SseEventKind::LinkGenResult, json!({"url": "https://example.com/file.mkv"}));
+        let event = SseEvent::new(
+            "alice",
+            SseEventKind::LinkGenResult,
+            json!({"url": "https://example.com/file.mkv"}),
+        );
         registry.publish(event);
 
         assert!(rx1.recv().await.is_ok());
@@ -424,7 +432,10 @@ mod tests {
         let bytes = event.to_sse_bytes();
         let text = std::str::from_utf8(&bytes).unwrap();
 
-        assert!(text.starts_with("event: magnet_status\n"), "must start with event: line");
+        assert!(
+            text.starts_with("event: magnet_status\n"),
+            "must start with event: line"
+        );
         assert!(text.contains("data: "), "must contain data: line");
         assert!(text.ends_with("\n\n"), "must end with blank line");
     }
@@ -435,7 +446,10 @@ mod tests {
         assert_eq!(SseEventKind::MagnetStatus.event_name(), "magnet_status");
         assert_eq!(SseEventKind::StoreError.event_name(), "store_error");
         assert_eq!(SseEventKind::LinkGenResult.event_name(), "link_gen_result");
-        assert_eq!(SseEventKind::ResolutionProgress.event_name(), "resolution_progress");
+        assert_eq!(
+            SseEventKind::ResolutionProgress.event_name(),
+            "resolution_progress"
+        );
         assert_eq!(SseEventKind::Heartbeat.event_name(), "heartbeat");
     }
 
@@ -682,11 +696,7 @@ mod tests {
                     let mut rx_b = registry.subscribe(&user_b);
 
                     // Publish an event for user_a only.
-                    let event = SseEvent::new(
-                        user_a.clone(),
-                        kind,
-                        json!({"test": true}),
-                    );
+                    let event = SseEvent::new(user_a.clone(), kind, json!({"test": true}));
                     registry.publish(event);
 
                     // user_a must receive it (try_recv is sync — no runtime needed).

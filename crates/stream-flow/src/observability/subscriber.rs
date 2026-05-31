@@ -155,8 +155,14 @@ mod tests {
         .unwrap();
 
         let written = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
-        assert!(!written.contains("topsecret"), "registered secret leaked: {written}");
-        assert!(!written.contains("token=abc123"), "token param leaked: {written}");
+        assert!(
+            !written.contains("topsecret"),
+            "registered secret leaked: {written}"
+        );
+        assert!(
+            !written.contains("token=abc123"),
+            "token param leaked: {written}"
+        );
         assert!(written.contains("[REDACTED]"));
     }
 

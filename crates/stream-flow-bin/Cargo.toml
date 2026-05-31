@@ -13,3 +13,4 @@ path = "src/main.rs"
 [dependencies]
 stream-flow = { workspace = true }
 actix-web = { workspace = true }
+tokio = { workspace = true }

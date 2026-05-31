@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 use crate::cache::CacheBackend;
@@ -71,22 +71,17 @@ impl MdbListAdapter {
     /// 27.4) and logging errors when the upstream fails (Req 27.5).
     pub async fn fetch_list(&self) -> Result<IntegrationList, AppError> {
         let cache_key = format!("mdblist:{}:{}", self.api_key, self.list_id);
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let api_key = self.api_key.clone();
-                let list_id = self.list_id.clone();
-                async move { fetch_mdblist(&client, &api_key, &list_id).await }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let api_key = self.api_key.clone();
+            let list_id = self.list_id.clone();
+            async move { fetch_mdblist(&client, &api_key, &list_id).await }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("MDBList: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("MDBList: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 }
@@ -119,8 +114,9 @@ async fn fetch_mdblist(
         .map_err(|e| map_reqwest_error(INTEGRATION_MDBLIST, e))?;
 
     let list = parse_mdblist_response(&body)?;
-    let serialized = serde_json::to_vec(&list)
-        .map_err(|e| AppError::upstream_unavailable(format!("MDBList: serialization failed: {e}")))?;
+    let serialized = serde_json::to_vec(&list).map_err(|e| {
+        AppError::upstream_unavailable(format!("MDBList: serialization failed: {e}"))
+    })?;
     Ok(Bytes::from(serialized))
 }
 
@@ -139,8 +135,9 @@ pub fn parse_mdblist_response(data: &[u8]) -> Result<IntegrationList, AppError> 
         year: Option<u32>,
     }
 
-    let resp: Response = serde_json::from_slice(data)
-        .map_err(|e| AppError::upstream_unavailable(format!("MDBList: failed to parse response: {e}")))?;
+    let resp: Response = serde_json::from_slice(data).map_err(|e| {
+        AppError::upstream_unavailable(format!("MDBList: failed to parse response: {e}"))
+    })?;
 
     let mut items = Vec::new();
 
@@ -178,7 +175,7 @@ mod tests {
     use crate::egress::tunnel::test_support::MockReflector;
     use crate::errors::ErrorCategory;
     use std::sync::Arc;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn outbound(policy: EgressPolicy) -> Arc<OutboundClient> {

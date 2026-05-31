@@ -414,9 +414,15 @@ mod tests {
 
         let peak = source.peak_concurrency();
         // Never exceeds the configured maximum (Req 11.2)...
-        assert!(peak <= 3, "peak concurrency {peak} exceeded max_connections 3");
+        assert!(
+            peak <= 3,
+            "peak concurrency {peak} exceeded max_connections 3"
+        );
         // ...and genuinely ran in parallel (more than one at once).
-        assert!(peak >= 2, "expected parallel fetches, peak concurrency was {peak}");
+        assert!(
+            peak >= 2,
+            "expected parallel fetches, peak concurrency was {peak}"
+        );
     }
 
     #[tokio::test]
@@ -463,11 +469,19 @@ mod tests {
         assert_eq!(body.content_length, Some(2001));
         assert_eq!(
             body.content_range,
-            Some(ContentRange { start: 1500, end: 3500, total: Some(10_000) })
+            Some(ContentRange {
+                start: 1500,
+                end: 3500,
+                total: Some(10_000)
+            })
         );
 
         let out = collect_body(body).await;
-        assert_eq!(out, data[1500..=3500], "must return exactly the requested bytes");
+        assert_eq!(
+            out,
+            data[1500..=3500],
+            "must return exactly the requested bytes"
+        );
 
         // Only the covering chunks were fetched — not chunks 0, 4..9 (Req 11.3).
         assert_eq!(source.fetched_indices(), vec![1, 2, 3]);
@@ -480,11 +494,17 @@ mod tests {
         let downloader = TelegramDownloader::new(source.clone(), 4);
 
         // bytes=-2500 → last 2500 bytes [7500,9999] → chunks 7,8,9.
-        let body = downloader.open_range(RangeSpec::Suffix(2500)).expect("open suffix");
+        let body = downloader
+            .open_range(RangeSpec::Suffix(2500))
+            .expect("open suffix");
         assert_eq!(body.status, 206);
         assert_eq!(
             body.content_range,
-            Some(ContentRange { start: 7500, end: 9999, total: Some(10_000) })
+            Some(ContentRange {
+                start: 7500,
+                end: 9999,
+                total: Some(10_000)
+            })
         );
         let out = collect_body(body).await;
         assert_eq!(out, data[7500..=9999]);
@@ -498,11 +518,17 @@ mod tests {
         let downloader = TelegramDownloader::new(source.clone(), 4);
 
         // bytes=2048- → [2048,4095] → chunks 2,3.
-        let body = downloader.open_range(RangeSpec::FromOffset(2048)).expect("open");
+        let body = downloader
+            .open_range(RangeSpec::FromOffset(2048))
+            .expect("open");
         assert_eq!(body.status, 206);
         assert_eq!(
             body.content_range,
-            Some(ContentRange { start: 2048, end: 4095, total: Some(4096) })
+            Some(ContentRange {
+                start: 2048,
+                end: 4095,
+                total: Some(4096)
+            })
         );
         let out = collect_body(body).await;
         assert_eq!(out, data[2048..=4095]);
@@ -534,17 +560,29 @@ mod tests {
         let downloader = TelegramDownloader::new(source, 4);
 
         let resp = downloader
-            .serve(RangeSpec::Inclusive(1500, 3500), false, &PrebufferConfig::default())
+            .serve(
+                RangeSpec::Inclusive(1500, 3500),
+                false,
+                &PrebufferConfig::default(),
+            )
             .await
             .expect("serve ok");
 
         assert_eq!(resp.status(), StatusCode::PARTIAL_CONTENT);
         assert_eq!(
-            resp.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_RANGE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes 1500-3500/10000",
         );
         assert_eq!(
-            resp.headers().get(header::ACCEPT_RANGES).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::ACCEPT_RANGES)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "bytes",
         );
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -564,7 +602,11 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
-            resp.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_LENGTH)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "2048",
         );
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -583,7 +625,11 @@ mod tests {
             .expect("serve head ok");
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
-            resp.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+            resp.headers()
+                .get(header::CONTENT_LENGTH)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "2048",
         );
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -623,6 +669,9 @@ mod tests {
                 break;
             }
         }
-        assert!(saw_error, "a failing chunk fetch must surface as a typed error");
+        assert!(
+            saw_error,
+            "a failing chunk fetch must surface as a typed error"
+        );
     }
 }

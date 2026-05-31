@@ -12,8 +12,8 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
-    RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store,
+    StoreName, SubscriptionStatus, User,
 };
 
 const BASE_URL: &str = "https://api-drive.mypikpak.com";
@@ -52,7 +52,8 @@ impl PikPakStore {
         if let Ok(resp) = serde_json::from_str::<PpErrorResponse>(body) {
             if !resp.error.is_empty() {
                 let msg = resp.error.to_ascii_lowercase();
-                if msg.contains("auth") || msg.contains("token") || msg.contains("unauthenticated") {
+                if msg.contains("auth") || msg.contains("token") || msg.contains("unauthenticated")
+                {
                     return AppError::unauthorized_for("pikpak", resp.error_description);
                 }
                 if msg.contains("limit") || msg.contains("quota") {
@@ -67,9 +68,7 @@ impl PikPakStore {
 
         match status {
             401 => AppError::unauthorized_for("pikpak", "authentication failed"),
-            503 | 502 | 504 => {
-                AppError::upstream_unavailable_for("pikpak", "service unavailable")
-            }
+            503 | 502 | 504 => AppError::upstream_unavailable_for("pikpak", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("pikpak"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("pikpak")
@@ -92,9 +91,9 @@ impl PikPakStore {
             let body = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("pikpak")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("pikpak"))
     }
 
     async fn api_post_json(
@@ -117,9 +116,9 @@ impl PikPakStore {
             let body_text = resp.text().await.unwrap_or_default();
             return Err(Self::map_error(status, &body_text));
         }
-        resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("pikpak")
-        })
+        resp.json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("pikpak"))
     }
 }
 
@@ -143,7 +142,11 @@ impl Store for PikPakStore {
         let kind = quota.get("kind").and_then(|v| v.as_str()).unwrap_or("");
 
         Ok(User {
-            id: data.get("sub").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            id: data
+                .get("sub")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             email: String::new(),
             subscription_status: if kind.contains("premium") || kind.contains("vip") {
                 SubscriptionStatus::Premium
@@ -185,15 +188,27 @@ impl Store for PikPakStore {
             .await?;
 
         let task = data.get("task").unwrap_or(&data);
-        let id = task.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = task
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let hash = super::realdebrid::extract_hash_from_magnet(&p.magnet).to_lowercase();
 
         Ok(AddMagnetData {
             id,
             hash,
             magnet: p.magnet.clone(),
-            name: task.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            size: task.get("file_size").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1),
+            name: task
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            size: task
+                .get("file_size")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(-1),
             status: MagnetStatus::Queued,
             files: vec![],
             private: false,
@@ -203,13 +218,29 @@ impl Store for PikPakStore {
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let data = self.api_get(&format!("/drive/v1/tasks/{}", p.id)).await?;
-        let native_status = data.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let native_status = data
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
 
         Ok(GetMagnetData {
             id: p.id.clone(),
-            name: data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            hash: data.get("params").and_then(|v| v.get("info_hash")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            size: data.get("file_size").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1),
+            name: data
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            hash: data
+                .get("params")
+                .and_then(|v| v.get("info_hash"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            size: data
+                .get("file_size")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(-1),
             status: MagnetStatus::from_native(native_status),
             files: vec![],
             private: false,
@@ -230,12 +261,30 @@ impl Store for PikPakStore {
             .map(|arr| {
                 arr.iter()
                     .map(|t| {
-                        let native_status = t.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let native_status =
+                            t.get("phase").and_then(|v| v.as_str()).unwrap_or("unknown");
                         crate::store::ListMagnetItem {
-                            id: t.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            name: t.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            hash: t.get("params").and_then(|v| v.get("info_hash")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            size: t.get("file_size").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1),
+                            id: t
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            name: t
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            hash: t
+                                .get("params")
+                                .and_then(|v| v.get("info_hash"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            size: t
+                                .get("file_size")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse().ok())
+                                .unwrap_or(-1),
                             status: MagnetStatus::from_native(native_status),
                         }
                     })
@@ -271,7 +320,9 @@ impl Store for PikPakStore {
 
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
         // PikPak: the link is already a direct download URL
-        let data = self.api_get(&format!("/drive/v1/files/{}?usage=FETCH", p.link)).await?;
+        let data = self
+            .api_get(&format!("/drive/v1/files/{}?usage=FETCH", p.link))
+            .await?;
         let link = data
             .get("web_content_link")
             .and_then(|v| v.as_str())
@@ -338,7 +389,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "t1".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "t1".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.status, MagnetStatus::Failed);

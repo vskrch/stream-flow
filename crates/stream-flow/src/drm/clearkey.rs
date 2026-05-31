@@ -161,8 +161,9 @@ impl ClearKeyStore {
 /// in any error.
 fn decode_hex16(hex_str: &str, label: &str) -> Result<[u8; 16], AppError> {
     let cleaned: String = hex_str.chars().filter(|c| *c != '-').collect();
-    let bytes = hex::decode(&cleaned)
-        .map_err(|e| AppError::bad_request(format!("clearkey: invalid {label} hex `{hex_str}`: {e}")))?;
+    let bytes = hex::decode(&cleaned).map_err(|e| {
+        AppError::bad_request(format!("clearkey: invalid {label} hex `{hex_str}`: {e}"))
+    })?;
     if bytes.len() != 16 {
         return Err(AppError::bad_request(format!(
             "clearkey: {label} `{hex_str}` must be 16 bytes, got {}",
@@ -205,7 +206,10 @@ mod tests {
 
     #[test]
     fn resolves_configured_key_by_kid() {
-        let store = store_with(&[(kid(0x11), key(0xAA)), (kid(0x22), key(0xBB))], Duration::from_secs(3600));
+        let store = store_with(
+            &[(kid(0x11), key(0xAA)), (kid(0x22), key(0xBB))],
+            Duration::from_secs(3600),
+        );
         assert_eq!(store.resolve(&kid(0x11)).unwrap(), key(0xAA));
         assert_eq!(store.resolve(&kid(0x22)).unwrap(), key(0xBB));
     }
@@ -232,7 +236,11 @@ mod tests {
         let store = store_with(&[(kid(0x05), key(0x50))], Duration::from_secs(3600));
         assert_eq!(store.live_cache_len(), 0);
         let _ = store.resolve(&kid(0x05)).unwrap();
-        assert_eq!(store.live_cache_len(), 1, "a resolved key is cached (Req 4.7)");
+        assert_eq!(
+            store.live_cache_len(),
+            1,
+            "a resolved key is cached (Req 4.7)"
+        );
         // A second resolve still returns the same key (served from cache).
         assert_eq!(store.resolve(&kid(0x05)).unwrap(), key(0x50));
         assert_eq!(store.live_cache_len(), 1);
@@ -253,7 +261,11 @@ mod tests {
     fn unresolved_kid_is_not_cached() {
         let store = store_with(&[(kid(0x05), key(0x50))], Duration::from_secs(3600));
         let _ = store.resolve(&kid(0x99)).unwrap_err();
-        assert_eq!(store.live_cache_len(), 0, "failed resolutions are never cached");
+        assert_eq!(
+            store.live_cache_len(),
+            0,
+            "failed resolutions are never cached"
+        );
     }
 
     #[test]

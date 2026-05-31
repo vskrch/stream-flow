@@ -73,9 +73,7 @@ pub fn spawn_ffmpeg_output(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| {
-            AppError::upstream_unavailable(format!("failed to launch FFmpeg: {e}"))
-        })?;
+        .map_err(|e| AppError::upstream_unavailable(format!("failed to launch FFmpeg: {e}")))?;
 
     let stdout = child
         .stdout
@@ -195,12 +193,29 @@ mod tests {
         // Generate 1s of synthetic video + tone, mux to fragmented MP4 on
         // stdout — exercises the real incremental stdout relay (Req 6.6).
         let args: Vec<String> = [
-            "-hide_banner", "-loglevel", "error", "-nostdin",
-            "-f", "lavfi", "-i", "testsrc=size=128x128:rate=15:duration=1",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-            "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
-            "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
-            "-f", "mp4", "pipe:1",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=128x128:rate=15:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+frag_keyframe+empty_moov+default_base_moof",
+            "-f",
+            "mp4",
+            "pipe:1",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -235,9 +250,15 @@ mod tests {
         };
         // A non-existent input makes FFmpeg exit non-zero before any output.
         let args: Vec<String> = [
-            "-hide_banner", "-loglevel", "error", "-nostdin",
-            "-i", "/nonexistent/input-file-xyz.mkv",
-            "-f", "mp4", "pipe:1",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-i",
+            "/nonexistent/input-file-xyz.mkv",
+            "-f",
+            "mp4",
+            "pipe:1",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -253,7 +274,10 @@ mod tests {
                 assert!(err.message.contains("FFmpeg"), "error names FFmpeg: {err}");
             }
         }
-        assert!(saw_error, "a non-zero FFmpeg exit must terminate the stream with an error");
+        assert!(
+            saw_error,
+            "a non-zero FFmpeg exit must terminate the stream with an error"
+        );
     }
 
     // -- Req 6.12: dropping the stream early kills the child (gated) --------
@@ -267,11 +291,23 @@ mod tests {
         // An effectively endless source so the child would run forever unless
         // killed on drop (Req 6.12).
         let args: Vec<String> = [
-            "-hide_banner", "-loglevel", "error", "-nostdin",
-            "-f", "lavfi", "-i", "testsrc=size=128x128:rate=15",
-            "-c:v", "libx264", "-preset", "ultrafast",
-            "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
-            "-f", "mp4", "pipe:1",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=128x128:rate=15",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-movflags",
+            "+frag_keyframe+empty_moov+default_base_moof",
+            "-f",
+            "mp4",
+            "pipe:1",
         ]
         .iter()
         .map(|s| s.to_string())

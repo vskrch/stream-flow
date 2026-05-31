@@ -245,14 +245,22 @@ fn arb_host() -> impl Strategy<Value = String> {
 /// the chosen prefix), so the covering-CIDR match path is exercised.
 fn covering_cidr_v4(ip: Ipv4Addr, prefix: u32) -> String {
     let bits = u32::from(ip);
-    let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
+    let mask = if prefix == 0 {
+        0
+    } else {
+        u32::MAX << (32 - prefix)
+    };
     let net = Ipv4Addr::from(bits & mask);
     format!("{net}/{prefix}")
 }
 
 fn covering_cidr_v6(ip: Ipv6Addr, prefix: u32) -> String {
     let bits = u128::from(ip);
-    let mask = if prefix == 0 { 0 } else { u128::MAX << (128 - prefix) };
+    let mask = if prefix == 0 {
+        0
+    } else {
+        u128::MAX << (128 - prefix)
+    };
     let net = Ipv6Addr::from(bits & mask);
     format!("{net}/{prefix}")
 }
@@ -270,26 +278,30 @@ fn arb_random_cidr() -> impl Strategy<Value = String> {
 fn arb_list_entry(ip: IpAddr, host: String) -> BoxedStrategy<String> {
     let ip_str = ip.to_string();
     let covering = match ip {
-        IpAddr::V4(v4) => (0u32..=32).prop_map(move |p| covering_cidr_v4(v4, p)).boxed(),
-        IpAddr::V6(v6) => (0u32..=128).prop_map(move |p| covering_cidr_v6(v6, p)).boxed(),
+        IpAddr::V4(v4) => (0u32..=32)
+            .prop_map(move |p| covering_cidr_v4(v4, p))
+            .boxed(),
+        IpAddr::V6(v6) => (0u32..=128)
+            .prop_map(move |p| covering_cidr_v6(v6, p))
+            .boxed(),
     };
     let host_upper = host.to_uppercase();
     prop_oneof![
         // -- shapes that MATCH the target -----------------------------------
-        Just(ip_str),                          // exact IP literal
-        covering,                              // covering CIDR
-        Just(host.clone()),                    // host string
-        Just(host_upper),                      // host string, upper-cased
+        Just(ip_str),       // exact IP literal
+        covering,           // covering CIDR
+        Just(host.clone()), // host string
+        Just(host_upper),   // host string, upper-cased
         // -- shapes that usually DO NOT match -------------------------------
-        arb_v4().prop_map(|i| i.to_string()),  // random v4 literal
-        arb_v6().prop_map(|i| i.to_string()),  // random v6 literal
-        arb_random_cidr(),                     // random CIDR
-        Just(String::new()),                   // empty entry
-        Just("   ".to_string()),               // whitespace entry
-        Just("not-a-cidr/99".to_string()),     // malformed CIDR base
-        Just("10.0.0.0/999".to_string()),      // out-of-range prefix
-        Just("::/0".to_string()),              // family-dependent catch-all
-        Just("0.0.0.0/0".to_string()),         // v4 catch-all
+        arb_v4().prop_map(|i| i.to_string()), // random v4 literal
+        arb_v6().prop_map(|i| i.to_string()), // random v6 literal
+        arb_random_cidr(),                    // random CIDR
+        Just(String::new()),                  // empty entry
+        Just("   ".to_string()),              // whitespace entry
+        Just("not-a-cidr/99".to_string()),    // malformed CIDR base
+        Just("10.0.0.0/999".to_string()),     // out-of-range prefix
+        Just("::/0".to_string()),             // family-dependent catch-all
+        Just("0.0.0.0/0".to_string()),        // v4 catch-all
         "[a-z]{3,10}\\.(org|io|svc)".prop_map(|s| s), // random host name
     ]
     .boxed()

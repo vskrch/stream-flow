@@ -302,10 +302,7 @@ mod tests {
         ))
     }
 
-    fn make_chain(
-        stores: Vec<StoreName>,
-        breaker_set: Arc<StoreBreakerSet>,
-    ) -> StoreFallbackChain {
+    fn make_chain(stores: Vec<StoreName>, breaker_set: Arc<StoreBreakerSet>) -> StoreFallbackChain {
         let store_list: Vec<(StoreName, Arc<dyn Store>)> = stores
             .into_iter()
             .map(|name| (name, Arc::new(MockStore::new(name)) as Arc<dyn Store>))
@@ -319,7 +316,11 @@ mod tests {
     fn next_healthy_returns_first_store_when_all_healthy() {
         let bs = make_breaker_set();
         let chain = make_chain(
-            vec![StoreName::RealDebrid, StoreName::AllDebrid, StoreName::TorBox],
+            vec![
+                StoreName::RealDebrid,
+                StoreName::AllDebrid,
+                StoreName::TorBox,
+            ],
             bs,
         );
 
@@ -331,7 +332,11 @@ mod tests {
     fn next_healthy_skips_store_with_open_breaker() {
         let bs = make_breaker_set();
         let chain = make_chain(
-            vec![StoreName::RealDebrid, StoreName::AllDebrid, StoreName::TorBox],
+            vec![
+                StoreName::RealDebrid,
+                StoreName::AllDebrid,
+                StoreName::TorBox,
+            ],
             bs.clone(),
         );
 
@@ -339,10 +344,7 @@ mod tests {
         let breaker = bs.breaker(StoreName::RealDebrid);
         for _ in 0..3 {
             let permit = breaker.acquire().unwrap();
-            breaker.on_failure(
-                permit,
-                &AppError::upstream_unavailable("test failure"),
-            );
+            breaker.on_failure(permit, &AppError::upstream_unavailable("test failure"));
         }
         assert_eq!(breaker.state(), BreakerState::Open);
 
@@ -356,7 +358,11 @@ mod tests {
     fn next_healthy_skips_store_with_active_cooldown() {
         let bs = make_breaker_set();
         let chain = make_chain(
-            vec![StoreName::RealDebrid, StoreName::AllDebrid, StoreName::TorBox],
+            vec![
+                StoreName::RealDebrid,
+                StoreName::AllDebrid,
+                StoreName::TorBox,
+            ],
             bs.clone(),
         );
 
@@ -381,10 +387,7 @@ mod tests {
         let breaker_rd = bs.breaker(StoreName::RealDebrid);
         for _ in 0..3 {
             let permit = breaker_rd.acquire().unwrap();
-            breaker_rd.on_failure(
-                permit,
-                &AppError::upstream_unavailable("down"),
-            );
+            breaker_rd.on_failure(permit, &AppError::upstream_unavailable("down"));
         }
 
         // Set cooldown for AllDebrid.
@@ -449,10 +452,7 @@ mod tests {
         let breaker = bs.breaker(StoreName::RealDebrid);
         for _ in 0..3 {
             let permit = breaker.acquire().unwrap();
-            breaker.on_failure(
-                permit,
-                &AppError::upstream_unavailable("down"),
-            );
+            breaker.on_failure(permit, &AppError::upstream_unavailable("down"));
         }
 
         // Cooldown is clear but breaker is Open → skip to AllDebrid.
@@ -520,10 +520,7 @@ mod tests {
         );
 
         // Record a non-relevant error (e.g. Unauthorized).
-        chain.record_failure(
-            StoreName::RealDebrid,
-            &AppError::unauthorized("bad token"),
-        );
+        chain.record_failure(StoreName::RealDebrid, &AppError::unauthorized("bad token"));
 
         // Neither breaker nor cooldown should be affected.
         assert!(bs.is_cooldown_clear(StoreName::RealDebrid));
@@ -593,10 +590,7 @@ mod tests {
         let breaker = bs.breaker(StoreName::RealDebrid);
         for _ in 0..3 {
             let permit = breaker.acquire().unwrap();
-            breaker.on_failure(
-                permit,
-                &AppError::upstream_unavailable("down"),
-            );
+            breaker.on_failure(permit, &AppError::upstream_unavailable("down"));
         }
 
         // AllDebrid: cooldown active.

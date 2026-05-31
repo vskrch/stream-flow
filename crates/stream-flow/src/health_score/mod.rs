@@ -66,8 +66,9 @@ impl From<HealthScore> for f64 {
 // ---------------------------------------------------------------------------
 
 /// Video resolution tier, ordered from lowest to highest quality.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Resolution {
+    #[default]
     Unknown = 0,
     Sd480 = 1,
     Sd576 = 2,
@@ -78,7 +79,7 @@ pub enum Resolution {
 
 impl Resolution {
     /// Parse a resolution from a release-name token (case-insensitive).
-    pub fn from_str(s: &str) -> Resolution {
+    pub fn parse(s: &str) -> Resolution {
         match s.to_ascii_lowercase().as_str() {
             "480p" | "480" => Resolution::Sd480,
             "576p" | "576" => Resolution::Sd576,
@@ -103,8 +104,9 @@ impl Resolution {
 }
 
 /// Video codec tier, ordered from lowest to highest quality/efficiency.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Codec {
+    #[default]
     Unknown = 0,
     H264 = 1,
     H265 = 2,
@@ -113,7 +115,7 @@ pub enum Codec {
 
 impl Codec {
     /// Parse a codec from a release-name token (case-insensitive).
-    pub fn from_str(s: &str) -> Codec {
+    pub fn parse(s: &str) -> Codec {
         match s.to_ascii_lowercase().as_str() {
             "h264" | "x264" | "avc" => Codec::H264,
             "h265" | "x265" | "hevc" => Codec::H265,
@@ -140,18 +142,6 @@ pub struct FileQuality {
     pub resolution: Resolution,
     /// Detected codec (defaults to [`Codec::Unknown`]).
     pub codec: Codec,
-}
-
-impl Default for Resolution {
-    fn default() -> Self {
-        Resolution::Unknown
-    }
-}
-
-impl Default for Codec {
-    fn default() -> Self {
-        Codec::Unknown
-    }
 }
 
 impl FileQuality {
@@ -202,10 +192,7 @@ impl HealthScorerConfig {
     /// Validate that weights sum to approximately 1.0 and all values are
     /// positive. Panics in debug builds; silently clamps in release.
     fn assert_valid(&self) {
-        let sum = self.weight_cache
-            + self.weight_quality
-            + self.weight_seeds
-            + self.weight_history;
+        let sum = self.weight_cache + self.weight_quality + self.weight_seeds + self.weight_history;
         debug_assert!(
             (sum - 1.0).abs() < 1e-6,
             "HealthScorerConfig weights must sum to 1.0, got {sum}"
@@ -348,7 +335,7 @@ impl HealthScorer {
 /// (Req 42.1, 42.6).
 ///
 /// Ties are broken by the original order (stable sort).
-pub fn sort_by_score<T>(items: &mut Vec<(T, HealthScore)>) {
+pub fn sort_by_score<T>(items: &mut [(T, HealthScore)]) {
     items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 }
 
@@ -375,7 +362,10 @@ mod tests {
     }
 
     fn quality(res: Resolution, codec: Codec) -> FileQuality {
-        FileQuality { resolution: res, codec }
+        FileQuality {
+            resolution: res,
+            codec,
+        }
     }
 
     fn history_row(success: u32, failure: u32, age_days: f64) -> HealthHistory {
@@ -534,7 +524,8 @@ mod tests {
 
         let cached_1080 = s.score(MagnetStatus::Cached, &q1080, None, no_history(), now());
         let cached_720 = s.score(MagnetStatus::Cached, &q720, None, no_history(), now());
-        let downloading_1080 = s.score(MagnetStatus::Downloading, &q1080, None, no_history(), now());
+        let downloading_1080 =
+            s.score(MagnetStatus::Downloading, &q1080, None, no_history(), now());
 
         assert!(
             cached_1080.value() > cached_720.value(),
@@ -595,9 +586,18 @@ mod tests {
         let q720 = quality(Resolution::Hd720, Codec::Unknown);
 
         let mut items = vec![
-            ("downloading+1080p", s.score(MagnetStatus::Downloading, &q1080, None, no_history(), now())),
-            ("cached+720p",       s.score(MagnetStatus::Cached,       &q720,  None, no_history(), now())),
-            ("cached+1080p",      s.score(MagnetStatus::Cached,       &q1080, None, no_history(), now())),
+            (
+                "downloading+1080p",
+                s.score(MagnetStatus::Downloading, &q1080, None, no_history(), now()),
+            ),
+            (
+                "cached+720p",
+                s.score(MagnetStatus::Cached, &q720, None, no_history(), now()),
+            ),
+            (
+                "cached+1080p",
+                s.score(MagnetStatus::Cached, &q1080, None, no_history(), now()),
+            ),
         ];
         sort_by_score(&mut items);
 
@@ -612,20 +612,20 @@ mod tests {
 
     #[test]
     fn resolution_from_str_parses_known_tokens() {
-        assert_eq!(Resolution::from_str("1080p"), Resolution::Fhd1080);
-        assert_eq!(Resolution::from_str("720p"), Resolution::Hd720);
-        assert_eq!(Resolution::from_str("480p"), Resolution::Sd480);
-        assert_eq!(Resolution::from_str("4K"), Resolution::Uhd4k);
-        assert_eq!(Resolution::from_str("unknown_token"), Resolution::Unknown);
+        assert_eq!(Resolution::parse("1080p"), Resolution::Fhd1080);
+        assert_eq!(Resolution::parse("720p"), Resolution::Hd720);
+        assert_eq!(Resolution::parse("480p"), Resolution::Sd480);
+        assert_eq!(Resolution::parse("4K"), Resolution::Uhd4k);
+        assert_eq!(Resolution::parse("unknown_token"), Resolution::Unknown);
     }
 
     #[test]
     fn codec_from_str_parses_known_tokens() {
-        assert_eq!(Codec::from_str("x265"), Codec::H265);
-        assert_eq!(Codec::from_str("HEVC"), Codec::H265);
-        assert_eq!(Codec::from_str("x264"), Codec::H264);
-        assert_eq!(Codec::from_str("AV1"), Codec::Av1);
-        assert_eq!(Codec::from_str("unknown"), Codec::Unknown);
+        assert_eq!(Codec::parse("x265"), Codec::H265);
+        assert_eq!(Codec::parse("HEVC"), Codec::H265);
+        assert_eq!(Codec::parse("x264"), Codec::H264);
+        assert_eq!(Codec::parse("AV1"), Codec::Av1);
+        assert_eq!(Codec::parse("unknown"), Codec::Unknown);
     }
 
     // -----------------------------------------------------------------------

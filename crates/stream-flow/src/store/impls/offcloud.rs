@@ -18,8 +18,8 @@ use crate::errors::AppError;
 use crate::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetItem, CheckMagnetParams,
     GenerateLinkData, GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams,
-    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData,
-    RemoveMagnetParams, Store, StoreName, SubscriptionStatus, User,
+    ListMagnetsData, ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store,
+    StoreName, SubscriptionStatus, User,
 };
 
 const BASE_URL: &str = "https://offcloud.com/api";
@@ -116,9 +116,10 @@ impl Store for OffcloudStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("offcloud")
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("offcloud"))?;
 
         let email = data
             .get("email")
@@ -170,8 +171,11 @@ impl Store for OffcloudStore {
             cached_items: vec![],
         });
 
-        let cached_set: std::collections::HashSet<String> =
-            cache_result.cached_items.into_iter().map(|h| h.to_lowercase()).collect();
+        let cached_set: std::collections::HashSet<String> = cache_result
+            .cached_items
+            .into_iter()
+            .map(|h| h.to_lowercase())
+            .collect();
 
         let items = p
             .magnets
@@ -214,9 +218,10 @@ impl Store for OffcloudStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("offcloud")
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("offcloud"))?;
 
         let id = data
             .get("requestId")
@@ -254,9 +259,10 @@ impl Store for OffcloudStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let data: serde_json::Value = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("offcloud")
-        })?;
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("offcloud"))?;
 
         let native_status = data
             .get("status")
@@ -300,9 +306,20 @@ impl Store for OffcloudStore {
         let all_items: Vec<crate::store::ListMagnetItem> = data
             .iter()
             .map(|v| {
-                let id = v.get("requestId").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                let name = v.get("fileName").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                let native_status = v.get("status").and_then(|x| x.as_str()).unwrap_or("unknown");
+                let id = v
+                    .get("requestId")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = v
+                    .get("fileName")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let native_status = v
+                    .get("status")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("unknown");
                 crate::store::ListMagnetItem {
                     id,
                     name,
@@ -440,7 +457,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "req1".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "req1".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.size, -1);

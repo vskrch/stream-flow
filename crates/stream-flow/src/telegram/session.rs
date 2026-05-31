@@ -39,7 +39,9 @@ use crate::errors::AppError;
 /// missing upstream. The message always names Telegram so the client can tell
 /// the surface apart.
 pub fn not_configured(detail: impl std::fmt::Display) -> AppError {
-    AppError::not_found(format!("Telegram MTProto proxy is not configured: {detail}"))
+    AppError::not_found(format!(
+        "Telegram MTProto proxy is not configured: {detail}"
+    ))
 }
 
 /// Build the canonical "Telegram is not authorized" error (Req 11.5).
@@ -48,7 +50,9 @@ pub fn not_configured(detail: impl std::fmt::Display) -> AppError {
 /// (`401`): the API credentials are present but there is no usable session
 /// string (the instance has not completed login), or the session is malformed.
 pub fn not_authorized(detail: impl std::fmt::Display) -> AppError {
-    AppError::unauthorized(format!("Telegram MTProto proxy is not authorized: {detail}"))
+    AppError::unauthorized(format!(
+        "Telegram MTProto proxy is not authorized: {detail}"
+    ))
 }
 
 /// Validated Telegram API credentials: a non-zero `api_id` and a non-empty
@@ -191,11 +195,7 @@ mod tests {
     use crate::config::{Secret, TelegramConfig};
     use crate::errors::ErrorCategory;
 
-    fn cfg(
-        api_id: i32,
-        api_hash: Option<&str>,
-        session: Option<&str>,
-    ) -> TelegramConfig {
+    fn cfg(api_id: i32, api_hash: Option<&str>, session: Option<&str>) -> TelegramConfig {
         TelegramConfig {
             api_id,
             api_hash: api_hash.map(Secret::from),
@@ -263,9 +263,8 @@ mod tests {
 
     #[test]
     fn from_config_accepts_complete_credentials() {
-        let creds =
-            TelegramCredentials::from_config(&cfg(123, Some("hash"), Some(" my-session ")))
-                .expect("valid");
+        let creds = TelegramCredentials::from_config(&cfg(123, Some("hash"), Some(" my-session ")))
+            .expect("valid");
         assert_eq!(creds.api().api_id(), 123);
         assert_eq!(creds.api().api_hash(), "hash");
         assert_eq!(creds.session_string(), "my-session");
@@ -274,8 +273,14 @@ mod tests {
     #[test]
     fn not_configured_and_not_authorized_indicate_telegram() {
         // Req 11.5: the error must indicate Telegram is not configured/authorized.
-        assert!(not_configured("x").message.to_lowercase().contains("telegram"));
-        assert!(not_authorized("x").message.to_lowercase().contains("telegram"));
+        assert!(not_configured("x")
+            .message
+            .to_lowercase()
+            .contains("telegram"));
+        assert!(not_authorized("x")
+            .message
+            .to_lowercase()
+            .contains("telegram"));
         assert_eq!(not_configured("x").category, ErrorCategory::NotFound);
         assert_eq!(not_authorized("x").category, ErrorCategory::Unauthorized);
     }

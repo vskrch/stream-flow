@@ -47,8 +47,8 @@
 //!   `Sheddable`, and the state sheds traffic.
 
 use proptest::prelude::*;
-use stream_flow::http::{next_load_state, shed_new_request, LoadThresholds, RequestClass};
 use stream_flow::health::LoadState;
+use stream_flow::http::{next_load_state, shed_new_request, LoadThresholds, RequestClass};
 
 /// The two coarse load states the basic guard reports (the full L1–L5 ladder
 /// lands in task 29).
@@ -77,8 +77,8 @@ fn arb_thresholds() -> impl Strategy<Value = LoadThresholds> {
             (
                 Just(enabled),
                 Just(high),
-                0u64..=high,                  // low ≤ high
-                1u64..=(u64::MAX / 4),        // memory high-water (bytes)
+                0u64..=high,           // low ≤ high
+                1u64..=(u64::MAX / 4), // memory high-water (bytes)
             )
         })
         .prop_map(

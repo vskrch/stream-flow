@@ -69,9 +69,7 @@ impl TorBoxStore {
 
         match status {
             401 | 403 => AppError::unauthorized_for("torbox", "authentication failed"),
-            503 | 502 | 504 => {
-                AppError::upstream_unavailable_for("torbox", "service unavailable")
-            }
+            503 | 502 | 504 => AppError::upstream_unavailable_for("torbox", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("torbox"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("torbox")
@@ -99,8 +97,7 @@ impl TorBoxStore {
             return Err(Self::map_error(status, &body));
         }
         resp.json::<T>().await.map_err(|e| {
-            AppError::unknown(format!("failed to parse TorBox response: {e}"))
-                .with_store("torbox")
+            AppError::unknown(format!("failed to parse TorBox response: {e}")).with_store("torbox")
         })
     }
 }
@@ -155,7 +152,11 @@ impl Store for TorBoxStore {
         let resp: TbApiResponse = self.get_json_with_auth(Method::GET, "/user/me").await?;
         let data = resp.data.unwrap_or_default();
 
-        let email = data.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let email = data
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let id = data.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
         let plan = data.get("plan").and_then(|v| v.as_u64()).unwrap_or(0);
 
@@ -168,7 +169,10 @@ impl Store for TorBoxStore {
             id: id.to_string(),
             email,
             subscription_status,
-            has_usenet: data.get("is_usenet").and_then(|v| v.as_bool()).unwrap_or(false),
+            has_usenet: data
+                .get("is_usenet")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
         })
     }
 
@@ -187,7 +191,11 @@ impl Store for TorBoxStore {
             .as_array()
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|v| v.get("hash").and_then(|h| h.as_str()).map(|s| s.to_lowercase()))
+                    .filter_map(|v| {
+                        v.get("hash")
+                            .and_then(|h| h.as_str())
+                            .map(|s| s.to_lowercase())
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -233,9 +241,10 @@ impl Store for TorBoxStore {
             return Err(Self::map_error(status, &body));
         }
 
-        let api_resp: TbApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("torbox")
-        })?;
+        let api_resp: TbApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("torbox"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let id = data.get("torrent_id").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -300,15 +309,11 @@ impl Store for TorBoxStore {
     }
 
     async fn list_magnets(&self, p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
-        let path = format!(
-            "/torrents/mylist?limit={}&offset={}",
-            p.limit, p.offset
-        );
+        let path = format!("/torrents/mylist?limit={}&offset={}", p.limit, p.offset);
         let resp: TbApiResponse = self.get_json_with_auth(Method::GET, &path).await?;
         let data = resp.data.unwrap_or_default();
 
-        let torrents: Vec<TbTorrent> =
-            serde_json::from_value(data).unwrap_or_default();
+        let torrents: Vec<TbTorrent> = serde_json::from_value(data).unwrap_or_default();
 
         // Req 17.14: TorBox listings include one extra trailing item → drop it
         let mut items: Vec<crate::store::ListMagnetItem> = torrents
@@ -385,9 +390,10 @@ impl Store for TorBoxStore {
             return Err(Self::map_error(status, &body_text));
         }
 
-        let api_resp: TbApiResponse = resp.json().await.map_err(|e| {
-            AppError::unknown(format!("parse error: {e}")).with_store("torbox")
-        })?;
+        let api_resp: TbApiResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("torbox"))?;
 
         let data = api_resp.data.unwrap_or_default();
         let link = data.as_str().unwrap_or("").to_string();
@@ -482,7 +488,10 @@ mod tests {
             .await;
 
         let magnet = store_for(&mock)
-            .get_magnet(&GetMagnetParams { ctx: ctx(), id: "7".into() })
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "7".into(),
+            })
             .await
             .unwrap();
         assert_eq!(magnet.status, MagnetStatus::Failed);

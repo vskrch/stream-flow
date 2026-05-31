@@ -140,7 +140,9 @@ mod tests {
 
     #[test]
     fn verified_tunnel_dials_tunneled_under_both_policies() {
-        let state = LeakCheck::Verified { egress_ip: ip("203.0.113.7") };
+        let state = LeakCheck::Verified {
+            egress_ip: ip("203.0.113.7"),
+        };
         for policy in [EgressPolicy::FailClosed, EgressPolicy::FailOpen] {
             let decision = decide_egress(policy, state);
             assert_eq!(decision, EgressDecision::DialTunneled);
@@ -156,22 +158,35 @@ mod tests {
         let decision = decide_egress(EgressPolicy::FailClosed, LeakCheck::Unresolved);
         assert_eq!(decision, EgressDecision::RefuseFailClosed);
         assert!(decision.refuses());
-        assert!(!decision.dials(), "fail-closed must perform no dial when the tunnel is down");
+        assert!(
+            !decision.dials(),
+            "fail-closed must perform no dial when the tunnel is down"
+        );
     }
 
     #[test]
     fn fail_closed_refuses_when_leaking() {
-        let state = LeakCheck::Leaking { ip: ip("198.51.100.1") };
+        let state = LeakCheck::Leaking {
+            ip: ip("198.51.100.1"),
+        };
         let decision = decide_egress(EgressPolicy::FailClosed, state);
         assert_eq!(decision, EgressDecision::RefuseFailClosed);
-        assert!(!decision.dials(), "fail-closed must perform no dial when the tunnel is leaking");
+        assert!(
+            !decision.dials(),
+            "fail-closed must perform no dial when the tunnel is leaking"
+        );
     }
 
     // -- Fail-open proceeds untunneled + warns (Req 51.8) -------------------
 
     #[test]
     fn fail_open_dials_untunneled_with_warning_when_down_or_leaking() {
-        for state in [LeakCheck::Unresolved, LeakCheck::Leaking { ip: ip("198.51.100.1") }] {
+        for state in [
+            LeakCheck::Unresolved,
+            LeakCheck::Leaking {
+                ip: ip("198.51.100.1"),
+            },
+        ] {
             let decision = decide_egress(EgressPolicy::FailOpen, state);
             assert_eq!(decision, EgressDecision::DialUntunneledWithWarning);
             assert!(decision.dials());
@@ -193,8 +208,12 @@ mod tests {
     #[test]
     fn decision_is_deterministic() {
         let states = [
-            LeakCheck::Verified { egress_ip: ip("203.0.113.7") },
-            LeakCheck::Leaking { ip: ip("198.51.100.1") },
+            LeakCheck::Verified {
+                egress_ip: ip("203.0.113.7"),
+            },
+            LeakCheck::Leaking {
+                ip: ip("198.51.100.1"),
+            },
             LeakCheck::Unresolved,
         ];
         for policy in [EgressPolicy::FailClosed, EgressPolicy::FailOpen] {

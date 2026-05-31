@@ -240,12 +240,16 @@ fn check_invariants(
         steady_size
     };
     prop_assert_eq!(
-        buf.active_size(), expected_size,
+        buf.active_size(),
+        expected_size,
         "active_size at offset {} (window {}) must be {}",
-        offset, initial_window, expected_size,
+        offset,
+        initial_window,
+        expected_size,
     );
     prop_assert_eq!(
-        buf.active_size(), buf.size_at(offset),
+        buf.active_size(),
+        buf.size_at(offset),
         "active_size must equal size_at(delivered_offset)",
     );
 
@@ -253,23 +257,29 @@ fn check_invariants(
     prop_assert!(
         buf.buffered() <= capacity,
         "buffered {} exceeded capacity {} at offset {}",
-        buf.buffered(), capacity, offset,
+        buf.buffered(),
+        capacity,
+        offset,
     );
     prop_assert_eq!(
-        buf.free_space(), capacity - buf.buffered(),
+        buf.free_space(),
+        capacity - buf.buffered(),
         "free_space must equal capacity - buffered",
     );
 
     // A refill is the active size capped by free space, so applying it can
     // never push the buffer past capacity (the bounding guarantee).
     prop_assert_eq!(
-        buf.refill_quota(), buf.active_size().min(buf.free_space()),
+        buf.refill_quota(),
+        buf.active_size().min(buf.free_space()),
         "refill_quota must be active_size capped by free_space",
     );
     prop_assert!(
         buf.buffered() + buf.refill_quota() <= capacity,
         "buffered {} + refill_quota {} must stay within capacity {}",
-        buf.buffered(), buf.refill_quota(), capacity,
+        buf.buffered(),
+        buf.refill_quota(),
+        capacity,
     );
 
     Ok(())

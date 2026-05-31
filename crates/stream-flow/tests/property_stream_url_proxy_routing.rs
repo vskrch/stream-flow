@@ -38,12 +38,10 @@
 //!
 //! ## How the invariant is exercised
 //!
-//! The addons (Store/Wrap/Sidekick/Torz) are not yet fully implemented (task
-//! 26.2–26.4 are stubs). This property test therefore exercises the
-//! **URL-routing invariant at the codec level**: it uses the same
-//! `ProxyCodec` + `ProxyLink` machinery the addons will use to wrap upstream
-//! URLs into proxy links, and asserts the invariant on the resulting
-//! `Stream.url` values.
+//! This property exercises the shared **URL-routing invariant at the codec
+//! level**: it uses the same `ProxyCodec` + `ProxyLink` machinery the addons
+//! use to wrap upstream URLs into proxy links, and asserts the invariant on the
+//! resulting `Stream.url` values.
 //!
 //! The test simulates what each addon does:
 //!   1. Receive an upstream URL (debrid direct link / CDN URL).
@@ -149,7 +147,11 @@ fn extract_host(url: &str) -> Option<&str> {
         .find(|c| c == '/' || c == '?' || c == '#')
         .unwrap_or(after_scheme.len());
     let host = &after_scheme[..host_end];
-    if host.is_empty() { None } else { Some(host) }
+    if host.is_empty() {
+        None
+    } else {
+        Some(host)
+    }
 }
 
 // ---------------------------------------------------------------------------

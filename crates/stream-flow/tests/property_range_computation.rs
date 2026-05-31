@@ -61,7 +61,10 @@ fn oracle(spec: &RangeSpec, total: u64) -> Expected {
             if start >= total {
                 Expected::Unsatisfiable
             } else {
-                Expected::Partial { start, end: total - 1 }
+                Expected::Partial {
+                    start,
+                    end: total - 1,
+                }
             }
         }
         RangeSpec::Inclusive(start, end) => {
@@ -69,7 +72,10 @@ fn oracle(spec: &RangeSpec, total: u64) -> Expected {
                 Expected::Unsatisfiable
             } else {
                 // RFC 7233: a last-byte-pos beyond the resource clamps to S-1.
-                Expected::Partial { start, end: end.min(total - 1) }
+                Expected::Partial {
+                    start,
+                    end: end.min(total - 1),
+                }
             }
         }
         RangeSpec::Suffix(n) => {
@@ -77,7 +83,10 @@ fn oracle(spec: &RangeSpec, total: u64) -> Expected {
                 Expected::Unsatisfiable
             } else {
                 // max(0, S-N) expressed as a saturating subtraction.
-                Expected::Partial { start: total.saturating_sub(n), end: total - 1 }
+                Expected::Partial {
+                    start: total.saturating_sub(n),
+                    end: total - 1,
+                }
             }
         }
     }
@@ -131,7 +140,8 @@ fn spec_for_total(total: u64) -> impl Strategy<Value = RangeSpec> {
 /// `(total, spec)` pairs with the spec's offsets generated relative to the
 /// total, so every total size gets coverage across its own boundaries.
 fn total_and_spec() -> impl Strategy<Value = (u64, RangeSpec)> {
-    total_strategy().prop_flat_map(|total| spec_for_total(total).prop_map(move |spec| (total, spec)))
+    total_strategy()
+        .prop_flat_map(|total| spec_for_total(total).prop_map(move |spec| (total, spec)))
 }
 
 proptest! {

@@ -251,7 +251,10 @@ mod tests {
         .await;
         let err = result.unwrap_err();
         assert_eq!(err.category, ErrorCategory::NotFound);
-        assert!(!err.deadline_exceeded, "in-budget error must not be remapped");
+        assert!(
+            !err.deadline_exceeded,
+            "in-budget error must not be remapped"
+        );
     }
 
     /// An op ready immediately resolves immediately, even with budget to spare.
@@ -277,7 +280,10 @@ mod tests {
         .await;
         let err = result.unwrap_err();
         assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
-        assert!(err.deadline_exceeded, "must carry the deadline_exceeded marker");
+        assert!(
+            err.deadline_exceeded,
+            "must carry the deadline_exceeded marker"
+        );
         assert_eq!(err.http_status(), StatusCode::GATEWAY_TIMEOUT);
     }
 

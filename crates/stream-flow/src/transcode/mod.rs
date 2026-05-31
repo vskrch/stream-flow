@@ -228,7 +228,13 @@ impl TranscodeEngine {
         let video_encoder = select_video_encoder(self.config.prefer_gpu, &self.hw_encoders);
 
         // 5. Build the FFmpeg arguments (Req 6.5, 6.9).
-        let args = build_ffmpeg_args(&req.input, mode, req.container, &video_encoder, &self.config);
+        let args = build_ffmpeg_args(
+            &req.input,
+            mode,
+            req.container,
+            &video_encoder,
+            &self.config,
+        );
 
         // 6. Spawn + stream incrementally (Req 6.6, 6.11, 6.12).
         let stream = spawn_ffmpeg_output(&self.ffmpeg, &args)?;
@@ -274,9 +280,15 @@ mod tests {
     #[test]
     fn gate_blocks_only_disabled_transcode_only_video_reencode() {
         // Disabled + transcode-only + needs video re-encode → 404.
-        assert!(rejected_as_not_found(TranscodeMode::FullTranscode, false, true));
         assert!(rejected_as_not_found(
-            TranscodeMode::TranscodeVideo { audio: AudioAction::Copy },
+            TranscodeMode::FullTranscode,
+            false,
+            true
+        ));
+        assert!(rejected_as_not_found(
+            TranscodeMode::TranscodeVideo {
+                audio: AudioAction::Copy
+            },
             false,
             true
         ));
@@ -287,14 +299,24 @@ mod tests {
         // A container-only remux / audio-only re-encode never needs the video
         // transcoder, so it is not blocked even when transcoding is disabled.
         assert!(!rejected_as_not_found(TranscodeMode::Remux, false, true));
-        assert!(!rejected_as_not_found(TranscodeMode::TranscodeAudio, false, true));
+        assert!(!rejected_as_not_found(
+            TranscodeMode::TranscodeAudio,
+            false,
+            true
+        ));
     }
 
     #[test]
     fn gate_allows_video_reencode_when_enabled() {
-        assert!(!rejected_as_not_found(TranscodeMode::FullTranscode, true, true));
         assert!(!rejected_as_not_found(
-            TranscodeMode::TranscodeVideo { audio: AudioAction::Transcode },
+            TranscodeMode::FullTranscode,
+            true,
+            true
+        ));
+        assert!(!rejected_as_not_found(
+            TranscodeMode::TranscodeVideo {
+                audio: AudioAction::Transcode
+            },
             true,
             true
         ));
@@ -303,7 +325,11 @@ mod tests {
     #[test]
     fn gate_allows_non_transcode_only_endpoint_when_disabled() {
         // A best-effort endpoint (not transcode-only) is never 404'd by the gate.
-        assert!(!rejected_as_not_found(TranscodeMode::FullTranscode, false, false));
+        assert!(!rejected_as_not_found(
+            TranscodeMode::FullTranscode,
+            false,
+            false
+        ));
     }
 
     // -- Req 49.5: engine built without FFmpeg errors only at invocation ----

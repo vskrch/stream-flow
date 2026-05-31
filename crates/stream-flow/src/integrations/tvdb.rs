@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
 use crate::cache::CacheBackend;
@@ -104,10 +104,9 @@ impl TvdbAdapter {
             token: String,
         }
 
-        let login: LoginResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::upstream_unavailable(format!("TVDB: failed to parse login response: {e}")))?;
+        let login: LoginResponse = resp.json().await.map_err(|e| {
+            AppError::upstream_unavailable(format!("TVDB: failed to parse login response: {e}"))
+        })?;
 
         let token = login.data.token;
         *self.token.write().await = Some(token.clone());
@@ -118,29 +117,24 @@ impl TvdbAdapter {
     /// 27.4) and logging errors when the upstream fails (Req 27.5).
     pub async fn search_series(&self, query: &str) -> Result<IntegrationList, AppError> {
         let cache_key = format!("tvdb:search:{query}");
-        let data = fetch_with_cache(
-            &self.cache,
-            &cache_key,
-            self.ttl,
-            &self.breaker,
-            || {
-                let client = self.client.clone();
-                let api_key = self.api_key.clone();
-                let token_lock = self.token.clone();
-                let query = query.to_string();
-                async move {
-                    let token = {
-                        let guard = token_lock.read().await;
-                        guard.clone()
-                    };
-                    fetch_tvdb_search(&client, &api_key, token.as_deref(), &query).await
-                }
-            },
-        )
+        let data = fetch_with_cache(&self.cache, &cache_key, self.ttl, &self.breaker, || {
+            let client = self.client.clone();
+            let api_key = self.api_key.clone();
+            let token_lock = self.token.clone();
+            let query = query.to_string();
+            async move {
+                let token = {
+                    let guard = token_lock.read().await;
+                    guard.clone()
+                };
+                fetch_tvdb_search(&client, &api_key, token.as_deref(), &query).await
+            }
+        })
         .await?;
 
-        let list: IntegrationList = serde_json::from_slice(&data)
-            .map_err(|e| AppError::upstream_unavailable(format!("TVDB: failed to parse cached list: {e}")))?;
+        let list: IntegrationList = serde_json::from_slice(&data).map_err(|e| {
+            AppError::upstream_unavailable(format!("TVDB: failed to parse cached list: {e}"))
+        })?;
         Ok(list)
     }
 }
@@ -148,7 +142,7 @@ impl TvdbAdapter {
 /// Fetch TVDB search results.
 async fn fetch_tvdb_search(
     client: &OutboundClient,
-    api_key: &str,
+    _api_key: &str,
     token: Option<&str>,
     query: &str,
 ) -> Result<Bytes, AppError> {
@@ -203,8 +197,9 @@ pub fn parse_tvdb_search_response(data: &[u8]) -> Result<IntegrationList, AppErr
         result_type: Option<String>,
     }
 
-    let resp: Response = serde_json::from_slice(data)
-        .map_err(|e| AppError::upstream_unavailable(format!("TVDB: failed to parse search response: {e}")))?;
+    let resp: Response = serde_json::from_slice(data).map_err(|e| {
+        AppError::upstream_unavailable(format!("TVDB: failed to parse search response: {e}"))
+    })?;
 
     let items = resp
         .data
@@ -218,10 +213,7 @@ pub fn parse_tvdb_search_response(data: &[u8]) -> Result<IntegrationList, AppErr
                 .map(|t| if t == "movie" { "movie" } else { "series" })
                 .unwrap_or("series")
                 .to_string();
-            let year = result
-                .year
-                .as_deref()
-                .and_then(|y| y.parse().ok());
+            let year = result.year.as_deref().and_then(|y| y.parse().ok());
             Some(ListItem {
                 title,
                 imdb_id: result.imdb_id,

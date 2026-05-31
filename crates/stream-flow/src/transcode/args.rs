@@ -163,10 +163,19 @@ mod tests {
             &cfg(),
         );
         assert!(has_pair(&args, "-c:v", "copy"), "video copied (Req 6.2)");
-        assert!(has_pair(&args, "-c:a", AUDIO_ENCODER), "audio → aac (Req 6.4)");
+        assert!(
+            has_pair(&args, "-c:a", AUDIO_ENCODER),
+            "audio → aac (Req 6.4)"
+        );
         // Audio bitrate applied, video bitrate not (only audio re-encoded).
-        assert!(has_pair(&args, "-b:a", "192000"), "audio bitrate applied (Req 6.9)");
-        assert!(!args.iter().any(|a| a == "-b:v"), "no video bitrate (video copied)");
+        assert!(
+            has_pair(&args, "-b:a", "192000"),
+            "audio bitrate applied (Req 6.9)"
+        );
+        assert!(
+            !args.iter().any(|a| a == "-b:v"),
+            "no video bitrate (video copied)"
+        );
     }
 
     // -- Req 6.3 + 6.7: transcode video with hardware encoder + bitrate -----
@@ -175,15 +184,29 @@ mod tests {
     fn transcode_video_uses_selected_encoder_and_video_bitrate() {
         let args = build_ffmpeg_args(
             "in",
-            TranscodeMode::TranscodeVideo { audio: AudioAction::Copy },
+            TranscodeMode::TranscodeVideo {
+                audio: AudioAction::Copy,
+            },
             OutputContainer::FragmentedMp4,
             "h264_videotoolbox",
             &cfg(),
         );
-        assert!(has_pair(&args, "-c:v", "h264_videotoolbox"), "video → selected encoder");
-        assert!(has_pair(&args, "-b:v", "4M"), "video bitrate applied (Req 6.9)");
-        assert!(has_pair(&args, "-c:a", "copy"), "AAC audio copied (Req 6.4)");
-        assert!(!args.iter().any(|a| a == "-b:a"), "no audio bitrate (audio copied)");
+        assert!(
+            has_pair(&args, "-c:v", "h264_videotoolbox"),
+            "video → selected encoder"
+        );
+        assert!(
+            has_pair(&args, "-b:v", "4M"),
+            "video bitrate applied (Req 6.9)"
+        );
+        assert!(
+            has_pair(&args, "-c:a", "copy"),
+            "AAC audio copied (Req 6.4)"
+        );
+        assert!(
+            !args.iter().any(|a| a == "-b:a"),
+            "no audio bitrate (audio copied)"
+        );
     }
 
     // -- Req 6.13 path: full transcode re-encodes both with bitrates --------

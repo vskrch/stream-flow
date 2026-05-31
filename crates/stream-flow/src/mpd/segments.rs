@@ -143,7 +143,10 @@ pub struct ResolvedRepresentation {
 impl ResolvedRepresentation {
     /// The HLS-facing [`MediaSegment`] list the converter consumes.
     pub fn to_media_segments(&self) -> Vec<MediaSegment> {
-        self.segments.iter().map(ResolvedSegment::to_media_segment).collect()
+        self.segments
+            .iter()
+            .map(ResolvedSegment::to_media_segment)
+            .collect()
     }
 }
 
@@ -190,14 +193,22 @@ fn resolve_template(
         byte_range: None,
     });
 
-    let media = template.media.as_ref().ok_or_else(|| {
-        MpdError::missing(format!("SegmentTemplate (rep {})", rep.id), "media")
-    })?;
+    let media = template
+        .media
+        .as_ref()
+        .ok_or_else(|| MpdError::missing(format!("SegmentTemplate (rep {})", rep.id), "media"))?;
 
     let segments = if let Some(timeline) = &template.timeline {
         expand_timeline(rep, media, timeline, timescale, start_number)?
     } else {
-        expand_fixed(rep, media, template, timescale, start_number, total_duration_secs)?
+        expand_fixed(
+            rep,
+            media,
+            template,
+            timescale,
+            start_number,
+            total_duration_secs,
+        )?
     };
 
     Ok(ResolvedRepresentation { init, segments })
@@ -450,7 +461,11 @@ fn resolve_list(list: &SegmentList) -> Result<ResolvedRepresentation, MpdError> 
     let timescale = timescale_or_default(list.timescale);
     let duration_ts = list.duration.unwrap_or(0);
 
-    let init = list.initialization.as_ref().map(resolve_url_range).transpose()?;
+    let init = list
+        .initialization
+        .as_ref()
+        .map(resolve_url_range)
+        .transpose()?;
 
     let mut segments = Vec::with_capacity(list.segment_urls.len());
     for su in &list.segment_urls {
@@ -649,19 +664,13 @@ mod tests {
         // 12s / 4s = 3 segments.
         let resolved = resolve_segments(&rep, Some(12.0)).unwrap();
         let urls: Vec<&str> = resolved.segments.iter().map(|s| s.url.as_str()).collect();
-        assert_eq!(
-            urls,
-            vec!["v0/seg-1.m4s", "v0/seg-2.m4s", "v0/seg-3.m4s"]
-        );
+        assert_eq!(urls, vec!["v0/seg-1.m4s", "v0/seg-2.m4s", "v0/seg-3.m4s"]);
         // each segment is 4s.
         for s in &resolved.segments {
             assert!((s.duration_secs() - 4.0).abs() < 1e-9);
         }
         // init substitutes $RepresentationID$.
-        assert_eq!(
-            resolved.init.unwrap().url.as_deref(),
-            Some("v0/init.mp4")
-        );
+        assert_eq!(resolved.init.unwrap().url.as_deref(), Some("v0/init.mp4"));
     }
 
     #[test]
@@ -707,9 +716,7 @@ mod tests {
         // specifiers on the numeric identifiers ($Number%04d$, $Time%08d$).
         // $Time$ in fixed mode is `index * @duration` (0, 3000, 6000, ...).
         let template = SegmentTemplate {
-            media: Some(
-                "$RepresentationID$/b$Bandwidth$/n$Number%04d$-t$Time%08d$.m4s".into(),
-            ),
+            media: Some("$RepresentationID$/b$Bandwidth$/n$Number%04d$-t$Time%08d$.m4s".into()),
             initialization: Some("$RepresentationID$/init-$Bandwidth$.mp4".into()),
             start_number: Some(1),
             duration: Some(3000),
@@ -731,7 +738,11 @@ mod tests {
             ]
         );
         // $Number$/$Time$ recorded on each resolved segment.
-        let numbers: Vec<u64> = resolved.segments.iter().map(|s| s.number.unwrap()).collect();
+        let numbers: Vec<u64> = resolved
+            .segments
+            .iter()
+            .map(|s| s.number.unwrap())
+            .collect();
         let times: Vec<u64> = resolved.segments.iter().map(|s| s.time.unwrap()).collect();
         assert_eq!(numbers, vec![1, 2, 3]);
         assert_eq!(times, vec![0, 3000, 6000]);
@@ -749,8 +760,16 @@ mod tests {
         // Req 3.2: S(t=0,d=4000,r=1) + S(d=2000) -> 2 + 1 = 3 segments.
         let timeline = SegmentTimeline {
             entries: vec![
-                TimelineEntry { t: Some(0), d: 4000, r: 1 },
-                TimelineEntry { t: None, d: 2000, r: 0 },
+                TimelineEntry {
+                    t: Some(0),
+                    d: 4000,
+                    r: 1,
+                },
+                TimelineEntry {
+                    t: None,
+                    d: 2000,
+                    r: 0,
+                },
             ],
         };
         let template = SegmentTemplate {
@@ -788,8 +807,16 @@ mod tests {
         // An explicit continuing @t that matches the running time is fine.
         let timeline = SegmentTimeline {
             entries: vec![
-                TimelineEntry { t: Some(0), d: 3000, r: 0 },
-                TimelineEntry { t: Some(3000), d: 3000, r: 1 },
+                TimelineEntry {
+                    t: Some(0),
+                    d: 3000,
+                    r: 0,
+                },
+                TimelineEntry {
+                    t: Some(3000),
+                    d: 3000,
+                    r: 1,
+                },
             ],
         };
         let template = SegmentTemplate {
@@ -813,9 +840,17 @@ mod tests {
         // Req 3.6: a forward @t jump leaves a hole -> error naming the segment.
         let timeline = SegmentTimeline {
             entries: vec![
-                TimelineEntry { t: Some(0), d: 3000, r: 0 },
+                TimelineEntry {
+                    t: Some(0),
+                    d: 3000,
+                    r: 0,
+                },
                 // expected continuation at t=3000, but jumps to 9000: a gap.
-                TimelineEntry { t: Some(9000), d: 3000, r: 0 },
+                TimelineEntry {
+                    t: Some(9000),
+                    d: 3000,
+                    r: 0,
+                },
             ],
         };
         let template = SegmentTemplate {
@@ -829,10 +864,16 @@ mod tests {
         let rep = rep_with("vid", 1, SegmentAddressing::Template(template));
         let err = resolve_segments(&rep, None).unwrap_err();
         match &err {
-            MpdError::MissingSegment { representation, segment } => {
+            MpdError::MissingSegment {
+                representation,
+                segment,
+            } => {
                 assert_eq!(representation, "vid");
                 // The gap is at t=3000.
-                assert!(segment.contains("3000"), "names the missing segment: {segment}");
+                assert!(
+                    segment.contains("3000"),
+                    "names the missing segment: {segment}"
+                );
             }
             other => panic!("expected MissingSegment, got {other:?}"),
         }
@@ -904,7 +945,10 @@ mod tests {
         let rep = rep_with("a0", 128_000, SegmentAddressing::List(list));
         let resolved = resolve_segments(&rep, None).unwrap();
 
-        assert_eq!(resolved.init.unwrap().url.as_deref(), Some("audio/init.mp4"));
+        assert_eq!(
+            resolved.init.unwrap().url.as_deref(),
+            Some("audio/init.mp4")
+        );
         assert_eq!(resolved.segments.len(), 2);
 
         let r0 = resolved.segments[0].byte_range.unwrap();
@@ -917,7 +961,10 @@ mod tests {
         assert!((resolved.segments[0].duration_secs() - 4.0).abs() < 1e-9);
         // HLS byte range form.
         assert_eq!(
-            resolved.segments[0].to_media_segment().byte_range.as_deref(),
+            resolved.segments[0]
+                .to_media_segment()
+                .byte_range
+                .as_deref(),
             Some("1000@0")
         );
     }
@@ -929,8 +976,18 @@ mod tests {
             timescale: Some(1000),
             initialization: None,
             segment_urls: vec![
-                SegmentUrl { media: Some("s1.m4s".into()), media_range: None, index: None, index_range: None },
-                SegmentUrl { media: Some("s2.m4s".into()), media_range: None, index: None, index_range: None },
+                SegmentUrl {
+                    media: Some("s1.m4s".into()),
+                    media_range: None,
+                    index: None,
+                    index_range: None,
+                },
+                SegmentUrl {
+                    media: Some("s2.m4s".into()),
+                    media_range: None,
+                    index: None,
+                    index_range: None,
+                },
             ],
         };
         let rep = rep_with("a0", 1, SegmentAddressing::List(list));
