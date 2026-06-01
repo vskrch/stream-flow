@@ -1,0 +1,36 @@
+services:
+  warp:
+    image: caomingjun/warp
+    container_name: warp
+    restart: unless-stopped
+    device_cgroup_rules:
+      - 'c 10:200 rwm'
+    cap_add:
+      - MKNOD
+      - AUDIT_WRITE
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - warp_data:/var/lib/cloudflare-warp
+
+  zippy-panther:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: zippy-panther
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - APP__SERVER__HOST=0.0.0.0
+      - APP__AUTH__API_PASSWORD=password
+      - APP__EGRESS__TUNNEL_MODE=proxy
+      - APP__EGRESS__TUNNEL_URL=socks5://warp:1080
+      - APP__EGRESS__POLICY=fail-closed
+    depends_on:
+      - warp
+
+volumes:
+  warp_data:
