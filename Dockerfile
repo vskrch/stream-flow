@@ -1,5 +1,8 @@
 FROM rust:1-bookworm AS builder
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN cargo build --release -p zippy-panther-bin
 
