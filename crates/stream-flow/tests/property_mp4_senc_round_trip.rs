@@ -109,8 +109,10 @@ fn tenc_payload(
     p
 }
 
+type SampleSpec = (Vec<u8>, Vec<(u16, u32)>);
+
 /// Build a `senc` payload from per-sample `(iv, subsamples)` tuples.
-fn senc_payload(use_subsamples: bool, samples: &[(Vec<u8>, Vec<(u16, u32)>)]) -> Vec<u8> {
+fn senc_payload(use_subsamples: bool, samples: &[SampleSpec]) -> Vec<u8> {
     let mut p = Vec::new();
     p.push(0); // version
     let flags: u32 = if use_subsamples {
@@ -342,7 +344,7 @@ proptest! {
             })
             .collect();
 
-        let builder_samples: Vec<(Vec<u8>, Vec<(u16, u32)>)> = raw_samples
+        let builder_samples: Vec<SampleSpec> = raw_samples
             .iter()
             .map(|(iv_buf, subs)| (iv_buf[..iv_size].to_vec(), subs.clone()))
             .collect();

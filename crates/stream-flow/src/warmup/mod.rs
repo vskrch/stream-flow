@@ -71,6 +71,14 @@ impl WarmupPool {
         self.entries.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn contains(&self, key: &WarmupKey) -> bool {
+        self.entries.contains_key(key)
+    }
+
     pub fn record_access(&mut self, key: WarmupKey, cost: StoreCost, now: u64) -> bool {
         if !self.config.enabled || self.config.pool_size == 0 {
             return false;

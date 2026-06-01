@@ -180,10 +180,12 @@ mod tests {
 
     #[actix_web::test]
     async fn admin_requires_configured_admin() {
-        let mut config = Config::default();
-        config.auth = AuthConfig {
-            admins: vec!["alice".to_string()],
-            ..AuthConfig::default()
+        let config = Config {
+            auth: AuthConfig {
+                admins: vec!["alice".to_string()],
+                ..AuthConfig::default()
+            },
+            ..Config::default()
         };
         let state = AppState::new(config);
         let app = test::init_service(

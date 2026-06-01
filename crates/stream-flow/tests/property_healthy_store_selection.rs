@@ -46,6 +46,8 @@ use stream_flow::store::{
 
 use async_trait::async_trait;
 
+type StoreEntry = (StoreName, Arc<dyn stream_flow::store::Store>);
+
 // ---------------------------------------------------------------------------
 // Arbitrary state generation
 // ---------------------------------------------------------------------------
@@ -186,12 +188,7 @@ fn is_healthy_ref(breaker_state: BreakerState, cooldown_state: CooldownState) ->
 ///
 /// Returns the breaker set and a list of `(StoreName, Arc<dyn Store>)` in the
 /// same order as `states`.
-fn build_chain(
-    states: &[StoreState],
-) -> (
-    Arc<StoreBreakerSet>,
-    Vec<(StoreName, Arc<dyn stream_flow::store::Store>)>,
-) {
+fn build_chain(states: &[StoreState]) -> (Arc<StoreBreakerSet>, Vec<StoreEntry>) {
     // Use a breaker config with threshold=1 so we can trip it with a single failure.
     let breaker_config = BreakerConfig::new(1, Duration::from_secs(60));
     let cooldown_duration = Duration::from_secs(300);

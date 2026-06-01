@@ -57,12 +57,17 @@ pub extern "C" fn stream_flow_version_string() -> *mut c_char {
 
 #[cfg(feature = "ffi")]
 #[no_mangle]
-pub extern "C" fn stream_flow_string_free(ptr: *mut c_char) {
+/// Free a string returned by this FFI library.
+///
+/// # Safety
+///
+/// `ptr` must either be null or a pointer previously returned by
+/// `stream-flow-ffi` from `CString::into_raw`. Passing any other pointer, or
+/// passing the same pointer more than once, is undefined behavior.
+pub unsafe extern "C" fn stream_flow_string_free(ptr: *mut c_char) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if !ptr.is_null() {
-            unsafe {
-                drop(CString::from_raw(ptr));
-            }
+            drop(unsafe { CString::from_raw(ptr) });
         }
     }));
 }
@@ -262,7 +267,7 @@ mod tests {
     fn version_string_is_allocated_and_freeable() {
         let ptr = stream_flow_version_string();
         assert!(!ptr.is_null());
-        stream_flow_string_free(ptr);
+        unsafe { stream_flow_string_free(ptr) };
     }
 
     #[test]

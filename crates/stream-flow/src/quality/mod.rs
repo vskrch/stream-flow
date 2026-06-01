@@ -1039,9 +1039,10 @@ mod tests {
         };
         let ranked = QualityRanker::rank(files, &prefs, None);
         assert_eq!(ranked.len(), 2, "2160p should be excluded");
-        assert!(ranked
-            .iter()
-            .all(|f| f.release_info.resolution.is_none_or(|r| r <= Resolution::R1080p)));
+        assert!(ranked.iter().all(|f| f
+            .release_info
+            .resolution
+            .is_none_or(|r| r <= Resolution::R1080p)));
     }
 
     #[test]

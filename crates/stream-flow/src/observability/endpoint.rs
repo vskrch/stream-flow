@@ -102,10 +102,12 @@ mod tests {
     use actix_web::test::TestRequest;
 
     fn state_with(password: Option<&str>) -> AppState {
-        let mut config = Config::default();
-        config.auth = AuthConfig {
-            metrics_password: password.map(Into::into),
-            ..AuthConfig::default()
+        let config = Config {
+            auth: AuthConfig {
+                metrics_password: password.map(Into::into),
+                ..AuthConfig::default()
+            },
+            ..Config::default()
         };
         AppState::new(config)
     }

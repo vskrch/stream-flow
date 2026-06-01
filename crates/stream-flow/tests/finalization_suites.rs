@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use actix_web::{test as actix_test, App};
-use stream_flow::config::{Config, LoadOptions};
+use stream_flow::config::{Config, LoadOptions, StremioConfig};
 use stream_flow::egress::sanitize_outbound;
 use stream_flow::health::LoadState;
 use stream_flow::http::degradation::{
@@ -101,8 +101,13 @@ fn performance_policy_load_state_transitions_are_constant_time_and_bounded() {
 
 #[actix_web::test]
 async fn final_router_serves_web_and_wrap_surfaces() {
-    let mut config = Config::default();
-    config.stremio.wrap_upstreams = Vec::new();
+    let config = Config {
+        stremio: StremioConfig {
+            wrap_upstreams: Vec::new(),
+            ..StremioConfig::default()
+        },
+        ..Config::default()
+    };
     let app = actix_test::init_service(App::new().service(build_app(AppState::new(config)))).await;
 
     let root =

@@ -70,9 +70,7 @@ impl PremiumizeStore {
 
         match status {
             401 => AppError::unauthorized_for("premiumize", "authentication failed"),
-            503 | 502 | 504 => {
-                AppError::upstream_unavailable_for("premiumize", "service unavailable")
-            }
+            502..=504 => AppError::upstream_unavailable_for("premiumize", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("premiumize"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("premiumize")
@@ -228,7 +226,7 @@ impl Store for PremiumizeStore {
     }
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
-        let data = self.api_get(&format!("/transfer/list")).await?;
+        let data = self.api_get("/transfer/list").await?;
         let transfers = data.get("transfers").and_then(|v| v.as_array());
 
         let transfer = transfers

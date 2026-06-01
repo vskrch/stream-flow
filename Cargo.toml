@@ -4,6 +4,7 @@ members = [
     "crates/stream-flow",
     "crates/stream-flow-bin",
     "crates/stream-flow-ffi",
+    "crates/stream-flow-sdk",
     "crates/os_info_stub",
 ]
 

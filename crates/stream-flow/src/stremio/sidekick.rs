@@ -201,8 +201,10 @@ mod tests {
 
     #[::core::prelude::v1::test]
     fn with_defaults_uses_configured_addon_name_and_is_valid() {
-        let mut cfg = StremioConfig::default();
-        cfg.addon_name = Some("My Sidekick".into());
+        let cfg = StremioConfig {
+            addon_name: Some("My Sidekick".into()),
+            ..StremioConfig::default()
+        };
         let sk = Sidekick::with_defaults(&cfg);
         let manifest = sk.manifest();
 

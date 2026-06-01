@@ -588,8 +588,8 @@ impl Transformer for QualityFilterTransformer {
                 .behavior_hints
                 .as_ref()
                 .and_then(|h| h.filename.as_deref())
-                .or_else(|| s.description.as_deref())
-                .or_else(|| s.name.as_deref())
+                .or(s.description.as_deref())
+                .or(s.name.as_deref())
                 .unwrap_or("");
 
             if name.is_empty() {
@@ -622,8 +622,8 @@ impl Transformer for QualityFilterTransformer {
                         .behavior_hints
                         .as_ref()
                         .and_then(|h| h.filename.as_deref())
-                        .or_else(|| s.description.as_deref())
-                        .or_else(|| s.name.as_deref())
+                        .or(s.description.as_deref())
+                        .or(s.name.as_deref())
                         .unwrap_or("");
                     if name == rf.name {
                         Some(s.clone())
@@ -998,8 +998,8 @@ mod tests {
             .await;
 
         let wrap = wrap_for(vec![
-            UpstreamAddon::new(&up1.uri()),
-            UpstreamAddon::new(&up2.uri()),
+            UpstreamAddon::new(up1.uri()),
+            UpstreamAddon::new(up2.uri()),
         ]);
         let m = wrap.manifest().await;
 
@@ -1041,8 +1041,8 @@ mod tests {
             .await;
 
         let wrap = wrap_for(vec![
-            UpstreamAddon::new(&bad.uri()),
-            UpstreamAddon::new(&ok.uri()),
+            UpstreamAddon::new(bad.uri()),
+            UpstreamAddon::new(ok.uri()),
         ]);
         let m = wrap.manifest().await;
         let names: Vec<&str> = m.resources.iter().map(|r| r.name.as_str()).collect();
@@ -1085,8 +1085,8 @@ mod tests {
             .await;
 
         let wrap = wrap_for(vec![
-            UpstreamAddon::new(&up1.uri()),
-            UpstreamAddon::new(&up2.uri()),
+            UpstreamAddon::new(up1.uri()),
+            UpstreamAddon::new(up2.uri()),
         ]);
         let resp = wrap.get_streams("movie", "tt0111161").await;
         assert_eq!(resp.streams.len(), 2, "both upstreams aggregated");
@@ -1193,7 +1193,7 @@ mod tests {
             .mount(&up)
             .await;
 
-        let wrap = wrap_for(vec![UpstreamAddon::new(&up.uri())])
+        let wrap = wrap_for(vec![UpstreamAddon::new(up.uri())])
             .with_transformer(Arc::new(TagNameTransformer));
         let resp = wrap.get_streams("movie", "tt1").await;
         assert_eq!(resp.streams.len(), 1);
@@ -1227,8 +1227,8 @@ mod tests {
 
         let wrap = wrap_for(vec![
             dead,
-            UpstreamAddon::new(&erroring.uri()),
-            UpstreamAddon::new(&ok.uri()),
+            UpstreamAddon::new(erroring.uri()),
+            UpstreamAddon::new(ok.uri()),
         ]);
         let resp = wrap.get_streams("movie", "tt1").await;
         assert_eq!(
@@ -1265,8 +1265,8 @@ mod tests {
             .await;
 
         let wrap = wrap_for(vec![
-            UpstreamAddon::new(&up1.uri()),
-            UpstreamAddon::new(&up2.uri()),
+            UpstreamAddon::new(up1.uri()),
+            UpstreamAddon::new(up2.uri()),
         ]);
         let resp = wrap.get_catalog("movie", "top", None).await;
         assert_eq!(resp.metas.len(), 2);
@@ -1298,8 +1298,8 @@ mod tests {
             .await;
 
         let wrap = wrap_for(vec![
-            UpstreamAddon::new(&up1.uri()),
-            UpstreamAddon::new(&up2.uri()),
+            UpstreamAddon::new(up1.uri()),
+            UpstreamAddon::new(up2.uri()),
         ]);
         let resp = wrap.get_subtitles("movie", "tt1").await;
         assert_eq!(resp.subtitles.len(), 2);
@@ -1324,7 +1324,7 @@ mod tests {
             .mount(&up)
             .await;
 
-        let wrap = wrap_for(vec![UpstreamAddon::new(&up.uri())]);
+        let wrap = wrap_for(vec![UpstreamAddon::new(up.uri())]);
         let resp = wrap.get_meta("series", "tt1").await.expect("meta present");
         assert_eq!(resp.meta.id, "tt1");
         let stream_url = resp.meta.videos[0].streams[0].url.as_ref().unwrap();

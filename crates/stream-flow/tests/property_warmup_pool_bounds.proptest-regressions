@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d6f11034dfd8bc5d6fd98389ee9ed18de2195c6267c07467f5286d33edae69ea # shrinks to (cap, universe, ops) = (1, 2, [Access(0)])
+cc 5caca2df66bac4f9c5658768184878dca9faae5d6c39999b2b0224305fb2abc7 # shrinks to (cap, universe, ops) = (2, 3, [Access(1), Upsert(0), Get(1), Upsert(2)])

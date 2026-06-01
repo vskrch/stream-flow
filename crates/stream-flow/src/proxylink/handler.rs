@@ -426,15 +426,16 @@ mod tests {
     const PROXY_PASS: &str = "wonderland";
 
     fn test_config() -> Config {
-        let mut config = Config::default();
-        config.auth = AuthConfig {
-            api_password: Some(Secret::from(API_PASSWORD)),
-            metrics_password: None,
-            proxy_auth: vec![format!("{PROXY_USER}:{PROXY_PASS}")],
-            per_user_store: vec![],
-            admins: vec![],
-        };
-        config
+        Config {
+            auth: AuthConfig {
+                api_password: Some(Secret::from(API_PASSWORD)),
+                metrics_password: None,
+                proxy_auth: vec![format!("{PROXY_USER}:{PROXY_PASS}")],
+                per_user_store: vec![],
+                admins: vec![],
+            },
+            ..Config::default()
+        }
     }
 
     fn auth_header() -> (&'static str, String) {

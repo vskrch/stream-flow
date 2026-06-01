@@ -69,7 +69,7 @@ impl TorBoxStore {
 
         match status {
             401 | 403 => AppError::unauthorized_for("torbox", "authentication failed"),
-            503 | 502 | 504 => AppError::upstream_unavailable_for("torbox", "service unavailable"),
+            502..=504 => AppError::upstream_unavailable_for("torbox", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("torbox"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("torbox")

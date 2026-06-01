@@ -314,7 +314,7 @@ proptest! {
             // The selection carries the chosen route's own SSL-verify policy.
             prop_assert_eq!(
                 selection.verify_ssl,
-                idx % 2 == 0,
+                idx.is_multiple_of(2),
                 "selection verify_ssl must equal chosen route #{}'s policy",
                 idx,
             );

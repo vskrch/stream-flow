@@ -144,7 +144,7 @@ fn extract_host(url: &str) -> Option<&str> {
     let after_scheme = url.split_once("://").map(|(_, rest)| rest)?;
     // The host ends at the first `/`, `?`, or `#`.
     let host_end = after_scheme
-        .find(|c| c == '/' || c == '?' || c == '#')
+        .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
     let host = &after_scheme[..host_end];
     if host.is_empty() {

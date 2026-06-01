@@ -22,11 +22,13 @@ use stream_flow::{build_app, AppState};
 
 /// Build an [`AppState`] whose config carries the given metrics password.
 fn state_with_metrics_password(password: Option<&str>) -> AppState {
-    let mut config = Config::default();
-    config.auth = AuthConfig {
-        api_password: Some("api".into()),
-        metrics_password: password.map(Into::into),
-        ..AuthConfig::default()
+    let config = Config {
+        auth: AuthConfig {
+            api_password: Some("api".into()),
+            metrics_password: password.map(Into::into),
+            ..AuthConfig::default()
+        },
+        ..Config::default()
     };
     AppState::new(config)
 }

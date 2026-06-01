@@ -16,11 +16,19 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::app::AppState;
+use crate::auth::{middleware::verify_proxy_auth_req, Auth};
 use crate::errors::AppError;
 use crate::store::{
+    impls::{
+        AllDebridStore, DebridLinkStore, DebriderStore, EasyDebridStore, OffcloudStore,
+        PikPakStore, PremiumizeStore, RealDebridStore, TorBoxStore,
+    },
     AddMagnetParams, CheckMagnetParams, Ctx, GetMagnetParams, GetUserParams, ListMagnetsParams,
-    MagnetFile, MagnetStatus, RemoveMagnetParams, Store,
+    MagnetFile, MagnetStatus, RemoveMagnetParams, Store, StoreName,
 };
+
+const STORE_NAME_HEADER: &str = "X-StremThru-Store-Name";
 
 // ---------------------------------------------------------------------------
 // Shared response types (JSON wire format)
@@ -104,6 +112,8 @@ pub struct RemoveMagnetResponse {
 /// Query params for GET /v0/store/magnets/check.
 #[derive(Debug, Deserialize)]
 pub struct CheckMagnetsQuery {
+    /// Optional store slug/code; production also accepts X-StremThru-Store-Name.
+    pub store: Option<String>,
     /// Comma-separated magnet URIs (1–500, Req 17.10).
     pub magnet: Option<String>,
     /// Optional stream identifier (Req 17.8, 17.13).
@@ -113,6 +123,8 @@ pub struct CheckMagnetsQuery {
 /// Query params for GET /v0/store/magnets.
 #[derive(Debug, Deserialize)]
 pub struct ListMagnetsQuery {
+    /// Optional store slug/code; production also accepts X-StremThru-Store-Name.
+    pub store: Option<String>,
     /// Page size, clamped to [1,500] default 100 (Req 17.9).
     pub limit: Option<u32>,
     /// Page offset, default 0.
@@ -122,6 +134,9 @@ pub struct ListMagnetsQuery {
 /// Body for POST /v0/store/magnets.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AddMagnetBody {
+    /// Optional store slug/code; production also accepts X-StremThru-Store-Name
+    /// or `store` in the query string.
+    pub store: Option<String>,
     /// The magnet URI to add.
     pub magnet: String,
 }
@@ -169,15 +184,93 @@ pub fn validate_sid(sid: Option<&str>) -> Option<String> {
     Some(sid.to_string())
 }
 
+fn selected_store_token(req: &HttpRequest, body_store: Option<&str>) -> Option<String> {
+    req.headers()
+        .get(STORE_NAME_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            url::form_urlencoded::parse(req.query_string().as_bytes())
+                .find(|(key, value)| key == "store" && !value.trim().is_empty())
+                .map(|(_, value)| value.into_owned())
+        })
+        .or_else(|| {
+            body_store
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+        })
+}
+
+fn build_store(store_name: StoreName, token: String, state: &AppState) -> Arc<dyn Store> {
+    let client = state.egress().clone();
+    match store_name {
+        StoreName::AllDebrid => Arc::new(AllDebridStore::new(client, token)),
+        StoreName::Debrider => Arc::new(DebriderStore::new(client, token)),
+        StoreName::DebridLink => Arc::new(DebridLinkStore::new(client, token)),
+        StoreName::EasyDebrid => Arc::new(EasyDebridStore::new(client, token)),
+        StoreName::Offcloud => Arc::new(OffcloudStore::new(client, token)),
+        StoreName::PikPak => Arc::new(PikPakStore::new(client, token)),
+        StoreName::Premiumize => Arc::new(PremiumizeStore::new(client, token)),
+        StoreName::RealDebrid => Arc::new(RealDebridStore::new(client, token)),
+        StoreName::TorBox => Arc::new(TorBoxStore::new(client, token)),
+    }
+}
+
+fn resolve_store(
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<&AppState>,
+    req: &HttpRequest,
+    body_store: Option<&str>,
+) -> Result<Arc<dyn Store>, AppError> {
+    if let Some(store) = injected_store {
+        return Ok(store.get_ref().clone());
+    }
+
+    let state = state.ok_or_else(|| {
+        AppError::unknown("store endpoints require AppState or an injected Store implementation")
+    })?;
+    let auth = Auth::from_config(&state.config().auth);
+    let user = verify_proxy_auth_req(&auth, req)?;
+    let store_token = selected_store_token(req, body_store).ok_or_else(|| {
+        AppError::bad_request(format!(
+            "missing store selection; provide {STORE_NAME_HEADER} or store query/body field"
+        ))
+    })?;
+    let store_name = StoreName::require(&store_token)?;
+    let token = auth
+        .resolve_store_credential(user.as_str(), store_name.as_str())
+        .ok_or_else(|| {
+            AppError::unauthorized_for(
+                store_name.as_str(),
+                format!(
+                    "missing store credential for user `{}` and store `{}`",
+                    user.as_str(),
+                    store_name.as_str()
+                ),
+            )
+        })?;
+
+    Ok(build_store(store_name, token.to_string(), state))
+}
+
+fn app_state_ref(state: &Option<web::Data<AppState>>) -> Option<&AppState> {
+    state.as_ref().map(web::Data::get_ref)
+}
+
 // ---------------------------------------------------------------------------
 // Handler: GET /v0/store/user (Req 17.1)
 // ---------------------------------------------------------------------------
 
 /// GET /v0/store/user — returns the authenticated store user's details.
 pub async fn get_user_endpoint(
-    store: web::Data<Arc<dyn Store>>,
-    _req: HttpRequest,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let store = resolve_store(injected_store, app_state_ref(&state), &req, None)?;
     let params = GetUserParams {
         ctx: Ctx::default(),
     };
@@ -197,10 +290,17 @@ pub async fn get_user_endpoint(
 
 /// GET /v0/store/magnets/check — check 1–500 magnets for cache status.
 pub async fn check_magnets_endpoint(
-    store: web::Data<Arc<dyn Store>>,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
     query: web::Query<CheckMagnetsQuery>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let store = resolve_store(
+        injected_store,
+        app_state_ref(&state),
+        &req,
+        query.store.as_deref(),
+    )?;
     // Parse comma-separated magnets
     let magnets_str = query.magnet.as_deref().unwrap_or("");
     let magnets: Vec<String> = if magnets_str.is_empty() {
@@ -254,13 +354,21 @@ pub async fn check_magnets_endpoint(
 
 /// POST /v0/store/magnets — add a magnet to the store.
 pub async fn add_magnet_endpoint(
-    store: web::Data<Arc<dyn Store>>,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
     body: web::Json<AddMagnetBody>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let body = body.into_inner();
+    let store = resolve_store(
+        injected_store,
+        app_state_ref(&state),
+        &req,
+        body.store.as_deref(),
+    )?;
     let params = AddMagnetParams {
         ctx: Ctx::default(),
-        magnet: body.into_inner().magnet,
+        magnet: body.magnet,
     };
 
     let data = store.add_magnet(&params).await?;
@@ -284,10 +392,17 @@ pub async fn add_magnet_endpoint(
 
 /// GET /v0/store/magnets — list magnets with clamped limit/offset.
 pub async fn list_magnets_endpoint(
-    store: web::Data<Arc<dyn Store>>,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
     query: web::Query<ListMagnetsQuery>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let store = resolve_store(
+        injected_store,
+        app_state_ref(&state),
+        &req,
+        query.store.as_deref(),
+    )?;
     let params = ListMagnetsParams::new(Ctx::default(), query.limit, query.offset);
 
     let data = store.list_magnets(&params).await?;
@@ -316,10 +431,12 @@ pub async fn list_magnets_endpoint(
 
 /// GET /v0/store/magnets/{id} — get a single magnet's details.
 pub async fn get_magnet_endpoint(
-    store: web::Data<Arc<dyn Store>>,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
     path: web::Path<MagnetIdPath>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let store = resolve_store(injected_store, app_state_ref(&state), &req, None)?;
     let params = GetMagnetParams {
         ctx: Ctx::default(),
         id: path.into_inner().id,
@@ -345,10 +462,12 @@ pub async fn get_magnet_endpoint(
 
 /// DELETE /v0/store/magnets/{id} — remove a magnet from the store.
 pub async fn remove_magnet_endpoint(
-    store: web::Data<Arc<dyn Store>>,
+    injected_store: Option<web::Data<Arc<dyn Store>>>,
+    state: Option<web::Data<AppState>>,
     path: web::Path<MagnetIdPath>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
+    let store = resolve_store(injected_store, app_state_ref(&state), &req, None)?;
     let params = RemoveMagnetParams {
         ctx: Ctx::default(),
         id: path.into_inner().id,
@@ -557,6 +676,34 @@ mod tests {
         assert_eq!(validate_sid(None), None);
     }
 
+    #[::core::prelude::v1::test]
+    fn store_selection_prefers_header_then_query_then_body() {
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/magnets?store=rd")
+            .insert_header((STORE_NAME_HEADER, "tb"))
+            .to_http_request();
+        assert_eq!(
+            selected_store_token(&req, Some("pm")).as_deref(),
+            Some("tb")
+        );
+
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/magnets?store=rd")
+            .to_http_request();
+        assert_eq!(
+            selected_store_token(&req, Some("pm")).as_deref(),
+            Some("rd")
+        );
+
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/magnets")
+            .to_http_request();
+        assert_eq!(
+            selected_store_token(&req, Some("pm")).as_deref(),
+            Some("pm")
+        );
+    }
+
     // -- Tests: GET /v0/store/user (Req 17.1) -------------------------------
 
     #[actix_web::test]
@@ -701,6 +848,7 @@ mod tests {
         let req = actix_test::TestRequest::post()
             .uri("/v0/store/magnets")
             .set_json(AddMagnetBody {
+                store: None,
                 magnet: "magnet:?xt=urn:btih:abc123def456".into(),
             })
             .to_request();
@@ -904,6 +1052,7 @@ mod tests {
         let req = actix_test::TestRequest::post()
             .uri("/v0/store/magnets")
             .set_json(AddMagnetBody {
+                store: None,
                 magnet: "magnet:?xt=urn:btih:test".into(),
             })
             .to_request();
@@ -930,5 +1079,27 @@ mod tests {
             .to_request();
         let resp = actix_test::call_service(&app, req).await;
         assert_eq!(resp.status(), 200);
+    }
+
+    #[actix_web::test]
+    async fn production_store_routes_use_app_state_auth_instead_of_raw_store_data() {
+        let mut config = crate::config::Config::default();
+        config.auth.proxy_auth = vec!["alice:wonderland".into()];
+        config.auth.per_user_store = vec!["alice:realdebrid:rd-token".into()];
+        let state = AppState::new(config);
+
+        let app = actix_test::init_service(
+            App::new()
+                .app_data(web::Data::new(state))
+                .configure(configure_store_routes),
+        )
+        .await;
+
+        let req = actix_test::TestRequest::get()
+            .uri("/v0/store/user?store=rd")
+            .to_request();
+        let resp = actix_test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), 403);
     }
 }

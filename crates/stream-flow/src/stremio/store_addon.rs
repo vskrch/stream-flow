@@ -964,9 +964,9 @@ pub mod handlers {
 
     /// Build the [`ProxyCodec`] from the `AppState` config.
     ///
-    /// Uses the `api_password` as the mediaflow AES-CBC key and derives a
-    /// stremthru token key from the same secret (the token key is a separate
-    /// HMAC key derived from the api_password with a fixed domain separator).
+    /// Uses the `api_password` as the mediaflow AES-CBC key and the first
+    /// configured proxy-auth password as the stremthru token key, falling back
+    /// to the API password when no proxy-auth secret is configured.
     fn build_codec(state: &AppState) -> ProxyCodec {
         let api_password = state
             .config()

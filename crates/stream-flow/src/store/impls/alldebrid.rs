@@ -83,9 +83,7 @@ impl AllDebridStore {
 
         match status {
             401 => AppError::unauthorized_for("alldebrid", "authentication failed"),
-            502..=504 => {
-                AppError::upstream_unavailable_for("alldebrid", "service unavailable")
-            }
+            502..=504 => AppError::upstream_unavailable_for("alldebrid", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("alldebrid"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("alldebrid")

@@ -614,8 +614,10 @@ mod tests {
         p
     }
 
+    type SampleSpec = (Vec<u8>, Vec<(u16, u32)>);
+
     /// Build a `senc` payload from per-sample (iv, subsamples) tuples.
-    fn senc_payload(use_subsamples: bool, samples: &[(Vec<u8>, Vec<(u16, u32)>)]) -> Vec<u8> {
+    fn senc_payload(use_subsamples: bool, samples: &[SampleSpec]) -> Vec<u8> {
         let mut p = Vec::new();
         p.push(0); // version
         let flags: u32 = if use_subsamples {

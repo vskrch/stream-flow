@@ -618,7 +618,7 @@ mod tests {
     async fn read_to_cap_surfaces_upstream_stream_error() {
         let chunks: Vec<Result<bytes::Bytes, std::io::Error>> = vec![
             Ok(bytes::Bytes::from_static(b"abc")),
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "reset")),
+            Err(std::io::Error::other("reset")),
         ];
         let stream = futures::stream::iter(chunks);
         let err = read_to_cap(stream, 1024).await.unwrap_err();

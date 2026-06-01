@@ -67,9 +67,7 @@ impl DebriderStore {
 
         match status {
             401 => AppError::unauthorized_for("debrider", "authentication failed"),
-            503 | 502 | 504 => {
-                AppError::upstream_unavailable_for("debrider", "service unavailable")
-            }
+            502..=504 => AppError::upstream_unavailable_for("debrider", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("debrider"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("debrider")

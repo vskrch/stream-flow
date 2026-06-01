@@ -4,7 +4,7 @@
 //! [`stream_flow::build_app`] factory and that it is reusable from an
 //! **external** crate. This integration test is compiled as its own crate that
 //! depends on `stream_flow`, exercising the exact reuse path the FFI bridge and
-//! the JS/Python SDKs rely on (Req 49.6: "expose both a library crate and a
+//! Rust SDK rely on (Req 49.6: "expose both a library crate and a
 //! binary crate from one workspace so that the library is reusable by the
 //! FFI_Bridge and SDKs").
 //!

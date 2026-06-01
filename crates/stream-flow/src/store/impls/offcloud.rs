@@ -71,9 +71,7 @@ impl OffcloudStore {
 
         match status {
             401 => AppError::unauthorized_for("offcloud", "authentication failed"),
-            503 | 502 | 504 => {
-                AppError::upstream_unavailable_for("offcloud", "service unavailable")
-            }
+            502..=504 => AppError::upstream_unavailable_for("offcloud", "service unavailable"),
             429 => AppError::too_many_requests("rate limited").with_store("offcloud"),
             _ => AppError::unknown(format!("HTTP {status}"))
                 .with_store("offcloud")

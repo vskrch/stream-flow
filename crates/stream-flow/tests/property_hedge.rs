@@ -255,7 +255,7 @@ fn build_candidate(tracker: &Tracker, idx: usize, spec: &CandSpec) -> Candidate<
         tokio::time::sleep(Duration::from_millis(latency_ms)).await;
         if success {
             Ok(idx)
-        } else if idx % 2 == 0 {
+        } else if idx.is_multiple_of(2) {
             Err(AppError::upstream_unavailable("simulated upstream failure"))
         } else {
             Err(AppError::hoster_unavailable("simulated hoster failure"))

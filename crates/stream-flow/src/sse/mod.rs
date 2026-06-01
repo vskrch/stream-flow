@@ -485,13 +485,15 @@ mod tests {
     async fn sse_endpoint_with_valid_auth_returns_text_event_stream() {
         use crate::config::{AuthConfig, Config};
 
-        let mut config = Config::default();
-        config.auth = AuthConfig {
-            api_password: None,
-            metrics_password: None,
-            proxy_auth: vec!["alice:wonderland".to_string()],
-            per_user_store: vec![],
-            admins: vec![],
+        let config = Config {
+            auth: AuthConfig {
+                api_password: None,
+                metrics_password: None,
+                proxy_auth: vec!["alice:wonderland".to_string()],
+                per_user_store: vec![],
+                admins: vec![],
+            },
+            ..Config::default()
         };
 
         let state = AppState::new(config);
@@ -528,13 +530,15 @@ mod tests {
     async fn sse_endpoint_with_wrong_auth_returns_403() {
         use crate::config::{AuthConfig, Config};
 
-        let mut config = Config::default();
-        config.auth = AuthConfig {
-            api_password: None,
-            metrics_password: None,
-            proxy_auth: vec!["alice:wonderland".to_string()],
-            per_user_store: vec![],
-            admins: vec![],
+        let config = Config {
+            auth: AuthConfig {
+                api_password: None,
+                metrics_password: None,
+                proxy_auth: vec!["alice:wonderland".to_string()],
+                per_user_store: vec![],
+                admins: vec![],
+            },
+            ..Config::default()
         };
 
         let state = AppState::new(config);

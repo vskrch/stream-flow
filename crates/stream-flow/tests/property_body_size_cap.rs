@@ -131,8 +131,10 @@ proptest! {
     /// **Validates: Requirements 46.4**
     #[test]
     fn request_body_cap_boundary((size, cap) in arb_size_and_cap()) {
-        let mut cfg = SecurityConfig::default();
-        cfg.max_request_body_bytes = cap;
+        let cfg = SecurityConfig {
+            max_request_body_bytes: cap,
+            ..SecurityConfig::default()
+        };
 
         let result = check_request_body_size(size, &cfg);
         let accept = size <= cap;
@@ -159,8 +161,10 @@ proptest! {
     /// **Validates: Requirements 46.5**
     #[test]
     fn response_body_cap_boundary((size, cap) in arb_size_and_cap()) {
-        let mut cfg = SecurityConfig::default();
-        cfg.max_response_body_bytes = cap;
+        let cfg = SecurityConfig {
+            max_response_body_bytes: cap,
+            ..SecurityConfig::default()
+        };
 
         let result = check_response_body_size(size, &cfg);
         let accept = size <= cap;
