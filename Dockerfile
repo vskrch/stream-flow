@@ -12,7 +12,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/zippy-panther /usr/local/bin/zippy-panther
 ENV APP__SERVER__HOST=0.0.0.0
-ENV APP__SERVER__PORT=8080
 EXPOSE 8080
 USER 65532:65532
-CMD ["sh", "-c", "APP__SERVER__PORT=\"${APP__SERVER__PORT:-${PORT:-8080}}\" exec /usr/local/bin/zippy-panther"]
+CMD ["sh", "-c", "APP__SERVER__PORT=\"${PORT}\" exec /usr/local/bin/zippy-panther"]
