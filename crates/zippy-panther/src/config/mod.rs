@@ -797,6 +797,18 @@ impl Config {
         let built = builder.build()?;
         let mut config: Config = built.try_deserialize()?;
 
+        // PaaS fallback: platforms like Heroku expose the listen port via a
+        // bare `PORT` env var.  When `APP__SERVER__PORT` was not explicitly
+        // set, honour `PORT` so the app binds to the correct port without
+        // needing shell-wrapper tricks in the Dockerfile/heroku.yml.
+        if std::env::var("APP__SERVER__PORT").is_err() {
+            if let Ok(port_str) = std::env::var("PORT") {
+                if let Ok(port) = port_str.parse::<u16>() {
+                    config.server.port = port;
+                }
+            }
+        }
+
         // Normalize + validate `Server_Path_Prefix` in place (Req 31.4, 31.5).
         // A forbidden character aborts the load naming the offending value via
         // the `#[from]` conversion into `ConfigLoadError::InvalidPathPrefix`.

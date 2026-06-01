@@ -14,4 +14,4 @@ COPY --from=builder /app/target/release/zippy-panther /usr/local/bin/zippy-panth
 ENV APP__SERVER__HOST=0.0.0.0
 EXPOSE 8080
 USER 65532:65532
-CMD ["sh", "-c", "APP__SERVER__PORT=\"${PORT}\" exec /usr/local/bin/zippy-panther"]
+CMD ["/usr/local/bin/zippy-panther"]
