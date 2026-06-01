@@ -55,9 +55,9 @@ async fn mediaflow_surface_routes_are_registered() {
     );
 
     // `/proxy/ip` is backed by its real handler (task 14.2): registered (not
-    // `404`). With the default config the egress tunnel is disabled, so under
-    // the fail-closed default it answers `503` (no verified Egress_IP to leak)
-    // rather than the skeleton `501` (Req 51.8, 51.11).
+    // `404`). With the default config the egress tunnel is disabled, so it
+    // falls back to querying the host's public IP directly (safe: traffic goes
+    // direct anyway). The endpoint returns 200 with a valid IP.
     let req = test::TestRequest::get().uri("/proxy/ip").to_request();
     let resp = test::call_service(&app, req).await;
     assert_ne!(
@@ -67,8 +67,8 @@ async fn mediaflow_surface_routes_are_registered() {
     );
     assert_eq!(
         resp.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "/proxy/ip is fail-closed when no tunnel is configured"
+        StatusCode::OK,
+        "/proxy/ip falls back to host IP when no tunnel is configured"
     );
 }
 

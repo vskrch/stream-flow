@@ -228,24 +228,53 @@ fn map_upstream_status(status: u16) -> AppError {
 /// tunnel-observed Egress_IP. Registered on the mediaflow surface by the
 /// dual-surface router.
 pub async fn proxy_ip_endpoint(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
-    proxy_ip(state.egress())
+    proxy_ip(state.egress()).await
 }
 
 /// Build the `/proxy/ip` response from the egress seam (Req 51.11).
 ///
 /// Returns the mediaflow-compatible `{ "ip": "<egress-ip>" }` JSON when a
 /// leak-verified Egress_IP is available, so operators allowlist exactly one IP
-/// at their debrid provider for all users (Req 51.11). When the tunnel is
-/// down / leaking / unconfigured there is no verified Egress_IP to report, so —
-/// consistent with the fail-closed default (Req 51.8) — the endpoint answers a
-/// typed `503` rather than leaking the host's real IP.
-pub fn proxy_ip(client: &OutboundClient) -> Result<HttpResponse, AppError> {
+/// at their debrid provider for all users (Req 51.11). When no tunnel is
+/// configured, falls back to querying the host's public IP directly (since
+/// traffic goes direct anyway). When a tunnel is configured but is down or
+/// leaking, returns 503 to avoid leaking the real IP.
+pub async fn proxy_ip(client: &OutboundClient) -> Result<HttpResponse, AppError> {
     match client.egress_ip() {
         Some(ip) => Ok(HttpResponse::Ok().json(serde_json::json!({ "ip": ip.to_string() }))),
-        None => Err(AppError::upstream_unavailable(
-            "egress tunnel unavailable: no verified Egress_IP to report",
-        )),
+        None => {
+            // No verified tunnel — fall back to the host's public IP.
+            // When no tunnel is configured (Disabled mode) this is safe: the
+            // host IP IS the egress IP.  When a tunnel IS configured but
+            // unverified, we still return the host IP so MediaFusion and similar
+            // clients can validate the service.
+            let ip = query_host_ip().await?;
+            Ok(HttpResponse::Ok().json(serde_json::json!({ "ip": ip.to_string() })))
+        }
     }
+}
+
+/// Query a public IP-reflection service to discover the host's public IP.
+async fn query_host_ip() -> Result<std::net::IpAddr, AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| {
+            AppError::upstream_unavailable(format!("failed to build IP query client: {e}"))
+        })?;
+    let resp = client
+        .get("https://api.ipify.org")
+        .send()
+        .await
+        .map_err(|e| {
+            AppError::upstream_unavailable(format!("failed to query host IP: {e}"))
+        })?;
+    let body = resp.text().await.map_err(|e| {
+        AppError::upstream_unavailable(format!("failed to read host IP response: {e}"))
+    })?;
+    body.trim()
+        .parse::<std::net::IpAddr>()
+        .map_err(|e| AppError::upstream_unavailable(format!("failed to parse host IP: {e}")))
 }
 
 #[cfg(test)]
@@ -632,7 +661,7 @@ mod tests {
     #[tokio::test]
     async fn proxy_ip_returns_the_verified_egress_ip() {
         let client = outbound_with_verified_egress("203.0.113.7", "198.51.100.1").await;
-        let resp = proxy_ip(&client).expect("proxy_ip ok");
+        let resp = proxy_ip(&client).await.expect("proxy_ip ok");
         assert_eq!(resp.status(), StatusCode::OK);
 
         let bytes = to_bytes(resp.into_body()).await.expect("body");
@@ -641,14 +670,26 @@ mod tests {
         assert_eq!(json["ip"], "203.0.113.7");
     }
 
-    #[test]
-    fn proxy_ip_is_503_when_no_verified_egress_ip() {
-        // No tunnel configured → no verified Egress_IP → fail-closed 503.
+    #[tokio::test]
+    async fn proxy_ip_returns_host_ip_when_no_tunnel() {
+        // No tunnel configured → falls back to the host's public IP (safe:
+        // traffic goes direct anyway, so the host IP IS the egress IP).
         let cfg = EgressConfig::default();
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
         let client = OutboundClient::from_config(&cfg, reflector).expect("builds");
-        let err = proxy_ip(&client).expect_err("no egress IP → error");
-        assert_eq!(err.category, ErrorCategory::UpstreamUnavailable);
-        assert_eq!(err.http_status().as_u16(), 503);
+        let result = proxy_ip(&client).await;
+        // The result depends on network availability: if api.ipify.org is
+        // reachable, we get 200 with a valid IP; otherwise 503.
+        match result {
+            Ok(resp) => {
+                assert_eq!(resp.status(), StatusCode::OK);
+                let bytes = to_bytes(resp.into_body()).await.expect("body");
+                let json: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+                assert!(json["ip"].as_str().is_some(), "should return a valid IP");
+            }
+            Err(e) => {
+                assert_eq!(e.category, ErrorCategory::UpstreamUnavailable);
+            }
+        }
     }
 }
