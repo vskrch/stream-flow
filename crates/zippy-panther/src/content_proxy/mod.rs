@@ -521,6 +521,13 @@ pub async fn serve(
         config,
     )?;
 
+    // Merge `r_*` extra headers into the target headers. Extra headers are
+    // lower-priority: the encrypted/token payload headers take precedence.
+    let mut merged_headers = request.extra_headers;
+    for (name, value) in &target.headers {
+        merged_headers.entry(name.clone()).or_insert_with(|| value.clone());
+    }
+
     // Req 19.6: api-only tunnel mode returns the direct link, no byte proxying.
     if target.tunnel == TunnelMode::ApiOnly {
         return Ok(api_only_redirect(&target.url));
@@ -537,7 +544,7 @@ pub async fn serve(
     // (Req 19.3); the client comes ONLY from the egress seam (Req 51.1).
     let url = Url::parse(&target.url)
         .map_err(|e| AppError::bad_request(format!("invalid upstream URL in proxy link: {e}")))?;
-    let headers = btree_headers_to_headermap(&target.headers);
+    let headers = btree_headers_to_headermap(&merged_headers);
     let source: Arc<dyn UpstreamSource> =
         Arc::new(DirectSource::new(Arc::clone(client), url).with_headers(headers));
 
@@ -565,6 +572,9 @@ pub struct ContentProxyRequest<'a> {
     pub token: Option<&'a str>,
     /// The `d` query parameter (mediaflow encrypted format), if present.
     pub d: Option<&'a str>,
+    /// Extra upstream request headers extracted from `r_*` query parameters
+    /// (MediaFusion convention: `r_Content-Type=video/mp4`).
+    pub extra_headers: BTreeMap<String, String>,
     /// The parsed client `Range` request (Req 19.2).
     pub range: RangeSpec,
     /// Whether this is a `HEAD` request (headers only, no body).
@@ -630,6 +640,23 @@ pub async fn content_proxy_endpoint(
         .unwrap_or("/limit-reached");
     let config = ContentProxyConfig::default();
 
+    // Extract `r_*` query parameters as upstream request headers (MediaFusion
+    // convention: `r_Content-Type=video/mp4` → upstream header
+    // `Content-Type: video/mp4`).
+    let r_headers: BTreeMap<String, String> = query
+        .iter()
+        .filter_map(|(k, v)| {
+            k.strip_prefix("r_")
+                .map(|name| (name.to_string(), v.clone()))
+        })
+        .collect();
+
+    // When a raw URL is passed in `d` (not encrypted), attach any `r_*` headers
+    // directly to the resolved target via the content proxy request. The
+    // `resolve_target` function handles encrypted `d` and `token` params; for
+    // raw URLs, we pass the headers separately.
+    let d_value = query.get("d").map(String::as_str);
+
     serve(
         state.egress(),
         &codec,
@@ -639,7 +666,8 @@ pub async fn content_proxy_endpoint(
         ContentProxyRequest {
             user,
             token: query.get("token").map(String::as_str),
-            d: query.get("d").map(String::as_str),
+            d: d_value,
+            extra_headers: r_headers,
             range,
             is_head,
             client_ip: client_ip(&req),
@@ -728,6 +756,7 @@ mod tests {
             user,
             token,
             d: None,
+            extra_headers: BTreeMap::new(),
             range,
             is_head: false,
             client_ip: None,

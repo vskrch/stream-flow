@@ -125,9 +125,17 @@ impl ProxyCodec {
     /// payload **without** enforcing `exp`/`ip`; use [`ProxyCodec::resolve`] (or
     /// [`ProxyCodec::resolve_params`]) to additionally apply the access-time
     /// `403` checks (Req 14.5/14.6).
+    ///
+    /// **Raw URL fallback:** When the `d` parameter fails to decrypt as an
+    /// AES-CBC token but looks like a raw HTTP(S) URL (e.g. sent by
+    /// MediaFusion), it is accepted as a plaintext upstream URL with no
+    /// injected headers — making ZippyPanther a transparent proxy for clients
+    /// that do not encrypt the `d` parameter.
     pub fn decode(&self, link: &ProxyLink) -> Result<ProxyPayload, AppError> {
         match link {
-            ProxyLink::EncryptedMediaflow { d } => MediaflowCodec::decode(d, &self.cbc_key),
+            ProxyLink::EncryptedMediaflow { d } => {
+                MediaflowCodec::decode(d, &self.cbc_key).or_else(|_| Self::try_raw_url_fallback(d))
+            }
             ProxyLink::Token { token } => TokenCodec::decode(token, &self.token_key),
         }
     }
@@ -211,6 +219,29 @@ fn enforce_access(
     }
 
     Ok(payload)
+}
+
+impl ProxyCodec {
+    /// Attempt to interpret a `d` value as a raw HTTP(S) URL instead of an
+    /// encrypted token. Returns a plaintext [`ProxyPayload`] wrapping the URL,
+    /// or a `403` if the value is not a valid HTTP(S) URL.
+    ///
+    /// This enables compatibility with clients (like MediaFusion) that send
+    /// raw debrid URLs in the `d` parameter without AES-CBC encryption.
+    fn try_raw_url_fallback(d: &str) -> Result<ProxyPayload, AppError> {
+        // URL-decode the value first — MediaFusion sends URL-encoded raw URLs.
+        let decoded = urlencoding::decode(d)
+            .map(|s| s.into_owned())
+            .unwrap_or_else(|_| d.to_string());
+
+        if decoded.starts_with("http://") || decoded.starts_with("https://") {
+            Ok(ProxyPayload::new(decoded))
+        } else {
+            Err(AppError::forbidden(
+                "invalid proxy-link token encoding: not a valid encrypted token or URL",
+            ))
+        }
+    }
 }
 
 /// Treat an absent **or empty** parameter as "not present".
@@ -514,5 +545,54 @@ mod tests {
             assert!(codec.resolve(&link, Some(ip(addr)), 0).is_ok());
             assert!(codec.resolve(&link, Some(ip("192.0.2.1")), 0).is_err());
         }
+    }
+
+    // -- Raw URL fallback for MediaFusion compatibility -----------------------
+
+    #[test]
+    fn raw_https_url_in_d_param_is_accepted() {
+        let codec = codec();
+        let raw = "https://120-4.download.real-debrid.com/d/ZPJC3Y5D5A7BQ/movie.mp4";
+        let link = ProxyLink::EncryptedMediaflow {
+            d: raw.to_string(),
+        };
+        let payload = codec.decode(&link).unwrap();
+        assert_eq!(payload.url, raw);
+        assert!(payload.headers.is_empty());
+    }
+
+    #[test]
+    fn raw_http_url_in_d_param_is_accepted() {
+        let codec = codec();
+        let raw = "http://cdn.example.com/stream.m3u8";
+        let link = ProxyLink::EncryptedMediaflow {
+            d: raw.to_string(),
+        };
+        let payload = codec.decode(&link).unwrap();
+        assert_eq!(payload.url, raw);
+    }
+
+    #[test]
+    fn url_encoded_raw_url_in_d_param_is_decoded() {
+        let codec = codec();
+        let encoded = "https%3A%2F%2F120-4.download.real-debrid.com%2Fd%2FZPJC3Y5D5A7BQ%2Fmovie.mp4";
+        let link = ProxyLink::EncryptedMediaflow {
+            d: encoded.to_string(),
+        };
+        let payload = codec.decode(&link).unwrap();
+        assert_eq!(
+            payload.url,
+            "https://120-4.download.real-debrid.com/d/ZPJC3Y5D5A7BQ/movie.mp4"
+        );
+    }
+
+    #[test]
+    fn non_url_non_encrypted_d_param_rejects() {
+        let codec = codec();
+        let link = ProxyLink::EncryptedMediaflow {
+            d: "not-a-url-or-token".to_string(),
+        };
+        let err = codec.decode(&link).unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Forbidden);
     }
 }
