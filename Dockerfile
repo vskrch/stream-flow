@@ -12,4 +12,4 @@ ENV APP__SERVER__HOST=0.0.0.0
 ENV APP__SERVER__PORT=8080
 EXPOSE 8080
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/stream-flow"]
+CMD ["sh", "-c", "APP__SERVER__PORT=\"${APP__SERVER__PORT:-${PORT:-8080}}\" exec /usr/local/bin/stream-flow"]
