@@ -266,9 +266,7 @@ async fn query_host_ip() -> Result<std::net::IpAddr, AppError> {
         .get("https://api.ipify.org")
         .send()
         .await
-        .map_err(|e| {
-            AppError::upstream_unavailable(format!("failed to query host IP: {e}"))
-        })?;
+        .map_err(|e| AppError::upstream_unavailable(format!("failed to query host IP: {e}")))?;
     let body = resp.text().await.map_err(|e| {
         AppError::upstream_unavailable(format!("failed to read host IP response: {e}"))
     })?;

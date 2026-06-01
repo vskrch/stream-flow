@@ -133,6 +133,36 @@ impl RealDebridStore {
                 .with_store("realdebrid")
         })
     }
+
+    async fn select_files(&self, id: &str, file_ids: &[u32]) -> Result<(), AppError> {
+        let url = self.api_url(&format!("/torrents/selectFiles/{id}"));
+        let (header_name, header_value) = self.auth_header();
+        let files = if file_ids.is_empty() {
+            "all".to_string()
+        } else {
+            file_ids
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let resp = self
+            .client
+            .upstream(Method::POST, &url)?
+            .header(header_name, header_value)
+            .form(&[("files", files)])
+            .send()
+            .await
+            .map_err(|e| AppError::upstream_unavailable_for("realdebrid", e.to_string()))?;
+
+        let status = resp.status().as_u16();
+        if !resp.status().is_success() && status != 204 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Self::map_error(status, &body));
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]
@@ -331,54 +361,39 @@ impl Store for RealDebridStore {
             .await
             .map_err(|e| AppError::unknown(format!("parse error: {e}")).with_store("realdebrid"))?;
 
-        // Fetch the torrent info to get full details
         let info: RdTorrentInfo = self
             .get_json(&format!("/torrents/info/{}", add_resp.id))
             .await?;
-        let magnet_status = MagnetStatus::from_native(&info.status);
-        let files = info
-            .files
-            .iter()
-            .enumerate()
-            .map(|(i, f)| MagnetFile {
-                index: i as i32,
-                link: info.links.get(i).cloned(),
-                path: f.path.clone(),
-                name: f.path.rsplit('/').next().unwrap_or(&f.path).to_string(),
-                size: f.bytes,
-                video_hash: None,
+
+        let video_ids = video_file_ids(&info);
+        if !video_ids.is_empty() && selected_file_count(&info) != video_ids.len() {
+            self.select_files(&add_resp.id, &video_ids).await?;
+        }
+
+        let data = self
+            .get_magnet(&GetMagnetParams {
+                ctx: p.ctx.clone(),
+                id: add_resp.id,
             })
-            .collect();
+            .await?;
 
         Ok(AddMagnetData {
-            id: info.id,
-            hash: info.hash,
+            id: data.id,
+            hash: data.hash,
             magnet: p.magnet.clone(),
-            name: info.filename,
-            size: info.bytes,
-            status: magnet_status,
-            files,
+            name: data.name,
+            size: data.size,
+            status: data.status,
+            files: data.files,
             private: false,
-            added_at: time::OffsetDateTime::now_utc(),
+            added_at: data.added_at,
         })
     }
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let info: RdTorrentInfo = self.get_json(&format!("/torrents/info/{}", p.id)).await?;
         let magnet_status = MagnetStatus::from_native(&info.status);
-        let files = info
-            .files
-            .iter()
-            .enumerate()
-            .map(|(i, f)| MagnetFile {
-                index: i as i32,
-                link: info.links.get(i).cloned(),
-                path: f.path.clone(),
-                name: f.path.rsplit('/').next().unwrap_or(&f.path).to_string(),
-                size: f.bytes,
-                video_hash: None,
-            })
-            .collect();
+        let files = magnet_files_from_info(&info);
 
         Ok(GetMagnetData {
             id: info.id,
@@ -523,6 +538,85 @@ fn parse_rd_check_files(variant: &serde_json::Value) -> Vec<MagnetFile> {
         .collect()
 }
 
+fn selected_file_count(info: &RdTorrentInfo) -> usize {
+    info.files.iter().filter(|f| f.selected == 1).count()
+}
+
+fn video_file_ids(info: &RdTorrentInfo) -> Vec<u32> {
+    info.files
+        .iter()
+        .filter(|f| has_video_extension(&f.path))
+        .map(|f| f.id)
+        .collect()
+}
+
+fn has_video_extension(path: &str) -> bool {
+    let ext = path
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "3gp"
+            | "avi"
+            | "divx"
+            | "flv"
+            | "m2ts"
+            | "m4v"
+            | "mkv"
+            | "mov"
+            | "mp4"
+            | "mpeg"
+            | "mpg"
+            | "mts"
+            | "ogg"
+            | "ogm"
+            | "ts"
+            | "vob"
+            | "webm"
+            | "wmv"
+    )
+}
+
+fn rd_file_to_magnet_file(file: &RdFile, link: Option<String>) -> MagnetFile {
+    MagnetFile {
+        index: file.id.saturating_sub(1) as i32,
+        link,
+        path: file.path.clone(),
+        name: file
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&file.path)
+            .to_string(),
+        size: file.bytes,
+        video_hash: None,
+    }
+}
+
+fn magnet_files_from_info(info: &RdTorrentInfo) -> Vec<MagnetFile> {
+    let has_selected = info.files.iter().any(|f| f.selected == 1);
+    let mut link_idx = 0usize;
+    let mut files = Vec::new();
+
+    for file in &info.files {
+        if has_selected && file.selected != 1 {
+            continue;
+        }
+
+        let link = if file.selected == 1 {
+            let link = info.links.get(link_idx).cloned();
+            link_idx += 1;
+            link
+        } else {
+            None
+        };
+        files.push(rd_file_to_magnet_file(file, link));
+    }
+
+    files
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,6 +710,100 @@ mod tests {
         assert_eq!(data.items[0].files.len(), 1);
         assert_eq!(data.items[0].files[0].name, "movie.mkv");
         assert_eq!(data.items[0].files[0].size, 1024);
+    }
+
+    #[tokio::test]
+    async fn add_magnet_selects_video_files_before_returning() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/rest/1.0/torrents/addMagnet"))
+            .and(body_string_contains(
+                "magnet=magnet%3A%3Fxt%3Durn%3Abtih%3Aabc123",
+            ))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": "rd-torrent-1", "uri": "magnet:?xt=urn:btih:abc123"
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/rest/1.0/torrents/info/rd-torrent-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "rd-torrent-1",
+                "hash": "abc123",
+                "filename": "Example Pack",
+                "bytes": 4096,
+                "status": "waiting_files_selection",
+                "files": [
+                    {"id": 1, "path": "/Example Pack/movie.mkv", "bytes": 4000, "selected": 0},
+                    {"id": 2, "path": "/Example Pack/readme.txt", "bytes": 96, "selected": 0}
+                ],
+                "links": []
+            })))
+            .expect(2)
+            .mount(&mock)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/rest/1.0/torrents/selectFiles/rd-torrent-1"))
+            .and(body_string_contains("files=1"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .add_magnet(&AddMagnetParams {
+                ctx: ctx(),
+                magnet: "magnet:?xt=urn:btih:abc123".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(data.id, "rd-torrent-1");
+        assert_eq!(data.status, MagnetStatus::Queued);
+        assert_eq!(data.files[0].index, 0);
+        assert_eq!(data.files[0].name, "movie.mkv");
+    }
+
+    #[tokio::test]
+    async fn get_magnet_maps_selected_files_to_links_and_rd_file_index() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/rest/1.0/torrents/info/rd-torrent-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "rd-torrent-1",
+                "hash": "abc123",
+                "filename": "Example Pack",
+                "bytes": 4096,
+                "status": "downloaded",
+                "files": [
+                    {"id": 1, "path": "/Example Pack/readme.txt", "bytes": 96, "selected": 0},
+                    {"id": 3, "path": "/Example Pack/movie.mkv", "bytes": 4000, "selected": 1}
+                ],
+                "links": ["https://real-debrid.example/link/movie"]
+            })))
+            .expect(1)
+            .mount(&mock)
+            .await;
+
+        let data = store_for(&mock)
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx(),
+                id: "rd-torrent-1".into(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(data.status, MagnetStatus::Downloaded);
+        assert_eq!(data.files.len(), 1);
+        assert_eq!(data.files[0].index, 2);
+        assert_eq!(data.files[0].name, "movie.mkv");
+        assert_eq!(
+            data.files[0].link.as_deref(),
+            Some("https://real-debrid.example/link/movie")
+        );
     }
 
     #[tokio::test]

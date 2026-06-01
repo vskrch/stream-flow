@@ -525,7 +525,9 @@ pub async fn serve(
     // lower-priority: the encrypted/token payload headers take precedence.
     let mut merged_headers = request.extra_headers;
     for (name, value) in &target.headers {
-        merged_headers.entry(name.clone()).or_insert_with(|| value.clone());
+        merged_headers
+            .entry(name.clone())
+            .or_insert_with(|| value.clone());
     }
 
     // Req 19.6: api-only tunnel mode returns the direct link, no byte proxying.

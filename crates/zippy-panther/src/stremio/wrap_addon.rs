@@ -52,9 +52,11 @@
 //! let wrap = wrap_addon.with_transformer(Arc::new(pipeline));
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::Duration;
 
+use actix_web::http::header;
 use actix_web::{web, HttpRequest, HttpResponse};
 use reqwest::{Method, Url};
 use serde::de::DeserializeOwned;
@@ -62,8 +64,15 @@ use serde::de::DeserializeOwned;
 use crate::app::AppState;
 use crate::auth::encryption::ProxyPayload;
 use crate::egress::OutboundClient;
+use crate::errors::AppError;
+use crate::http::client_ip::client_ip;
 use crate::proxylink::{ProxyCodec, ProxyLink};
 use crate::quality::{QualityPrefs, QualityRanker, RankedFile};
+use crate::store::link::generate_link_with_retry;
+use crate::store::{
+    AddMagnetParams, Ctx, GenerateLinkData, GetMagnetData, GetMagnetParams, MagnetFile,
+    MagnetStatus, Store, StoreName,
+};
 
 use super::types::{
     Manifest, Meta, MetaPreview, MetaResponse, MetasResponse, Resource, Stream, StreamsResponse,
@@ -248,6 +257,7 @@ pub struct WrapAddon {
     codec: ProxyCodec,
     rewrite: ProxyRewriteConfig,
     transformer: Option<Arc<dyn Transformer>>,
+    debrid_store: Option<Arc<dyn Store>>,
 }
 
 impl WrapAddon {
@@ -266,12 +276,20 @@ impl WrapAddon {
             codec,
             rewrite,
             transformer: None,
+            debrid_store: None,
         }
     }
 
     /// Attach a [`Transformer`] applied to every aggregated response (Req 24.3).
     pub fn with_transformer(mut self, transformer: Arc<dyn Transformer>) -> Self {
         self.transformer = Some(transformer);
+        self
+    }
+
+    /// Attach the debrid store used to turn upstream `infoHash` streams into
+    /// playable ZippyPanther URLs.
+    pub fn with_debrid_store(mut self, store: Arc<dyn Store>) -> Self {
+        self.debrid_store = Some(store);
         self
     }
 
@@ -331,7 +349,7 @@ impl WrapAddon {
 
         let streams = streams
             .into_iter()
-            .map(|s| self.rewrite_stream(s))
+            .map(|s| self.rewrite_stream_for_playback(s, id))
             .collect();
         StreamsResponse { streams }
     }
@@ -415,6 +433,16 @@ impl WrapAddon {
     /// and DRM keys.
     pub fn rewrite_stream(&self, stream: Stream) -> Stream {
         rewrite_stream_with(&self.codec, &self.rewrite, stream)
+    }
+
+    fn rewrite_stream_for_playback(&self, stream: Stream, content_id: &str) -> Stream {
+        if stream.url.as_deref().is_some_and(|u| !u.is_empty()) {
+            return self.rewrite_stream(stream);
+        }
+        let Some(store) = &self.debrid_store else {
+            return stream;
+        };
+        rewrite_info_hash_stream(&self.rewrite, store.get_name(), stream, content_id)
     }
 
     /// `GET` a JSON resource through the egress seam, returning `None` on any
@@ -749,6 +777,52 @@ fn rewrite_stream_with(codec: &ProxyCodec, rewrite: &ProxyRewriteConfig, stream:
     }
 }
 
+fn rewrite_info_hash_stream(
+    rewrite: &ProxyRewriteConfig,
+    store_name: StoreName,
+    mut stream: Stream,
+    content_id: &str,
+) -> Stream {
+    let hash = match stream.info_hash.as_deref() {
+        Some(hash) if is_hex_info_hash(hash) => hash.to_ascii_lowercase(),
+        _ => return stream,
+    };
+    let file_index = stream.file_index.unwrap_or(-1);
+    let filename = stream
+        .behavior_hints
+        .as_ref()
+        .and_then(|h| h.filename.as_deref())
+        .filter(|name| !name.is_empty());
+
+    let mut url = format!(
+        "{}/stremio/wrap/strem/{}/{}/{}",
+        rewrite.base_url,
+        store_name.code().as_str(),
+        hash,
+        file_index
+    );
+    if let Some(filename) = filename {
+        url.push('/');
+        url.push_str(&urlencoding::encode(filename));
+    }
+    url.push_str("?sid=");
+    url.push_str(&urlencoding::encode(content_id));
+
+    let code = store_name.code().as_str().to_ascii_uppercase();
+    stream.name = Some(match stream.name.take() {
+        Some(name) if !name.is_empty() => format!("[{code}] {name}"),
+        _ => format!("[{code}]"),
+    });
+    stream.url = Some(url);
+    stream.info_hash = None;
+    stream.file_index = None;
+    stream
+}
+
+fn is_hex_info_hash(hash: &str) -> bool {
+    hash.len() == 40 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handlers for the Wrap addon (stremthru surface, Req 24)
 // ---------------------------------------------------------------------------
@@ -770,6 +844,13 @@ pub struct WrapResourcePath {
     pub content_type: String,
     /// The content id.
     pub id: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct WrapStremPath {
+    pub store: String,
+    pub hash: String,
+    pub file_idx: i32,
 }
 
 fn public_base_url(req: &HttpRequest, state: &AppState) -> String {
@@ -807,6 +888,52 @@ fn proxy_codec(state: &AppState) -> ProxyCodec {
     ProxyCodec::from_secrets(api_password, token_secret)
 }
 
+fn store_auth_entries(state: &AppState) -> impl Iterator<Item = (StoreName, String)> + '_ {
+    state
+        .config()
+        .auth
+        .per_user_store
+        .iter()
+        .filter_map(|entry| {
+            let parts = entry.splitn(3, ':').collect::<Vec<_>>();
+            match parts.as_slice() {
+                // Standard stremthru shape: user:store:token.
+                [_, store, token] => StoreName::parse(store).map(|name| (name, (*token).into())),
+                // Lenient single-instance shorthand: store:token.
+                [store, token] => StoreName::parse(store).map(|name| (name, (*token).into())),
+                _ => None,
+            }
+        })
+}
+
+fn preferred_wrap_store(state: &AppState) -> Option<Arc<dyn Store>> {
+    let entries = store_auth_entries(state).collect::<Vec<_>>();
+    let (store_name, token) = entries
+        .iter()
+        .find(|(name, _)| *name == StoreName::RealDebrid)
+        .or_else(|| entries.first())?;
+    Some(crate::store::endpoints::build_store(
+        *store_name,
+        token.clone(),
+        state,
+    ))
+}
+
+fn configured_store(state: &AppState, requested: StoreName) -> Result<Arc<dyn Store>, AppError> {
+    store_auth_entries(state)
+        .find(|(name, _)| *name == requested)
+        .map(|(name, token)| crate::store::endpoints::build_store(name, token, state))
+        .ok_or_else(|| {
+            AppError::unauthorized_for(
+                requested.as_str(),
+                format!(
+                    "missing store credential for `{}`; set auth.per_user_store or STREMTHRU_STORE_AUTH",
+                    requested.as_str()
+                ),
+            )
+        })
+}
+
 fn build_wrap_addon(req: &HttpRequest, state: &AppState) -> WrapAddon {
     let name = state
         .config()
@@ -826,13 +953,18 @@ fn build_wrap_addon(req: &HttpRequest, state: &AppState) -> WrapAddon {
         .filter(|url| !url.trim().is_empty())
         .map(|url| UpstreamAddon::new(url.clone()))
         .collect();
-    WrapAddon::new(
+    let addon = WrapAddon::new(
         meta,
         upstreams,
         Arc::clone(state.egress()),
         proxy_codec(state),
         ProxyRewriteConfig::new(public_base_url(req, state)),
-    )
+    );
+    if let Some(store) = preferred_wrap_store(state) {
+        addon.with_debrid_store(store)
+    } else {
+        addon
+    }
 }
 
 pub async fn wrap_manifest_endpoint(req: HttpRequest, state: web::Data<AppState>) -> HttpResponse {
@@ -865,6 +997,144 @@ pub async fn wrap_resource_endpoint(
     }
 }
 
+pub async fn wrap_strem_endpoint(
+    path: web::Path<WrapStremPath>,
+    _query: web::Query<HashMap<String, String>>,
+    req: HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    let store_name = StoreName::require(&path.store)?;
+    let hash = path.hash.trim().to_ascii_lowercase();
+    if !is_hex_info_hash(&hash) {
+        return Err(AppError::bad_request("invalid torrent info hash"));
+    }
+
+    let store = configured_store(&state, store_name)?;
+    let ctx = Ctx {
+        request_id: "stremio-wrap-playback".into(),
+        client_ip: client_ip(&req),
+        trusted: false,
+    };
+    let magnet = resolve_playable_magnet(store.as_ref(), &ctx, &hash).await?;
+    let filename = req
+        .match_info()
+        .get("filename")
+        .and_then(|name| urlencoding::decode(name).ok())
+        .map(|name| name.into_owned())
+        .filter(|name| !name.is_empty());
+    let file = choose_playable_file(&magnet.files, path.file_idx, filename.as_deref())
+        .ok_or_else(|| AppError::not_found("no playable Real-Debrid file matched this stream"))?;
+    let store_link = file
+        .link
+        .as_deref()
+        .ok_or_else(|| AppError::not_found("matched Real-Debrid file has no store link"))?;
+
+    let egress_ip = state.egress().egress_ip();
+    let egress_for_refresh = Arc::clone(state.egress());
+    let direct = generate_link_with_retry(
+        store.as_ref(),
+        store_link,
+        egress_ip,
+        &ctx,
+        move || async move { egress_for_refresh.egress_ip() },
+    )
+    .await?;
+
+    Ok(redirect_to_proxy_stream(
+        &req,
+        &state,
+        &direct,
+        Some(file.name.as_str()),
+    )?)
+}
+
+async fn resolve_playable_magnet(
+    store: &dyn Store,
+    ctx: &Ctx,
+    hash: &str,
+) -> Result<GetMagnetData, AppError> {
+    let add = store
+        .add_magnet(&AddMagnetParams {
+            ctx: ctx.clone(),
+            magnet: format!("magnet:?xt=urn:btih:{hash}"),
+        })
+        .await?;
+
+    let mut magnet = GetMagnetData {
+        id: add.id,
+        name: add.name,
+        hash: add.hash,
+        size: add.size,
+        status: add.status,
+        files: add.files,
+        private: add.private,
+        added_at: add.added_at,
+    };
+
+    for _ in 0..3 {
+        if magnet_is_playable(&magnet) {
+            return Ok(magnet);
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        magnet = store
+            .get_magnet(&GetMagnetParams {
+                ctx: ctx.clone(),
+                id: magnet.id.clone(),
+            })
+            .await?;
+    }
+
+    Ok(magnet)
+}
+
+fn magnet_is_playable(magnet: &GetMagnetData) -> bool {
+    matches!(
+        magnet.status,
+        MagnetStatus::Cached | MagnetStatus::Downloaded
+    ) && magnet.files.iter().any(|f| f.link.is_some())
+}
+
+fn choose_playable_file<'a>(
+    files: &'a [MagnetFile],
+    file_idx: i32,
+    filename: Option<&str>,
+) -> Option<&'a MagnetFile> {
+    let playable = files
+        .iter()
+        .filter(|file| file.link.is_some())
+        .collect::<Vec<_>>();
+
+    if let Some(filename) = filename {
+        if let Some(file) = playable.iter().copied().find(|file| file.name == filename) {
+            return Some(file);
+        }
+    }
+
+    if file_idx >= 0 {
+        if let Some(file) = playable.iter().copied().find(|file| file.index == file_idx) {
+            return Some(file);
+        }
+    }
+
+    playable.into_iter().max_by_key(|file| file.size)
+}
+
+fn redirect_to_proxy_stream(
+    req: &HttpRequest,
+    state: &AppState,
+    direct: &GenerateLinkData,
+    filename: Option<&str>,
+) -> Result<HttpResponse, AppError> {
+    let mut payload = ProxyPayload::new(direct.link.clone());
+    payload.filename = filename.map(ToOwned::to_owned);
+    let link = proxy_codec(state).encode_mediaflow(&payload)?;
+    let mut url = ProxyRewriteConfig::new(public_base_url(req, state)).build_proxy_url(&link);
+    url.push_str("&cached=true");
+    Ok(HttpResponse::Found()
+        .insert_header((header::LOCATION, url))
+        .finish())
+}
+
 pub fn configure_wrap_addon_routes(cfg: &mut web::ServiceConfig) {
     cfg.route(
         "/stremio/wrap/manifest.json",
@@ -873,6 +1143,22 @@ pub fn configure_wrap_addon_routes(cfg: &mut web::ServiceConfig) {
     .route(
         "/stremio/wrap/{resource}/{content_type}/{id}.json",
         web::get().to(wrap_resource_endpoint),
+    )
+    .route(
+        "/stremio/wrap/strem/{store}/{hash}/{file_idx}",
+        web::get().to(wrap_strem_endpoint),
+    )
+    .route(
+        "/stremio/wrap/strem/{store}/{hash}/{file_idx}",
+        web::head().to(wrap_strem_endpoint),
+    )
+    .route(
+        "/stremio/wrap/strem/{store}/{hash}/{file_idx}/{filename:.*}",
+        web::get().to(wrap_strem_endpoint),
+    )
+    .route(
+        "/stremio/wrap/strem/{store}/{hash}/{file_idx}/{filename:.*}",
+        web::head().to(wrap_strem_endpoint),
     );
 }
 
@@ -1367,6 +1653,88 @@ mod tests {
         assert_eq!(out.url, None, "an infoHash stream keeps no http url");
         assert_eq!(out.info_hash.as_deref(), Some("abcd"));
         assert_eq!(out.file_index, Some(0));
+    }
+
+    #[test]
+    fn info_hash_stream_rewrites_to_wrap_strem_playback_url_when_store_is_configured() {
+        let stream = Stream {
+            info_hash: Some("A3D11F4D97121A79F3E94B18A43E5B3E2F1853E1".into()),
+            file_index: Some(2),
+            name: Some("MediaFusion P2P 2160P".into()),
+            behavior_hints: Some(crate::stremio::types::StreamBehaviorHints {
+                filename: Some("Deadpool 2016.mkv".into()),
+                video_size: Some(123),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let out = rewrite_info_hash_stream(
+            &rewrite_cfg(),
+            StoreName::RealDebrid,
+            stream.clone(),
+            "tt1431045",
+        );
+
+        let url = out.url.as_deref().expect("rewritten URL");
+        assert!(url.starts_with(
+            "https://flow.example.com/stremio/wrap/strem/rd/a3d11f4d97121a79f3e94b18a43e5b3e2f1853e1/2/"
+        ));
+        assert!(url.contains("Deadpool%202016.mkv"));
+        assert!(url.ends_with("?sid=tt1431045"));
+        assert_eq!(out.info_hash, None);
+        assert_eq!(out.file_index, None);
+        assert_eq!(out.name.as_deref(), Some("[RD] MediaFusion P2P 2160P"));
+        assert_eq!(out.behavior_hints, stream.behavior_hints);
+    }
+
+    #[test]
+    fn choose_playable_file_prefers_filename_then_file_index_then_largest() {
+        let files = vec![
+            MagnetFile {
+                index: 0,
+                link: Some("https://rd/link-small".into()),
+                path: "/small.mkv".into(),
+                name: "small.mkv".into(),
+                size: 10,
+                video_hash: None,
+            },
+            MagnetFile {
+                index: 2,
+                link: Some("https://rd/link-target".into()),
+                path: "/target.mkv".into(),
+                name: "target.mkv".into(),
+                size: 20,
+                video_hash: None,
+            },
+            MagnetFile {
+                index: 5,
+                link: Some("https://rd/link-large".into()),
+                path: "/large.mkv".into(),
+                name: "large.mkv".into(),
+                size: 30,
+                video_hash: None,
+            },
+        ];
+
+        assert_eq!(
+            choose_playable_file(&files, 5, Some("target.mkv"))
+                .unwrap()
+                .name,
+            "target.mkv"
+        );
+        assert_eq!(
+            choose_playable_file(&files, 2, Some("missing.mkv"))
+                .unwrap()
+                .name,
+            "target.mkv"
+        );
+        assert_eq!(
+            choose_playable_file(&files, -1, Some("missing.mkv"))
+                .unwrap()
+                .name,
+            "large.mkv"
+        );
     }
 
     // -- ProxyLinkTransformer: named composable proxy-link rewrite -----------

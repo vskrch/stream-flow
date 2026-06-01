@@ -553,9 +553,7 @@ mod tests {
     fn raw_https_url_in_d_param_is_accepted() {
         let codec = codec();
         let raw = "https://120-4.download.real-debrid.com/d/ZPJC3Y5D5A7BQ/movie.mp4";
-        let link = ProxyLink::EncryptedMediaflow {
-            d: raw.to_string(),
-        };
+        let link = ProxyLink::EncryptedMediaflow { d: raw.to_string() };
         let payload = codec.decode(&link).unwrap();
         assert_eq!(payload.url, raw);
         assert!(payload.headers.is_empty());
@@ -565,9 +563,7 @@ mod tests {
     fn raw_http_url_in_d_param_is_accepted() {
         let codec = codec();
         let raw = "http://cdn.example.com/stream.m3u8";
-        let link = ProxyLink::EncryptedMediaflow {
-            d: raw.to_string(),
-        };
+        let link = ProxyLink::EncryptedMediaflow { d: raw.to_string() };
         let payload = codec.decode(&link).unwrap();
         assert_eq!(payload.url, raw);
     }
@@ -575,7 +571,8 @@ mod tests {
     #[test]
     fn url_encoded_raw_url_in_d_param_is_decoded() {
         let codec = codec();
-        let encoded = "https%3A%2F%2F120-4.download.real-debrid.com%2Fd%2FZPJC3Y5D5A7BQ%2Fmovie.mp4";
+        let encoded =
+            "https%3A%2F%2F120-4.download.real-debrid.com%2Fd%2FZPJC3Y5D5A7BQ%2Fmovie.mp4";
         let link = ProxyLink::EncryptedMediaflow {
             d: encoded.to_string(),
         };

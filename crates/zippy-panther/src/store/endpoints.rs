@@ -204,7 +204,11 @@ fn selected_store_token(req: &HttpRequest, body_store: Option<&str>) -> Option<S
         })
 }
 
-fn build_store(store_name: StoreName, token: String, state: &AppState) -> Arc<dyn Store> {
+pub(crate) fn build_store(
+    store_name: StoreName,
+    token: String,
+    state: &AppState,
+) -> Arc<dyn Store> {
     let client = state.egress().clone();
     match store_name {
         StoreName::AllDebrid => Arc::new(AllDebridStore::new(client, token)),
