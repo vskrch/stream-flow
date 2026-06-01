@@ -28,7 +28,9 @@ services:
       - APP__AUTH__API_PASSWORD=password
       - APP__EGRESS__TUNNEL_MODE=proxy
       - APP__EGRESS__TUNNEL_URL=socks5://warp:1080
-      - APP__EGRESS__POLICY=fail-closed
+      # Use WARP when it is healthy, but fall back to normal networking instead
+      # of breaking playback if the sidecar is unavailable.
+      - APP__EGRESS__POLICY=fail-open
     depends_on:
       - warp
 

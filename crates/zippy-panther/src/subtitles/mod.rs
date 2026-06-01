@@ -323,7 +323,8 @@ mod tests {
 
     fn outbound_fail_closed() -> Arc<OutboundClient> {
         let cfg = EgressConfig {
-            tunnel_mode: EgressTunnelMode::Disabled,
+            tunnel_mode: EgressTunnelMode::Proxy,
+            tunnel_url: Some("http://proxy:8888".to_string()),
             policy: EgressPolicy::FailClosed,
             ..EgressConfig::default()
         };

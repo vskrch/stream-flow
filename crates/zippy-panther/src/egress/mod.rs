@@ -14,7 +14,7 @@
 //!   [`resolver::EgressResolver`] caches the leak-verified Egress_IP.
 //! * **The single outbound seam ([`OutboundClient`], task 8.3):** the *only*
 //!   way any module obtains an HTTP client for an upstream call. It owns the
-//!   tunneled `reqwest`/`wreq` clients, applies the fail-closed
+//!   tunneled and direct `reqwest`/`wreq` clients, applies the fail-closed
 //!   [`policy`] decision before any dial, and exposes the current
 //!   [`egress_ip`](OutboundClient::egress_ip) (design: Components -> Egress ->
 //!   OutboundClient).
@@ -48,15 +48,16 @@ use self::tunnel::LeakCheck as TunnelState;
 /// HTTP client for an upstream (debrid / end-media / extractor) call
 /// (design: Components -> Egress -> OutboundClient; Req 51.1, 51.8, 51.9).
 ///
-/// It funnels every outbound request through the configured Egress_Tunnel so
-/// upstreams observe only the Egress_IP (Req 51.1), and it makes the
-/// fail-closed [`policy`] decision *before* any dial so the host's real IP can
-/// never leak when the tunnel is down or leaking (Req 51.8). Two client
-/// flavours are held, both tunnelled:
+/// When a tunnel is configured, it funnels outbound requests through the
+/// Egress_Tunnel so upstreams observe only the Egress_IP (Req 51.1), and it
+/// makes the fail-closed [`policy`] decision *before* any dial so the host's
+/// real IP can never leak when a strict tunnel is down or leaking (Req 51.8).
+/// When no tunnel is configured, direct networking is the normal mode rather
+/// than an egress failure. Two client flavours are held for both paths:
 ///
 /// * [`upstream`](OutboundClient::upstream) → a `reqwest` request builder
 ///   (rustls), the default for debrid/media hosts;
-/// * [`impersonate`](OutboundClient::impersonate) → an `wreq` request builder
+/// * [`impersonate`](OutboundClient::impersonate) → a `wreq` request builder
 ///   with Chrome JA3/JA4 TLS emulation, for Cloudflare-fronted extractor hosts
 ///   (Req 35.5).
 ///
@@ -72,14 +73,20 @@ pub struct OutboundClient {
     /// Egress_Tunnel (proxy mode) or the host routing table (netns mode). Used
     /// when no per-host tunnel override matches.
     tunneled: reqwest::Client,
+    /// Direct `reqwest` client used when no tunnel is configured, or when the
+    /// operator explicitly selects fail-open and the configured tunnel is down.
+    direct: reqwest::Client,
     /// Chrome-JA3/JA4 impersonation client (`wreq`, BoringSSL), also
     /// tunnelled — used for browser-TLS extractor hosts (Req 35.5).
     tunneled_impersonate: wreq::Client,
+    /// Direct Chrome-JA3/JA4 impersonation client for no-tunnel / fail-open
+    /// fallback requests.
+    direct_impersonate: wreq::Client,
     /// Fail-closed (default) vs fail-open behaviour (Req 51.8).
     policy: EgressPolicy,
     /// The egress-IP resolver / tunnel-state cache (task 8.2). `None` when no
-    /// tunnel is configured ([`EgressTunnelMode::Disabled`]); the egress is
-    /// then treated as unverified so `FailClosed` refuses to dial (Req 51.8).
+    /// tunnel is configured ([`EgressTunnelMode::Disabled`]); direct egress is
+    /// then the normal operating mode.
     resolver: Option<Arc<EgressResolver>>,
     /// The default tunnel endpoint (proxy URL) the clients dial through, kept
     /// for diagnostics and per-host routing (Req 51.9).
@@ -108,6 +115,7 @@ impl std::fmt::Debug for OutboundClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OutboundClient")
             .field("policy", &self.policy)
+            .field("tunnel_configured", &self.has_configured_tunnel())
             .field("has_resolver", &self.resolver.is_some())
             .field("tunnel_state", &self.tunnel_state())
             .field("default_endpoint", &self.default_endpoint)
@@ -130,10 +138,16 @@ impl OutboundClient {
         default_endpoint: Option<String>,
         per_host: HashMap<String, String>,
     ) -> Self {
+        let direct = build_tunneled_reqwest(None)
+            .expect("direct egress client without a proxy should always build");
+        let direct_impersonate = build_tunneled_impersonate(None)
+            .expect("direct impersonation client without a proxy should always build");
         let tunnel_routes = build_tunnel_routes(default_endpoint.as_deref(), &per_host);
         Self {
             tunneled,
+            direct,
             tunneled_impersonate,
+            direct_impersonate,
             policy,
             resolver,
             default_endpoint,
@@ -145,15 +159,15 @@ impl OutboundClient {
     /// Build the single outbound seam from the egress configuration plus a
     /// reflection source (Req 51.1, 51.8, 51.9).
     ///
-    /// * Both clients are constructed to dial through the configured
+    /// * Tunnel clients are constructed to dial through the configured
     ///   Egress_Tunnel: in [`Proxy`](EgressTunnelMode::Proxy) mode every
     ///   request routes through `tunnel_url`; in
     ///   [`Netns`](EgressTunnelMode::Netns)/[`Disabled`](EgressTunnelMode::Disabled)
     ///   mode no proxy is set (netns relies on the host routing table).
     /// * An [`EgressResolver`] is built when a tunnel is configured so the
     ///   fail-closed gate and [`egress_ip`](OutboundClient::egress_ip) read the
-    ///   leak-verified Egress_IP; `Disabled` yields `None` and the egress is
-    ///   treated as unverified (Req 51.8).
+    ///   leak-verified Egress_IP; `Disabled` yields `None` and direct networking
+    ///   is allowed without treating it as a broken tunnel.
     ///
     /// A `Proxy` mode without a `tunnel_url`, or a malformed proxy URL, is a
     /// misconfiguration and returns an error rather than silently dialling
@@ -196,8 +210,8 @@ impl OutboundClient {
     /// 51.12).
     ///
     /// Reads the resolver's lock-free cache; when no tunnel is configured the
-    /// state is [`LeakCheck::Unresolved`] so the egress is never treated as
-    /// verified.
+    /// state is [`LeakCheck::Unresolved`], but [`decision`](Self::decision)
+    /// handles that as direct mode before applying fail-closed tunnel policy.
     pub fn tunnel_state(&self) -> TunnelState {
         match &self.resolver {
             Some(resolver) => resolver.leak_check(),
@@ -205,14 +219,20 @@ impl OutboundClient {
         }
     }
 
-    /// The deterministic egress decision for the current `(policy, tunnel
-    /// state)` (Req 51.1, 51.8) — the single source of truth the dial path
-    /// consults.
+    /// The deterministic egress decision for the current direct/tunnel state
+    /// (Req 51.1, 51.8) — the single source of truth the dial path consults.
     ///
     /// Pure with respect to the snapshotted state: the same `(policy, state)`
     /// always yields the same [`EgressDecision`] (Property 62).
     pub fn decision(&self) -> EgressDecision {
+        if !self.has_configured_tunnel() {
+            return EgressDecision::DialDirect;
+        }
         decide_egress(self.policy, self.tunnel_state())
+    }
+
+    fn has_configured_tunnel(&self) -> bool {
+        self.resolver.is_some() || self.default_endpoint.is_some() || !self.per_host.is_empty()
     }
 
     /// The current leak-verified Egress_IP, or `None` when the tunnel is down /
@@ -252,9 +272,11 @@ impl OutboundClient {
     /// * [`RefuseFailClosed`](EgressDecision::RefuseFailClosed) → returns
     ///   [`fail_closed_error`] (`UpstreamUnavailable`) and constructs **no**
     ///   request, so no dial can leak the host's real IP (Req 51.8);
+    /// * [`DialDirect`](EgressDecision::DialDirect) → no tunnel is configured;
+    ///   proceeds directly;
     /// * [`DialUntunneledWithWarning`](EgressDecision::DialUntunneledWithWarning)
     ///   (fail-open only) → logs a "traffic is not tunneled" warning and
-    ///   proceeds;
+    ///   proceeds through the direct client, not the broken tunnel proxy;
     /// * [`DialTunneled`](EgressDecision::DialTunneled) → proceeds through the
     ///   verified tunnel.
     ///
@@ -270,11 +292,11 @@ impl OutboundClient {
     /// approved outbound-`HeaderMap` builder) and attach the result.
     pub fn upstream(&self, method: Method, url: &Url) -> Result<reqwest::RequestBuilder, AppError> {
         // Gate the dial on the deterministic fail-closed decision (Req 51.8).
-        self.authorize_dial(url)?;
+        let decision = self.authorize_dial(url)?;
         // Per-host/per-store tunnel selection (Req 51.9): a matched override
         // dials its own forwarding client; everything else uses the default
         // tunnelled client.
-        let client = self.client_for(url)?;
+        let client = self.client_for(url, decision)?;
         Ok(client.request(method, url.clone()))
     }
 
@@ -285,7 +307,14 @@ impl OutboundClient {
     /// client; the unmatched / default path yields the pre-built default
     /// tunnelled client (which already dials through the default endpoint, or
     /// direct in netns/disabled mode).
-    fn client_for(&self, url: &Url) -> Result<reqwest::Client, AppError> {
+    fn client_for(&self, url: &Url, decision: EgressDecision) -> Result<reqwest::Client, AppError> {
+        if matches!(
+            decision,
+            EgressDecision::DialDirect | EgressDecision::DialUntunneledWithWarning
+        ) {
+            return Ok(self.direct.clone());
+        }
+
         let selection = self.tunnel_routes.select_route(url);
         if selection.matched {
             // A specific per-host tunnel override → its own cached client.
@@ -301,18 +330,27 @@ impl OutboundClient {
     /// Cloudflare — Req 35.5), subject to the same fail-closed gate as
     /// [`upstream`](OutboundClient::upstream) (Req 51.8).
     pub fn impersonate(&self, method: Method, url: &Url) -> Result<wreq::RequestBuilder, AppError> {
-        self.authorize_dial(url)?;
+        let decision = self.authorize_dial(url)?;
+        let client = if matches!(
+            decision,
+            EgressDecision::DialDirect | EgressDecision::DialUntunneledWithWarning
+        ) {
+            &self.direct_impersonate
+        } else {
+            &self.tunneled_impersonate
+        };
         // `wreq`'s `IntoUri` is implemented for `&str`/`String`/`Uri` (not
         // `url::Url`), so hand it the already-validated URL's string form.
-        Ok(self.tunneled_impersonate.request(method, url.as_str()))
+        Ok(client.request(method, url.as_str()))
     }
 
     /// The shared fail-closed gate for both client flavours: apply the
     /// deterministic decision and either authorize the dial or refuse without
     /// building anything (Req 51.8).
-    fn authorize_dial(&self, url: &Url) -> Result<(), AppError> {
-        match self.decision() {
-            EgressDecision::DialTunneled => Ok(()),
+    fn authorize_dial(&self, url: &Url) -> Result<EgressDecision, AppError> {
+        let decision = self.decision();
+        match decision {
+            EgressDecision::DialDirect | EgressDecision::DialTunneled => Ok(decision),
             EgressDecision::DialUntunneledWithWarning => {
                 // Fail-open opt-in: proceed but make the lost isolation loud
                 // (Req 51.8). The host's real IP may be exposed upstream.
@@ -320,7 +358,7 @@ impl OutboundClient {
                     host = url.host_str().unwrap_or("<unknown>"),
                     "egress traffic is NOT tunneled (fail-open): the host's real IP may be exposed upstream",
                 );
-                Ok(())
+                Ok(decision)
             }
             EgressDecision::RefuseFailClosed => Err(fail_closed_error()),
         }
@@ -492,6 +530,10 @@ mod tests {
         ))
     }
 
+    fn unresolved_reflector() -> MockReflector {
+        MockReflector::new(None, Some(ip("198.51.100.1")))
+    }
+
     /// A resolver already refreshed to a verified, leak-free state.
     async fn verified_resolver(egress: &str, host: &str) -> Arc<EgressResolver> {
         let resolver = resolver_with(MockReflector::isolated(egress, host));
@@ -524,12 +566,28 @@ mod tests {
         }
     }
 
-    // -- Fail-closed refuses with no dial when down / leaking (Req 51.8) -----
+    // -- No tunnel configured: direct networking is normal -------------------
 
     #[test]
-    fn fail_closed_refuses_when_tunnel_unresolved() {
-        // No resolver configured -> state is Unresolved -> fail-closed refuses.
+    fn disabled_tunnel_dials_direct_even_under_fail_closed() {
         let client = client_with(EgressPolicy::FailClosed, None);
+        let target = url("https://api.real-debrid.com/");
+        let builder = client
+            .upstream(Method::GET, &target)
+            .expect("disabled egress mode must use normal direct networking");
+        assert_eq!(client.decision(), EgressDecision::DialDirect);
+        let request = builder.build().expect("request builds");
+        assert_eq!(request.url(), &target);
+    }
+
+    // -- Fail-closed refuses with no dial when a configured tunnel is down / leaking (Req 51.8) -----
+
+    #[test]
+    fn fail_closed_refuses_when_configured_tunnel_unresolved() {
+        // Resolver exists but has not verified yet -> configured tunnel is
+        // Unresolved -> fail-closed refuses.
+        let resolver = resolver_with(unresolved_reflector());
+        let client = client_with(EgressPolicy::FailClosed, Some(resolver));
         let err = client
             .upstream(Method::GET, &url("https://api.real-debrid.com/"))
             .expect_err("fail-closed must refuse when the tunnel is down");
@@ -554,7 +612,8 @@ mod tests {
 
     #[test]
     fn fail_closed_refuses_impersonation_dial_too() {
-        let client = client_with(EgressPolicy::FailClosed, None);
+        let resolver = resolver_with(unresolved_reflector());
+        let client = client_with(EgressPolicy::FailClosed, Some(resolver));
         // `wreq::RequestBuilder` is not `Debug`, so match on the result rather
         // than `expect_err` (which would require `Debug` on the Ok variant).
         let err = match client.impersonate(Method::GET, &url("https://cloudflare-host.example/")) {
@@ -568,7 +627,8 @@ mod tests {
 
     #[test]
     fn fail_open_proceeds_when_tunnel_down() {
-        let client = client_with(EgressPolicy::FailOpen, None);
+        let resolver = resolver_with(unresolved_reflector());
+        let client = client_with(EgressPolicy::FailOpen, Some(resolver));
         let target = url("https://api.real-debrid.com/");
         let builder = client
             .upstream(Method::GET, &target)
@@ -675,17 +735,19 @@ mod tests {
     // -- from_config wiring (Req 51.1, 51.8, 51.9) ---------------------------
 
     #[test]
-    fn from_config_disabled_has_no_resolver_and_fails_closed() {
+    fn from_config_disabled_has_no_resolver_and_dials_direct() {
         let cfg = EgressConfig::default(); // Disabled, FailClosed
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
         let client = OutboundClient::from_config(&cfg, reflector).expect("builds");
 
         assert!(client.resolver().is_none());
         assert_eq!(client.egress_ip(), None);
-        // Disabled tunnel + default FailClosed policy -> refuse.
+        assert_eq!(client.decision(), EgressDecision::DialDirect);
+        // Disabled tunnel means normal direct networking, even with the
+        // fail-closed policy still available for configured tunnels.
         assert!(client
             .upstream(Method::GET, &url("https://api.real-debrid.com/"))
-            .is_err());
+            .is_ok());
     }
 
     #[test]

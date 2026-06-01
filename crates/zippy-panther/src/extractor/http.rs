@@ -217,12 +217,18 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    /// An [`OutboundClient`] with no tunnel under the given policy (mirrors the
-    /// `hls::fetch` / `epg` test harness): `FailOpen` dials the in-process
-    /// wiremock origin directly; `FailClosed` refuses with no dial.
+    /// An [`OutboundClient`] under the given policy. `FailOpen` with no tunnel
+    /// dials the in-process wiremock origin directly; `FailClosed` uses a
+    /// configured-but-unverified proxy tunnel so the egress seam refuses before
+    /// any dial.
     fn outbound(policy: EgressPolicy) -> Arc<OutboundClient> {
         let cfg = EgressConfig {
-            tunnel_mode: EgressTunnelMode::Disabled,
+            tunnel_mode: match policy {
+                EgressPolicy::FailOpen => EgressTunnelMode::Disabled,
+                EgressPolicy::FailClosed => EgressTunnelMode::Proxy,
+            },
+            tunnel_url: (policy == EgressPolicy::FailClosed)
+                .then(|| "http://proxy:8888".to_string()),
             policy,
             ..EgressConfig::default()
         };

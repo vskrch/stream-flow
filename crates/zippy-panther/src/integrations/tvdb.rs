@@ -241,7 +241,12 @@ mod tests {
 
     fn outbound(policy: EgressPolicy) -> Arc<OutboundClient> {
         let cfg = EgressConfig {
-            tunnel_mode: EgressTunnelMode::Disabled,
+            tunnel_mode: match policy {
+                EgressPolicy::FailOpen => EgressTunnelMode::Disabled,
+                EgressPolicy::FailClosed => EgressTunnelMode::Proxy,
+            },
+            tunnel_url: (policy == EgressPolicy::FailClosed)
+                .then(|| "http://proxy:8888".to_string()),
             policy,
             ..EgressConfig::default()
         };

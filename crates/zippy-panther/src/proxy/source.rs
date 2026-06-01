@@ -425,21 +425,23 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    /// Build an [`OutboundClient`] with no tunnel configured under `policy`.
+    /// Build an [`OutboundClient`] under `policy`.
     ///
-    /// * `FailOpen` → the egress decision is "dial untunnelled (with a
-    ///   warning)", so the source dials the in-process `wiremock` origin
-    ///   directly — exercising the real HTTP open/connect path with no network
-    ///   dependency.
-    /// * `FailClosed` → the egress decision is "refuse with no dial", used to
-    ///   prove the source reaches the network *only* through the gated seam.
+    /// * `FailOpen` → no tunnel is configured, so the source dials the
+    ///   in-process `wiremock` origin directly.
+    /// * `FailClosed` → a proxy tunnel is configured but unverified, so the
+    ///   egress seam refuses with no dial.
     fn outbound(policy: EgressPolicy) -> Arc<OutboundClient> {
         let cfg = EgressConfig {
-            tunnel_mode: EgressTunnelMode::Disabled,
+            tunnel_mode: match policy {
+                EgressPolicy::FailOpen => EgressTunnelMode::Disabled,
+                EgressPolicy::FailClosed => EgressTunnelMode::Proxy,
+            },
+            tunnel_url: (policy == EgressPolicy::FailClosed)
+                .then(|| "http://proxy:8888".to_string()),
             policy,
             ..EgressConfig::default()
         };
-        // Disabled mode never consults the reflector; supply a mock anyway.
         let reflector = Arc::new(MockReflector::isolated("203.0.113.7", "198.51.100.1"));
         Arc::new(OutboundClient::from_config(&cfg, reflector).expect("builds"))
     }
@@ -537,7 +539,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_is_refused_by_fail_closed_egress_with_no_dial() {
-        // No tunnel + FailClosed (the safe default) → the seam refuses.
+        // Configured tunnel + FailClosed before verification -> the seam refuses.
         let source = DirectSource::new(
             outbound(EgressPolicy::FailClosed),
             url("https://cdn.example/v.mp4"),

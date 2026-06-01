@@ -42,6 +42,15 @@ async fn main() -> std::io::Result<()> {
     let workers = config.server.workers;
     let state = AppState::new(config);
 
+    let egress_resolver_handle = if let Some(resolver) = state.egress().resolver().cloned() {
+        resolver.refresh().await;
+        Some(tokio::spawn(async move {
+            resolver.run_refresh_loop().await;
+        }))
+    } else {
+        None
+    };
+
     let sampler_handle = SysinfoRssReader::new().map(|reader| {
         tokio::spawn(
             RssSampler::new(
@@ -67,6 +76,9 @@ async fn main() -> std::io::Result<()> {
 
     let result = server.await;
     if let Some(handle) = sampler_handle {
+        handle.abort();
+    }
+    if let Some(handle) = egress_resolver_handle {
         handle.abort();
     }
     result

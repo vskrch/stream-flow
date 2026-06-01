@@ -223,22 +223,19 @@ impl AppState {
 /// Build the egress [`OutboundClient`] from the loaded [`Config`] for the
 /// infallible [`AppState`] constructors (Req 51.1).
 ///
-/// Production wires the egress resolver's refresh loop under the supervisor and
-/// constructs the client via [`AppState::with_health_and_egress`]; this helper
-/// backs the default / skeleton path. A misconfigured egress (e.g. proxy mode
-/// without a `tunnel_url`) is logged and falls back to a **disabled,
-/// fail-closed** client rather than aborting state construction — under the
-/// fail-closed default that client refuses every dial and exposes no Egress_IP,
-/// so it never leaks the host's real IP (Req 51.8).
+/// Production may spawn the egress resolver's refresh loop when a tunnel is
+/// configured. A misconfigured egress (e.g. proxy mode without a `tunnel_url`)
+/// is logged and falls back to disabled/direct networking rather than aborting
+/// state construction, so the app still works without WARP or a proxy.
 fn build_egress(config: &Config) -> OutboundClient {
     let reflector = match HttpIpReflector::from_config(&config.egress) {
         Ok(reflector) => Arc::new(reflector),
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "egress IP-reflector misconfigured; falling back to a disabled fail-closed egress",
+                "egress IP-reflector misconfigured; falling back to disabled direct egress",
             );
-            return disabled_fail_closed_egress();
+            return disabled_direct_egress();
         }
     };
     match OutboundClient::from_config(&config.egress, reflector) {
@@ -246,17 +243,17 @@ fn build_egress(config: &Config) -> OutboundClient {
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "egress OutboundClient misconfigured; falling back to a disabled fail-closed egress",
+                "egress OutboundClient misconfigured; falling back to disabled direct egress",
             );
-            disabled_fail_closed_egress()
+            disabled_direct_egress()
         }
     }
 }
 
-/// A disabled, fail-closed [`OutboundClient`] used as the safe fallback when
-/// the configured egress cannot be built (Req 51.8). It has no tunnel, so it
-/// refuses every dial and reports no Egress_IP.
-fn disabled_fail_closed_egress() -> OutboundClient {
+/// A disabled/direct [`OutboundClient`] used as the fallback when the configured
+/// egress cannot be built. It has no tunnel and reports no Egress_IP, but
+/// upstream calls still work over normal networking.
+fn disabled_direct_egress() -> OutboundClient {
     let cfg = crate::config::EgressConfig {
         tunnel_mode: crate::config::EgressTunnelMode::Disabled,
         policy: crate::config::EgressPolicy::FailClosed,

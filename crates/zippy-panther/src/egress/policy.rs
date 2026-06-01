@@ -40,10 +40,15 @@ use super::tunnel::LeakCheck;
 ///
 /// Produced by [`decide_egress`] and consumed by `OutboundClient::upstream`
 /// (task 8.3): a [`RefuseFailClosed`](EgressDecision::RefuseFailClosed)
-/// short-circuits the dial with [`fail_closed_error`], while the two `Dial*`
-/// variants proceed (the untunneled one additionally emitting a warning).
+/// short-circuits the dial with [`fail_closed_error`], while the `Dial*`
+/// variants proceed. `DialDirect` is reserved for callers that know no tunnel
+/// is configured at all; [`decide_egress`] itself only evaluates configured
+/// tunnel state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EgressDecision {
+    /// Dial the upstream directly because no egress tunnel is configured. This
+    /// is normal operation for `tunnel_mode=disabled`, not a failed tunnel.
+    DialDirect,
     /// Dial the upstream **through the verified, leak-free tunnel** — the
     /// tunnel is healthy, so the request egresses from the Egress_IP. Reached
     /// under either policy when the state is [`LeakCheck::Verified`].
@@ -61,12 +66,13 @@ pub enum EgressDecision {
 }
 
 impl EgressDecision {
-    /// `true` when this decision results in an outbound dial (either tunneled
-    /// or — under fail-open — untunneled).
+    /// `true` when this decision results in an outbound dial.
     pub fn dials(self) -> bool {
         matches!(
             self,
-            EgressDecision::DialTunneled | EgressDecision::DialUntunneledWithWarning
+            EgressDecision::DialDirect
+                | EgressDecision::DialTunneled
+                | EgressDecision::DialUntunneledWithWarning
         )
     }
 

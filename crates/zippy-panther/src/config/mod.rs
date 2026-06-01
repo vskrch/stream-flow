@@ -560,7 +560,8 @@ pub struct PeerConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum EgressTunnelMode {
     /// No tunnel configured (default). Enforcement of fail-closed behaviour
-    /// against this state lands in the egress layer (task 8).
+    /// applies only to configured tunnels; disabled mode uses ordinary direct
+    /// networking.
     #[default]
     Disabled,
     /// Dial through an HTTP/SOCKS proxy.
@@ -588,7 +589,7 @@ pub struct EgressConfig {
     pub tunnel_mode: EgressTunnelMode,
     /// Tunnel URL (proxy mode) or namespace identifier (netns mode).
     pub tunnel_url: Option<String>,
-    /// Fail-closed (default) vs fail-open behaviour.
+    /// Fail-closed (default) vs fail-open behaviour for configured tunnels.
     pub policy: EgressPolicy,
     /// IP-reflection service queried *through the tunnel* to learn the
     /// Egress_IP (Req 51.5).

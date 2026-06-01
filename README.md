@@ -23,7 +23,7 @@
 
 ## What is ZippyPanther?
 
-ZippyPanther is a **unified streaming proxy and debrid-service orchestration engine** purpose-built for [Stremio](https://www.stremio.com/). It acts as the middleware layer between Stremio clients and third-party debrid providers, proxying media streams, resolving torrent magnets, generating secure proxy links, and exposing Stremio-addon-compatible APIs — all while keeping your real IP hidden behind a fail-closed egress tunnel.
+ZippyPanther is a **unified streaming proxy and debrid-service orchestration engine** purpose-built for [Stremio](https://www.stremio.com/). It acts as the middleware layer between Stremio clients and third-party debrid providers, proxying media streams, resolving torrent magnets, generating secure proxy links, and exposing Stremio-addon-compatible APIs, with optional WARP/proxy egress isolation.
 
 Think of it as the **traffic controller** for your personal media infrastructure: it manages 9 debrid services, transparently handles HLS/DASH manifest rewriting, decrypts ClearKey DRM, transcodes on the fly, and provides a dual-surface HTTP API compatible with both `mediaflow-proxy-light` and `stremthru` clients.
 
@@ -56,7 +56,7 @@ Each service implements a unified `Store` trait with normalized error mapping, m
 
 ### 🛡️ Egress Isolation & Security
 
-- **Single outbound seam** — every upstream HTTP call flows through `OutboundClient` (fail-closed by default)
+- **Single outbound seam** — every upstream HTTP call flows through `OutboundClient`; no-tunnel mode dials normally, configured tunnels can run fail-closed or fail-open
 - **Egress tunnel** — proxy mode (HTTP/SOCKS) or network namespace, with leak-verified IP reflection
 - **Client-IP sanitization** — 9 named headers stripped + by-value IP matching, built-in `sanitize_outbound`
 - **SSRF guard** — configurable allowlist/denylist, private-range blocking, body-size caps (50 MiB / 10 MiB)
@@ -186,7 +186,7 @@ The server exposes **two path namespaces** on a single listener, sharing one `Ap
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        Outbound (Egress) Seam                                │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  OutboundClient (single outbound seam, fail-closed by default)       │   │
+│  │  OutboundClient (single outbound seam, direct or tunneled egress)    │   │
 │  │  ┌──────────────────┐  ┌────────────────┐  ┌──────────────────────┐ │   │
 │  │  │  reqwest (rustls)│  │  wreq (Boring) │  │  EgressResolver      │ │   │
 │  │  │  default client  │  │  Chrome JA3/4  │  │  ipify reflection    │ │   │
@@ -347,6 +347,8 @@ APP__SERVER__PATH_PREFIX=/my-prefix
 # Egress tunnel (SOCKS5 proxy for all outbound traffic)
 APP__EGRESS__TUNNEL_MODE=proxy
 APP__EGRESS__TUNNEL_URL=socks5://127.0.0.1:9050
+# Optional: fail-open falls back to normal networking if the tunnel is down.
+APP__EGRESS__POLICY=fail-open
 
 # Redis cache
 APP__CACHE__REDIS_URL=redis://localhost:6379
@@ -372,7 +374,7 @@ port = 8080
 [egress]
 tunnel_mode = "proxy"
 tunnel_url = "socks5://127.0.0.1:9050"
-policy = "fail-closed"
+policy = "fail-open"
 
 [cache]
 redis_url = "redis://localhost:6379"
@@ -386,7 +388,7 @@ namespace = "ZippyPanther"
 | `server` | `host`, `port`, `workers`, `path_prefix` | `127.0.0.1:8080` |
 | `proxy` | `connect_timeout`, `buffer_size`, `follow_redirects`, `transport_routes` | 30s/256KiB |
 | `auth` | `api_password` **(required)** , `proxy_auth`, `admins` | — |
-| `egress` | `tunnel_mode`, `tunnel_url`, `policy`, `ip_reflection_url` | Disabled/FailClosed |
+| `egress` | `tunnel_mode`, `tunnel_url`, `policy`, `ip_reflection_url` | Disabled/direct, FailClosed when a tunnel is configured |
 | `cache` | `redis_url`, `namespace`, `default_ttl_secs` | Local only, 5 min |
 | `db` | `path`, `busy_timeout_secs`, `max_connections` | `ZippyPanther.db`, 5s |
 | `hls` | `prebuffer_segments`, `segment_cache_ttl_secs` | 5, 5 min |
@@ -586,7 +588,7 @@ CONFIG_PATH=./config.toml cargo run -p zippy-panther-bin
 
 ### Design Principles
 
-- **Single outbound seam** — every upstream HTTP call flows through `OutboundClient` with fail-closed egress
+- **Single outbound seam** — every upstream HTTP call flows through `OutboundClient` with direct mode or configured tunnel policy
 - **Unified error taxonomy** — 14 error categories, each with a deterministic HTTP status and retryability
 - **Composable resilience** — `Deadline → Bulkhead → Breaker → Retry` stack layered via combinators
 - **Dual-surface parity** — both mediaflow and stremthru surfaces share identical `AppState` and internal handlers
