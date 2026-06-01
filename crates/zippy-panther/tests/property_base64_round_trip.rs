@@ -1,6 +1,6 @@
 //! Property-based test for the base64 round trip (task 20.3).
 //!
-//! Feature: stream-flow, Property 7
+//! Feature: ZippyPanther, Property 7
 //!
 //! **Property 7: Base64 round trip**
 //!
@@ -13,7 +13,7 @@
 //! base64 utilities backing the mediaflow `/base64/{encode,decode,check}`
 //! surface must round-trip losslessly.
 //!
-//! This exercises the public [`stream_flow::utils::base64`] helpers across the
+//! This exercises the public [`zippy_panther::utils::base64`] helpers across the
 //! full input space — arbitrary byte vectors, including empty, all-`0x00`, and
 //! all-`0xFF` payloads whose standard-base64 encoding uses every character of
 //! the alphabet — and asserts:
@@ -29,7 +29,7 @@
 //!   encoding).
 
 use proptest::prelude::*;
-use stream_flow::utils::base64::{decode, encode, is_valid};
+use zippy_panther::utils::base64::{decode, encode, is_valid};
 
 /// Canonical padded standard-base64 length for `n` input bytes:
 /// `4 * ceil(n / 3)`.
@@ -41,7 +41,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 7 — base64 round trip.
+    /// Feature: ZippyPanther, Property 7 — base64 round trip.
     /// **Validates: Requirements 15.3, 15.4, 15.5, 15.6, 48.3**
     #[test]
     fn base64_decode_is_left_inverse_of_encode(input in proptest::collection::vec(any::<u8>(), 0..512)) {

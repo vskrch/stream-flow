@@ -3,7 +3,7 @@
 //! Resolves a streaming *page* URL on one of the 24 supported video hosts
 //! (Req 12.1) into a direct, playable media URL plus the request headers
 //! required to play it (Req 12.2); the HTTP edge then wraps that into a
-//! `stream-flow` proxy URL with the headers attached (Req 12.3). All upstream
+//! `ZippyPanther` proxy URL with the headers attached (Req 12.3). All upstream
 //! page I/O goes through the single egress seam
 //! ([`OutboundClient`](crate::egress::OutboundClient)) so every fetch is
 //! tunnelled and client-IP-stripped (Req 51.1–51.3).

@@ -1,6 +1,6 @@
 //! Property-based test for deadline bounding of external operations (task 6.8).
 //!
-//! Feature: stream-flow, Property 53
+//! Feature: ZippyPanther, Property 53
 //!
 //! **Property 53: Deadline bounding of external operations**
 //!
@@ -14,9 +14,9 @@
 //!
 //! **Validates: Requirements 50.9, 35.4**
 //!
-//! The unit under test is [`stream_flow::resilience::deadline`]:
-//! [`with_deadline`](stream_flow::resilience::with_deadline), the
-//! [`Deadline`](stream_flow::resilience::Deadline) type, and its
+//! The unit under test is [`zippy_panther::resilience::deadline`]:
+//! [`with_deadline`](zippy_panther::resilience::with_deadline), the
+//! [`Deadline`](zippy_panther::resilience::Deadline) type, and its
 //! `remaining()` / `clamp_backoff()` budget helpers.
 //!
 //! ## Deterministic fake clock under synchronous proptest cases
@@ -36,9 +36,9 @@ use std::time::Duration;
 
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::resilience::{with_deadline, Deadline};
 use tokio::time::Instant;
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::resilience::{with_deadline, Deadline};
 
 /// Bounded small durations (milliseconds) for both the deadline `d` and the
 /// simulated op completion time `t`. The range deliberately includes `0`
@@ -64,7 +64,7 @@ proptest! {
     // fake clock, so this stays fast despite simulating multi-second timeouts.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 53 — deadline bounding of external
+    /// Feature: ZippyPanther, Property 53 — deadline bounding of external
     /// operations. **Validates: Requirements 50.9, 35.4**
     ///
     /// For generated `d` (deadline) and `t` (op completion time), drive a
@@ -91,7 +91,7 @@ proptest! {
 
             let outcome = with_deadline(deadline, async move {
                 tokio::time::sleep(t).await;
-                Ok::<u64, stream_flow::errors::AppError>(token)
+                Ok::<u64, zippy_panther::errors::AppError>(token)
             })
             .await;
 
@@ -160,7 +160,7 @@ proptest! {
         result?;
     }
 
-    /// Feature: stream-flow, Property 53 — companion budget invariant
+    /// Feature: ZippyPanther, Property 53 — companion budget invariant
     /// (Pattern 10 ↔ Pattern 2): a clamped backoff delay never exceeds the
     /// deadline's `remaining()` budget, for **any** proposed delay and at any
     /// point along the deadline's lifetime. **Validates: Requirements 35.4, 50.9**

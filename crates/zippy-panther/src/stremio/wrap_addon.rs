@@ -1,7 +1,7 @@
 //! Wrap addon (`stremio::wrap_addon`) — Req 24.
 //!
 //! The Wrap addon turns one or more **upstream** Stremio addons into a single
-//! addon served through stream-flow. It:
+//! addon served through ZippyPanther. It:
 //!
 //! * **aggregates the upstream manifests** into one [`Manifest`] declaring the
 //!   union of their resources, content types, id prefixes, and catalogs
@@ -11,7 +11,7 @@
 //!   (Req 24.2);
 //! * **applies a configured [`Transformer`]** to the aggregated upstream
 //!   response before returning it (Req 24.3);
-//! * **rewrites every playable [`Stream`] URL to a stream-flow proxy link**
+//! * **rewrites every playable [`Stream`] URL to a ZippyPanther proxy link**
 //!   ([`ProxyCodec`]-encoded `d` parameter pointing at `/proxy/stream`) so the
 //!   bytes flow through the Streaming_Proxy_Engine with the configured
 //!   encryption, header injection, DRM decryption, and transcoding applied
@@ -30,7 +30,7 @@
 //! The module ships four named concrete [`Transformer`] implementations that
 //! can be composed into an ordered pipeline via [`ComposedTransformer`]:
 //!
-//! * [`ProxyLinkTransformer`] — rewrites every stream URL to a stream-flow
+//! * [`ProxyLinkTransformer`] — rewrites every stream URL to a ZippyPanther
 //!   proxy link (the core rewrite, Req 24.4). This is the default transformer
 //!   applied by [`WrapAddon::rewrite_stream`]; the named type lets callers
 //!   compose it explicitly in a pipeline.
@@ -88,9 +88,9 @@ impl Default for WrapManifestMeta {
     fn default() -> Self {
         Self {
             id: "st:wrap".to_string(),
-            name: "stream-flow Wrap".to_string(),
+            name: "ZippyPanther Wrap".to_string(),
             version: "0.1.0".to_string(),
-            description: "Wraps upstream Stremio addons through stream-flow".to_string(),
+            description: "Wraps upstream Stremio addons through ZippyPanther".to_string(),
         }
     }
 }
@@ -149,7 +149,7 @@ impl UpstreamAddon {
     }
 }
 
-/// How an upstream [`Stream`] URL is rewritten into a stream-flow proxy link
+/// How an upstream [`Stream`] URL is rewritten into a ZippyPanther proxy link
 /// (Req 24.4).
 ///
 /// The upstream media URL is sealed into an AES-CBC `d` proxy parameter
@@ -160,7 +160,7 @@ impl UpstreamAddon {
 /// playback.
 #[derive(Clone, Debug)]
 pub struct ProxyRewriteConfig {
-    /// The stream-flow public base URL the proxy links point at (no trailing
+    /// The ZippyPanther public base URL the proxy links point at (no trailing
     /// slash).
     pub base_url: String,
     /// Headers injected on every proxied upstream request (header injection).
@@ -174,7 +174,7 @@ pub struct ProxyRewriteConfig {
 }
 
 impl ProxyRewriteConfig {
-    /// Build a rewrite config pointing at the given stream-flow base URL
+    /// Build a rewrite config pointing at the given ZippyPanther base URL
     /// (trailing slashes stripped).
     pub fn new(base_url: impl Into<String>) -> Self {
         let mut base = base_url.into();
@@ -404,7 +404,7 @@ impl WrapAddon {
     }
 
     /// Rewrite a single upstream [`Stream`] so its playable URL flows through
-    /// the stream-flow proxy (Req 24.4), **preserving the stream's
+    /// the ZippyPanther proxy (Req 24.4), **preserving the stream's
     /// `behaviorHints` unchanged** (Req 24.5).
     ///
     /// A stream with no HTTP `url` (an `infoHash` / `ytId` / external stream)
@@ -435,7 +435,7 @@ impl WrapAddon {
 // Concrete transformer implementations (Req 24.3, 24.4)
 // ---------------------------------------------------------------------------
 
-/// A transformer that rewrites every stream URL to a stream-flow proxy link
+/// A transformer that rewrites every stream URL to a ZippyPanther proxy link
 /// (Req 24.4).
 ///
 /// This is the named, composable form of the rewrite that [`WrapAddon`] applies
@@ -706,7 +706,7 @@ impl Transformer for ComposedTransformer {
 // ---------------------------------------------------------------------------
 
 /// Rewrite a single upstream [`Stream`] so its playable URL flows through the
-/// stream-flow proxy (Req 24.4), **preserving the stream's `behaviorHints`
+/// ZippyPanther proxy (Req 24.4), **preserving the stream's `behaviorHints`
 /// unchanged** (Req 24.5).
 ///
 /// This is the shared implementation used by both [`WrapAddon::rewrite_stream`]
@@ -813,7 +813,7 @@ fn build_wrap_addon(req: &HttpRequest, state: &AppState) -> WrapAddon {
         .stremio
         .addon_name
         .clone()
-        .unwrap_or_else(|| "stream-flow Wrap".to_string());
+        .unwrap_or_else(|| "ZippyPanther Wrap".to_string());
     let meta = WrapManifestMeta {
         name,
         ..WrapManifestMeta::default()
@@ -1091,7 +1091,7 @@ mod tests {
         let resp = wrap.get_streams("movie", "tt0111161").await;
         assert_eq!(resp.streams.len(), 2, "both upstreams aggregated");
 
-        // Req 24.4: every returned Stream URL is a stream-flow proxy link.
+        // Req 24.4: every returned Stream URL is a ZippyPanther proxy link.
         for s in &resp.streams {
             let u = s.url.as_ref().expect("stream has a url");
             assert!(
@@ -1139,7 +1139,7 @@ mod tests {
     async fn rewrite_applies_configured_headers_transcode_and_drm() {
         let mut cfg = ProxyRewriteConfig::new("https://flow.example.com");
         cfg.inject_headers
-            .insert("User-Agent".into(), "stream-flow".into());
+            .insert("User-Agent".into(), "ZippyPanther".into());
         cfg.enable_transcode = true;
         cfg.drm_key_ids.insert("kid1".into(), "deadbeef".into());
 
@@ -1164,7 +1164,7 @@ mod tests {
 
         let payload = decode_proxy_url(&codec(), &u);
         assert_eq!(payload.url, "https://cdn.example.com/v.mkv");
-        assert_eq!(payload.headers.get("User-Agent").unwrap(), "stream-flow");
+        assert_eq!(payload.headers.get("User-Agent").unwrap(), "ZippyPanther");
     }
 
     // -- Req 24.3: a configured transformer is applied before returning ------
@@ -1405,7 +1405,7 @@ mod tests {
     #[test]
     fn header_injection_transformer_injects_headers() {
         let mut headers = BTreeMap::new();
-        headers.insert("User-Agent".into(), "stream-flow/1.0".into());
+        headers.insert("User-Agent".into(), "ZippyPanther/1.0".into());
         headers.insert("Referer".into(), "https://example.com/".into());
         let transformer = HeaderInjectionTransformer::new(headers);
 
@@ -1421,7 +1421,7 @@ mod tests {
             .as_ref()
             .expect("proxy_headers set")
             .request;
-        assert_eq!(req_headers.get("User-Agent").unwrap(), "stream-flow/1.0");
+        assert_eq!(req_headers.get("User-Agent").unwrap(), "ZippyPanther/1.0");
         assert_eq!(req_headers.get("Referer").unwrap(), "https://example.com/");
     }
 

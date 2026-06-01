@@ -1,7 +1,7 @@
 //! Property-based test for HTTP Basic proxy-auth (`Auth::verify_proxy_auth`,
 //! task 9.3).
 //!
-//! Feature: stream-flow, Property 27
+//! Feature: ZippyPanther, Property 27
 //!
 //! **Property 27: HTTP Basic proxy-auth accepts plain and base64 forms**
 //!
@@ -20,7 +20,7 @@
 //! Each case builds an [`Auth`] from a configured set of unique-username
 //! `user:pass` Proxy_Auth credentials (the table the verifier checks against)
 //! and asserts the two halves of Property 27 on
-//! [`Auth::verify_proxy_auth`](stream_flow::auth::Auth::verify_proxy_auth):
+//! [`Auth::verify_proxy_auth`](zippy_panther::auth::Auth::verify_proxy_auth):
 //!
 //! * **Acceptance (Req 28.2):** for every configured credential, presenting
 //!   *both* the plain `user:pass` form *and* its base64-encoded form (each also
@@ -33,7 +33,7 @@
 //!   same way.
 //!
 //! The verifier is also **total**: it returns either `Ok(UserId)` or a typed
-//! [`AppError`](stream_flow::errors::AppError) without ever panicking (proptest
+//! [`AppError`](zippy_panther::errors::AppError) without ever panicking (proptest
 //! fails the property on any panic).
 
 use std::collections::BTreeMap;
@@ -41,9 +41,9 @@ use std::collections::BTreeMap;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use proptest::prelude::*;
-use stream_flow::auth::{Auth, UserId};
-use stream_flow::config::AuthConfig;
-use stream_flow::errors::ErrorCategory;
+use zippy_panther::auth::{Auth, UserId};
+use zippy_panther::config::AuthConfig;
+use zippy_panther::errors::ErrorCategory;
 
 /// Build an [`Auth`] whose Proxy_Auth table is exactly `creds`
 /// (`username -> password`), mirroring how the config layer populates
@@ -94,7 +94,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 27 — every configured `user:pass`
+    /// Feature: ZippyPanther, Property 27 — every configured `user:pass`
     /// credential validates in both its plain and base64-encoded forms.
     /// **Validates: Requirements 28.2**
     #[test]
@@ -160,7 +160,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 27 — any value that is not one of the
+    /// Feature: ZippyPanther, Property 27 — any value that is not one of the
     /// configured credentials (in either form) is rejected with a `403` + the
     /// authenticate challenge. **Validates: Requirements 28.2**
     #[test]

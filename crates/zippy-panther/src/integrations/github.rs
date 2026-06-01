@@ -92,7 +92,7 @@ async fn fetch_raw_content(client: &OutboundClient, raw_url: &str) -> Result<Byt
     let resp = client
         .upstream(Method::GET, &url)?
         .header("Accept", "application/json, text/plain, */*")
-        .header("User-Agent", "stream-flow/1.0")
+        .header("User-Agent", "ZippyPanther/1.0")
         .send()
         .await
         .map_err(|e| map_reqwest_error(INTEGRATION_GITHUB, e))?;

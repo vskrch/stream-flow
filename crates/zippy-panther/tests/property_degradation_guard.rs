@@ -1,7 +1,7 @@
 //! Property-based test for the Degradation Guard's pure decision logic
 //! (task 11.5).
 //!
-//! Feature: stream-flow, Property 46
+//! Feature: ZippyPanther, Property 46
 //!
 //! **Property 46: Degradation guard state transitions**
 //!
@@ -17,9 +17,9 @@
 //!
 //! The component under test is the pure, plain-data decision pair exported from
 //! the crate's public HTTP surface:
-//! [`stream_flow::http::next_load_state`] (the hysteresis-aware
+//! [`zippy_panther::http::next_load_state`] (the hysteresis-aware
 //! `Normal ⇄ Degraded` transition, Req 44.1/44.4) and
-//! [`stream_flow::http::shed_new_request`] (the per-class admission decision,
+//! [`zippy_panther::http::shed_new_request`] (the per-class admission decision,
 //! Req 44.1/44.3). Because both are pure functions over a generated snapshot,
 //! the property drives them directly with no actix runtime, atomics, clock, or
 //! mocking.
@@ -47,8 +47,8 @@
 //!   `Sheddable`, and the state sheds traffic.
 
 use proptest::prelude::*;
-use stream_flow::health::LoadState;
-use stream_flow::http::{next_load_state, shed_new_request, LoadThresholds, RequestClass};
+use zippy_panther::health::LoadState;
+use zippy_panther::http::{next_load_state, shed_new_request, LoadThresholds, RequestClass};
 
 /// The two coarse load states the basic guard reports (the full L1–L5 ladder
 /// lands in task 29).
@@ -186,7 +186,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 46 — degradation guard state transitions.
+    /// Feature: ZippyPanther, Property 46 — degradation guard state transitions.
     /// **Validates: Requirements 44.1, 44.3, 44.4**
     #[test]
     fn degradation_guard_state_transitions(case in arb_case()) {

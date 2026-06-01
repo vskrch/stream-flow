@@ -1,6 +1,6 @@
 //! Property-based test for store list `limit` clamping (task 24.6, Property 22).
 //!
-//! Feature: stream-flow, Property 22
+//! Feature: ZippyPanther, Property 22
 //!
 //! **Property 22: List limit clamping**
 //!
@@ -20,7 +20,7 @@
 //! ## How the invariant is exercised
 //!
 //! The implementation under test is
-//! [`stream_flow::store::ListMagnetsParams::new`] (and its helper
+//! [`zippy_panther::store::ListMagnetsParams::new`] (and its helper
 //! [`ListMagnetsParams::clamp_limit`]), which applies the canonical clamp:
 //! a `None` limit becomes `LIMIT_DEFAULT` (100), any supplied value is clamped
 //! to the nearest bound in `[LIMIT_MIN, LIMIT_MAX]` = `[1, 500]`, and a `None`
@@ -36,7 +36,7 @@
 //!    offset passes through unchanged.
 
 use proptest::prelude::*;
-use stream_flow::store::{Ctx, ListMagnetsParams};
+use zippy_panther::store::{Ctx, ListMagnetsParams};
 
 const LIMIT_MIN: u32 = ListMagnetsParams::LIMIT_MIN;
 const LIMIT_MAX: u32 = ListMagnetsParams::LIMIT_MAX;
@@ -65,7 +65,7 @@ fn arb_limit() -> impl Strategy<Value = u32> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
 
-    /// Feature: stream-flow, Property 22 — clamped limit is always within `[1,500]`.
+    /// Feature: ZippyPanther, Property 22 — clamped limit is always within `[1,500]`.
     /// **Validates: Requirements 17.9**
     ///
     /// For any `Option<u32>` limit (present or absent), the resulting
@@ -83,7 +83,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 22 — absent limit yields the default (100).
+    /// Feature: ZippyPanther, Property 22 — absent limit yields the default (100).
     /// **Validates: Requirements 17.4**
     ///
     /// A `None` limit always resolves to `LIMIT_DEFAULT` (100), independent of
@@ -95,7 +95,7 @@ proptest! {
         prop_assert_eq!(params.limit, 100);
     }
 
-    /// Feature: stream-flow, Property 22 — below-range values clamp up to 1.
+    /// Feature: ZippyPanther, Property 22 — below-range values clamp up to 1.
     /// **Validates: Requirements 17.9**
     ///
     /// Any supplied value `<= LIMIT_MIN` (i.e. `0` or `1`) yields exactly `1`.
@@ -114,7 +114,7 @@ proptest! {
         prop_assert_eq!(ListMagnetsParams::clamp_limit(limit), LIMIT_MIN);
     }
 
-    /// Feature: stream-flow, Property 22 — above-range values clamp down to 500.
+    /// Feature: ZippyPanther, Property 22 — above-range values clamp down to 500.
     /// **Validates: Requirements 17.9**
     ///
     /// Any supplied value `>= LIMIT_MAX` (500 up to `u32::MAX`) yields exactly
@@ -133,7 +133,7 @@ proptest! {
         prop_assert_eq!(ListMagnetsParams::clamp_limit(limit), LIMIT_MAX);
     }
 
-    /// Feature: stream-flow, Property 22 — in-range values pass through unchanged.
+    /// Feature: ZippyPanther, Property 22 — in-range values pass through unchanged.
     /// **Validates: Requirements 17.9**
     ///
     /// Any value strictly within `[1, 500]` is returned exactly as supplied.
@@ -150,7 +150,7 @@ proptest! {
         prop_assert_eq!(ListMagnetsParams::clamp_limit(limit), limit);
     }
 
-    /// Feature: stream-flow, Property 22 — offset defaults to 0 and otherwise
+    /// Feature: ZippyPanther, Property 22 — offset defaults to 0 and otherwise
     /// passes through.
     /// **Validates: Requirements 17.4**
     ///

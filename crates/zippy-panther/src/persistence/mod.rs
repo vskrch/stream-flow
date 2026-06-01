@@ -1,6 +1,6 @@
 //! Persistence (`persistence`) — embedded SQLite via `sqlx` (Req 29).
 //!
-//! `stream-flow` persists all application data to an **embedded SQLite**
+//! `ZippyPanther` persists all application data to an **embedded SQLite**
 //! database (no external DB server — Req 29.1), accessed through a
 //! [`sqlx::SqlitePool`]. This module owns the pool builder: it translates a
 //! [`DbConfig`] into the [`SqliteConnectOptions`] the design mandates and
@@ -32,7 +32,7 @@
 //!
 //! ## Migrations (Req 29.2, 29.3, 29.4)
 //!
-//! Versioned SQL files in `crates/stream-flow/migrations/` are embedded into
+//! Versioned SQL files in `crates/zippy-panther/migrations/` are embedded into
 //! the binary at compile time with [`sqlx::migrate!`] and run at startup,
 //! **before serving requests**, by [`run_migrations`] (design: Database ->
 //! Migration mechanism). `sqlx`'s `_sqlx_migrations` table records the applied
@@ -81,7 +81,7 @@ pub use repo::{busy_retry_policy, classify_sqlx_error, Repos};
 pub use vault::Vault;
 
 /// The embedded set of versioned migrations, resolved at **compile time** from
-/// `crates/stream-flow/migrations/` (design: Database -> Migration mechanism;
+/// `crates/zippy-panther/migrations/` (design: Database -> Migration mechanism;
 /// Req 29.2).
 ///
 /// `sqlx::migrate!()` reads the SQL files relative to `CARGO_MANIFEST_DIR`
@@ -218,7 +218,7 @@ mod tests {
     /// / `-shm` sidecars) outlive the test body.
     fn temp_db(busy_timeout_secs: u64, max_connections: u32) -> (tempfile::TempDir, DbConfig) {
         let dir = tempdir().expect("create temp dir");
-        let path = dir.path().join("stream-flow-test.db");
+        let path = dir.path().join("ZippyPanther-test.db");
         let cfg = DbConfig {
             path: path.to_string_lossy().into_owned(),
             busy_timeout_secs,
@@ -317,7 +317,7 @@ mod tests {
     #[tokio::test]
     async fn database_file_is_created_when_missing() {
         let (dir, cfg) = temp_db(5, 5);
-        let db_path = dir.path().join("stream-flow-test.db");
+        let db_path = dir.path().join("ZippyPanther-test.db");
         assert!(
             !db_path.exists(),
             "precondition: db file absent before build"

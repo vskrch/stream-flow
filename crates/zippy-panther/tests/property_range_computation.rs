@@ -1,6 +1,6 @@
 //! Property-based test for generic byte-range computation (task 13.4).
 //!
-//! Feature: stream-flow, Property 1
+//! Feature: ZippyPanther, Property 1
 //!
 //! **Property 1: Generic range computation correctness and 416**
 //!
@@ -20,8 +20,8 @@
 //! Requirement 37.16: a suffix range (`bytes=-N`) returns the final `N` bytes.
 //!
 //! This property exercises the pure range arithmetic of
-//! [`stream_flow::proxy::RangeSpec::resolve`] and
-//! [`stream_flow::proxy::compute_response_metadata`] against an **independent
+//! [`zippy_panther::proxy::RangeSpec::resolve`] and
+//! [`zippy_panther::proxy::compute_response_metadata`] against an **independent
 //! oracle** that re-derives the expected outcome straight from the requirement
 //! text (open-ended → `N..=S-1`; suffix → `max(0,S-N)..=S-1`; closed → clamp
 //! the end to `S-1`; `start ≥ S`, zero-length suffix, or any range on an empty
@@ -31,7 +31,7 @@
 //! across a spread of resource sizes up to `u32::MAX`.
 
 use proptest::prelude::*;
-use stream_flow::proxy::{compute_response_metadata, RangeSpec, ResolvedRange};
+use zippy_panther::proxy::{compute_response_metadata, RangeSpec, ResolvedRange};
 
 /// The requirement-level expected outcome of resolving a `RangeSpec` against a
 /// known total size, derived independently of the implementation under test.
@@ -148,7 +148,7 @@ proptest! {
     // 256 cases > the 100-iteration floor required for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 1 — generic range computation correctness
+    /// Feature: ZippyPanther, Property 1 — generic range computation correctness
     /// and 416. **Validates: Requirements 5.2, 5.5, 19.2, 37.15, 37.16**
     #[test]
     fn range_computation_matches_oracle((total, spec) in total_and_spec()) {

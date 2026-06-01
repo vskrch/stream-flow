@@ -1,7 +1,7 @@
 //! `APP__*` / `STREMTHRU_*` compatibility / translation layer
 //! (`config::compat`) — Req 36.3, 36.4.
 //!
-//! [`CompatSource`] is a custom [`config::Source`] that lets `stream-flow` be a
+//! [`CompatSource`] is a custom [`config::Source`] that lets `ZippyPanther` be a
 //! **drop-in replacement** for both `mediaflow-proxy-light` (env vars prefixed
 //! `APP__`) and `stremthru` (env vars prefixed `STREMTHRU_`): it translates the
 //! legacy compatibility environment-variable names of both projects onto the

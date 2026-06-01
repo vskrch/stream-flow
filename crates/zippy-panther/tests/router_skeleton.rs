@@ -1,19 +1,19 @@
 //! Dual-surface router skeleton smoke test (task 11.2) — Req 36.1, 36.2, 49.6.
 //!
-//! Asserts that [`stream_flow::build_app`] wires the **two disjoint path
+//! Asserts that [`zippy_panther::build_app`] wires the **two disjoint path
 //! namespaces** (the `mediaflow-proxy-light` surface and the `stremthru`
 //! surface) plus the **shared** routes (`/health`, `/metrics`, `/v0/events`,
 //! web UI) onto one routing tree, and that this is the *identical*
 //! `build_app(state)` factory the binary boots from (Req 49.6).
 //!
 //! This is an **external** integration crate: it can only see the crate's
-//! *public* surface (`stream_flow::AppState`, `stream_flow::build_app`), which
+//! *public* surface (`zippy_panther::AppState`, `zippy_panther::build_app`), which
 //! is exactly the reuse path the binary, the FFI bridge, and the SDKs rely on
 //! (Req 49.6). A route from each namespace must be *registered* (not `404`).
 
 use actix_web::{http::StatusCode, test, App};
-use stream_flow::config::Config;
-use stream_flow::{build_app, AppState};
+use zippy_panther::config::Config;
+use zippy_panther::{build_app, AppState};
 
 /// The shared surface answers `/health` with `200` (the health registry is
 /// threaded through `AppState`, Req 49.6).

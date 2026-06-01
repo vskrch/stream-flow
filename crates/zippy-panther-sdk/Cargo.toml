@@ -1,11 +1,11 @@
 [package]
-name = "stream-flow-sdk"
+name = "zippy-panther-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "stream_flow_sdk"
+name = "zippy_panther_sdk"
 path = "src/lib.rs"
 
 [dependencies]

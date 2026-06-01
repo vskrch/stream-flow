@@ -1,7 +1,7 @@
 //! Property-based test for magnet status normalization totality
 //! (task 22.6, Property 21).
 //!
-//! Feature: stream-flow, Property 21
+//! Feature: ZippyPanther, Property 21
 //!
 //! **Property 21: Magnet status normalization is total**
 //!
@@ -32,7 +32,7 @@
 //!    `MagnetStatus::Failed`, regardless of case.
 
 use proptest::prelude::*;
-use stream_flow::store::MagnetStatus;
+use zippy_panther::store::MagnetStatus;
 
 /// The complete set of known native strings that MUST map to `Failed`
 /// per Req 16.14 (dead, errored, virus-flagged, and related failure states).
@@ -137,7 +137,7 @@ fn arb_failed_native_mixed() -> impl Strategy<Value = String> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 21 — magnet status normalization is total.
+    /// Feature: ZippyPanther, Property 21 — magnet status normalization is total.
     /// **Validates: Requirements 16.5, 16.14**
     ///
     /// For any arbitrary string, `from_native` produces exactly one of the 9
@@ -156,7 +156,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 21 — known failure natives map to Failed.
+    /// Feature: ZippyPanther, Property 21 — known failure natives map to Failed.
     /// **Validates: Requirements 16.14**
     ///
     /// Known native strings (dead, virus, errored, etc.) always map to
@@ -188,7 +188,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 21 — uppercase failure natives map to Failed.
+    /// Feature: ZippyPanther, Property 21 — uppercase failure natives map to Failed.
     /// **Validates: Requirements 16.14**
     ///
     /// Case-insensitive matching: uppercase variants of known failure strings
@@ -206,7 +206,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 21 — mixed-case failure natives map to Failed.
+    /// Feature: ZippyPanther, Property 21 — mixed-case failure natives map to Failed.
     /// **Validates: Requirements 16.14**
     ///
     /// Case-insensitive matching: mixed-case variants of known failure strings
@@ -224,7 +224,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 21 — totality with purely random bytes.
+    /// Feature: ZippyPanther, Property 21 — totality with purely random bytes.
     /// **Validates: Requirements 16.5**
     ///
     /// Even completely random strings (not biased toward known natives) produce

@@ -1,7 +1,7 @@
 //! Property-based test for the remux-vs-transcode decision table
 //! (`transcode::decide_mode`, task 18.5).
 //!
-//! Feature: stream-flow, Property 15
+//! Feature: ZippyPanther, Property 15
 //!
 //! **Property 15: Transcode-vs-remux decision table**
 //!
@@ -30,7 +30,7 @@
 //! Each case generates an arbitrary `CodecInfo` from the full input space —
 //! `video ∈ {undetermined, H264, HEVC, VP9, AV1, Other(name)}` and
 //! `audio ∈ {absent, AAC, Other(name)}` — driving the real
-//! [`stream_flow::transcode::decide_mode`] and comparing its result against an
+//! [`zippy_panther::transcode::decide_mode`] and comparing its result against an
 //! **independent oracle** that encodes the decision table directly from the
 //! requirement clauses. Beyond the oracle equality, each case asserts the
 //! structural guarantees the requirements mandate:
@@ -48,7 +48,7 @@
 //! keys off the enum variant, never the contained string.
 
 use proptest::prelude::*;
-use stream_flow::transcode::{
+use zippy_panther::transcode::{
     decide_mode, AudioAction, AudioCodec, CodecInfo, TranscodeMode, VideoCodec,
 };
 
@@ -127,7 +127,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 15 — transcode-vs-remux decision table.
+    /// Feature: ZippyPanther, Property 15 — transcode-vs-remux decision table.
     /// **Validates: Requirements 6.2, 6.3, 6.4, 6.13**
     #[test]
     fn decide_mode_matches_the_decision_table(info in arb_codec_info()) {

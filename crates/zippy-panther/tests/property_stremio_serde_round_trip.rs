@@ -1,7 +1,7 @@
 //! Property-based test for Stremio protocol type serialization round trips
 //! (`stremio::types`, task 26.5).
 //!
-//! Feature: stream-flow, Property 9
+//! Feature: ZippyPanther, Property 9
 //!
 //! **Property 9: Stremio protocol serialization round trip**
 //!
@@ -39,7 +39,7 @@
 //! strings after the first deserialization).
 
 use proptest::prelude::*;
-use stream_flow::stremio::types::{
+use zippy_panther::stremio::types::{
     BehaviorHints, Catalog, CatalogExtra, CatalogExtraOptions, ContentType, Manifest, Meta,
     MetaBehaviorHints, MetaLink, MetaPreview, MetaVideo, ProxyHeaders, Resource, ResourceName,
     Stream, StreamBehaviorHints, Subtitle,
@@ -609,7 +609,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 9 — `Resource` serializes and
+    /// Feature: ZippyPanther, Property 9 — `Resource` serializes and
     /// deserializes back to an equivalent value, covering both the bare-string
     /// form and the object form. **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
@@ -617,7 +617,7 @@ proptest! {
         round_trip(&r)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `CatalogExtraOptions` round-trips
+    /// Feature: ZippyPanther, Property 9 — `CatalogExtraOptions` round-trips
     /// through JSON (post-coercion fixed point). **Validates: Requirements
     /// 26.1, 26.2, 48.3**
     #[test]
@@ -625,42 +625,42 @@ proptest! {
         round_trip(&opts)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `CatalogExtra` round-trips through
+    /// Feature: ZippyPanther, Property 9 — `CatalogExtra` round-trips through
     /// JSON. **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn catalog_extra_round_trip(extra in arb_catalog_extra()) {
         round_trip(&extra)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Catalog` round-trips through JSON.
+    /// Feature: ZippyPanther, Property 9 — `Catalog` round-trips through JSON.
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn catalog_round_trip(catalog in arb_catalog()) {
         round_trip(&catalog)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `BehaviorHints` round-trips through
+    /// Feature: ZippyPanther, Property 9 — `BehaviorHints` round-trips through
     /// JSON. **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn behavior_hints_round_trip(bh in arb_behavior_hints()) {
         round_trip(&bh)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `StreamBehaviorHints` round-trips
+    /// Feature: ZippyPanther, Property 9 — `StreamBehaviorHints` round-trips
     /// through JSON. **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn stream_behavior_hints_round_trip(hints in arb_stream_behavior_hints()) {
         round_trip(&hints)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Subtitle` round-trips through JSON.
+    /// Feature: ZippyPanther, Property 9 — `Subtitle` round-trips through JSON.
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn subtitle_round_trip(sub in arb_subtitle()) {
         round_trip(&sub)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Stream` round-trips through JSON,
+    /// Feature: ZippyPanther, Property 9 — `Stream` round-trips through JSON,
     /// including `fileIdx = 0` surviving (Option<i32> vs Go's omitempty int).
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
@@ -668,7 +668,7 @@ proptest! {
         round_trip(&stream)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `MetaVideo` round-trips through
+    /// Feature: ZippyPanther, Property 9 — `MetaVideo` round-trips through
     /// JSON, including the `-1` sentinel for unknown episode/season.
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
@@ -676,14 +676,14 @@ proptest! {
         round_trip(&mv)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Meta` round-trips through JSON.
+    /// Feature: ZippyPanther, Property 9 — `Meta` round-trips through JSON.
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
     fn meta_round_trip(meta in arb_meta()) {
         round_trip(&meta)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `MetaPreview` round-trips through
+    /// Feature: ZippyPanther, Property 9 — `MetaPreview` round-trips through
     /// JSON, including the always-present `poster` field.
     /// **Validates: Requirements 26.1, 26.2, 48.3**
     #[test]
@@ -691,7 +691,7 @@ proptest! {
         round_trip(&preview)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Manifest` round-trips through JSON,
+    /// Feature: ZippyPanther, Property 9 — `Manifest` round-trips through JSON,
     /// including mixed bare-string and object `Resource` entries.
     /// **Validates: Requirements 26.1, 26.2, 26.4, 48.3**
     #[test]
@@ -699,7 +699,7 @@ proptest! {
         round_trip(&manifest)?;
     }
 
-    /// Feature: stream-flow, Property 9 — `Resource` string form serializes as
+    /// Feature: ZippyPanther, Property 9 — `Resource` string form serializes as
     /// a bare JSON string (not an object), and the object form serializes as a
     /// JSON object. **Validates: Requirements 26.1, 26.2**
     #[test]
@@ -727,7 +727,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 9 — `CatalogExtraOptions` coercion is a
+    /// Feature: ZippyPanther, Property 9 — `CatalogExtraOptions` coercion is a
     /// fixed point: after one deserialization all elements are strings, so a
     /// second round trip is identical. **Validates: Requirements 26.1, 26.2**
     #[test]

@@ -1,9 +1,9 @@
-//! `stream_flow` — unified Stremio streaming-proxy + debrid-orchestration
+//! `zippy_panther` — unified Stremio streaming-proxy + debrid-orchestration
 //! library crate.
 //!
-//! All application logic lives in this library crate. The `stream-flow-bin`
+//! All application logic lives in this library crate. The `zippy-panther-bin`
 //! binary is a thin `main` that wires config + server, and the
-//! `stream-flow-ffi` staticlib re-uses these same APIs across the C-ABI
+//! `zippy-panther-ffi` staticlib re-uses these same APIs across the C-ABI
 //! (design: Workspace and Crate Layout; Req 49.6).
 //!
 //! [`build_app`] is the single factory both the binary and the integration

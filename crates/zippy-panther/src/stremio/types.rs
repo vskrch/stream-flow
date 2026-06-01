@@ -5,7 +5,7 @@
 //! `BehaviorHints`, `StreamBehaviorHints`, …). serde field names and
 //! `#[serde(skip_serializing_if = …)]` reproduce Go's struct tags and
 //! `omitempty` semantics so an existing Stremio client cannot tell
-//! stream-flow's JSON apart from stremthru's (Req 26.1, 36.9). Every protocol
+//! ZippyPanther's JSON apart from stremthru's (Req 26.1, 36.9). Every protocol
 //! object round-trips through `serde_json` (Req 26.2).
 //!
 //! Two wire shapes need the same hand-written `MarshalJSON`/`UnmarshalJSON`
@@ -705,7 +705,7 @@ pub struct StreamBehaviorHints {
 }
 
 /// A playable stream. Mirrors Go `Stream`. The playable URL is always a
-/// stream-flow proxy link when produced by the Store/Wrap addons (Req 23.4,
+/// ZippyPanther proxy link when produced by the Store/Wrap addons (Req 23.4,
 /// 24.4, Property 26); the bytes here only model the wire shape.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Stream {
@@ -1529,7 +1529,7 @@ mod tests {
     fn sample_manifest() -> Manifest {
         Manifest {
             id: "st:store:realdebrid".into(),
-            name: "StreamFlow Store".into(),
+            name: "ZippyPanther Store".into(),
             description: "Debrid store addon".into(),
             version: "0.1.0".into(),
             resources: vec![

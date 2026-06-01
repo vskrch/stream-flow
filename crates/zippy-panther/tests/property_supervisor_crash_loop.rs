@@ -1,6 +1,6 @@
 //! Property-based test for the supervisor's crash-loop guard (task 7.5).
 //!
-//! Feature: stream-flow, Property 55
+//! Feature: ZippyPanther, Property 55
 //!
 //! **Property 55: Supervisor crash-loop guard caps restarts within a window**
 //!
@@ -14,7 +14,7 @@
 //! **Validates: Requirements 50.7, 50.12**
 //!
 //! The component under test is the pure, deterministic
-//! [`stream_flow::supervisor::CrashLoopGuard`] (design: Resilience → Pattern 5
+//! [`zippy_panther::supervisor::CrashLoopGuard`] (design: Resilience → Pattern 5
 //! "Self-Healing & Supervision"). It is the single place the supervisor decides
 //! whether a just-exited task is restarted (with backoff) or parked, so pinning
 //! its window invariant pins Property 55. Because [`CrashLoopGuard::on_exit`]
@@ -60,7 +60,7 @@
 use std::time::Duration;
 
 use proptest::prelude::*;
-use stream_flow::supervisor::{CrashLoopGuard, RestartDecision, RestartPolicy};
+use zippy_panther::supervisor::{CrashLoopGuard, RestartDecision, RestartPolicy};
 
 /// An arbitrary policy over the two crash-loop-guard fields. `max_restarts`
 /// includes the degenerate `0` (every exit parks); the backoff-schedule fields
@@ -130,7 +130,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 55 — for any exit-timestamp stream and any
+    /// Feature: ZippyPanther, Property 55 — for any exit-timestamp stream and any
     /// `{ max_restarts, window }` policy, the guard never authorizes more than
     /// `max_restarts` restarts in any trailing window, parks exactly at the cap,
     /// and reports a consistent in-window index for every authorized restart.
@@ -194,7 +194,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 55 — once the cap is tripped the guard
+    /// Feature: ZippyPanther, Property 55 — once the cap is tripped the guard
     /// stays parked everywhere inside the window, then self-heals (authorizes a
     /// restart again) the moment the window has fully rolled forward; it is not
     /// permanently latched. **Validates: Requirements 50.7, 50.12**

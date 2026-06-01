@@ -1,7 +1,7 @@
 //! Property-based test for `Client_IP` precedence
 //! (`http::client_ip::resolve_client_ip`, task 11.1).
 //!
-//! Feature: stream-flow, Property 29
+//! Feature: ZippyPanther, Property 29
 //!
 //! **Property 29: Client IP precedence**
 //!
@@ -41,7 +41,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use proptest::prelude::*;
-use stream_flow::http::resolve_client_ip;
+use zippy_panther::http::resolve_client_ip;
 
 /// How a *parseable* IP token is spelled. The resolver trims surrounding
 /// whitespace and strips a single `[..]` bracket pair (some proxies wrap IPv6
@@ -210,7 +210,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 29 — client IP precedence.
+    /// Feature: ZippyPanther, Property 29 — client IP precedence.
     /// **Validates: Requirements 28.7**
     #[test]
     fn client_ip_follows_x_real_ip_then_first_xff_then_peer(

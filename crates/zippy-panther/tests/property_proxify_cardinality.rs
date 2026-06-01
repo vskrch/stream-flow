@@ -1,7 +1,7 @@
 //! Property-based test for the proxify-links endpoint core
 //! (`proxylink::handler::proxify`, task 24.9).
 //!
-//! Feature: stream-flow, Property 24
+//! Feature: ZippyPanther, Property 24
 //!
 //! **Property 24: Proxify-links cardinality and per-index embedding**
 //!
@@ -45,8 +45,8 @@ use std::collections::BTreeMap;
 
 use proptest::prelude::*;
 
-use stream_flow::proxylink::handler::{proxify, IndexedOrShared, ProxifyRequest};
-use stream_flow::proxylink::{ProxyCodec, ProxyLink};
+use zippy_panther::proxylink::handler::{proxify, IndexedOrShared, ProxifyRequest};
+use zippy_panther::proxylink::{ProxyCodec, ProxyLink};
 
 /// Fixed key material — the property holds for any single codec instance that
 /// holds both formats' keys.
@@ -156,7 +156,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 24 — `proxify` produces exactly one link
+    /// Feature: ZippyPanther, Property 24 — `proxify` produces exactly one link
     /// per input URL (cardinality, Req 21.1), each link decodes back to that
     /// URL's per-index headers (Req 21.4) and filename (Req 21.5) with the
     /// shared value as fallback, and the on-the-wire format follows the

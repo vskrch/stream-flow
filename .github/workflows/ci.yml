@@ -1,4 +1,4 @@
-# CI pipeline and coverage gate for stream-flow.
+# CI pipeline and coverage gate for ZippyPanther.
 #
 # Pipeline order (design: Testing Strategy -> Coverage; Req 48.5, 48.7):
 #   1. cargo test --workspace          (unit + property + integration tests)
@@ -56,7 +56,7 @@ jobs:
       # `--fail-under-lines 90` exits non-zero on any coverage shortfall,
       # blocking the downstream artifact job (Req 48.7).
       - name: Coverage gate (>= 90% lines)
-        run: cargo llvm-cov --package stream-flow --all-features --fail-under-lines 90
+        run: cargo llvm-cov --package zippy-panther --all-features --fail-under-lines 90
 
   # ---------------------------------------------------------------------------
   # Artifact job: builds release binaries. `needs: test` enforces that this
@@ -90,13 +90,13 @@ jobs:
 
       # Server binary + library: panic = "unwind" (default `release` profile).
       - name: Build server binary
-        run: cargo build --release -p stream-flow-bin --target ${{ matrix.target }}
+        run: cargo build --release -p zippy-panther-bin --target ${{ matrix.target }}
 
       # FFI staticlib: panic = "abort" (`release-ffi` profile). The C-ABI
       # surface (and its dependency on the library crate) is gated behind the
       # `ffi` feature, so enable it to produce a non-empty artifact.
       - name: Build FFI staticlib
-        run: cargo build --profile release-ffi -p stream-flow-ffi --features ffi --target ${{ matrix.target }}
+        run: cargo build --profile release-ffi -p zippy-panther-ffi --features ffi --target ${{ matrix.target }}
 
   docker:
     name: Build Docker image
@@ -106,4 +106,4 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t stream-flow:ci .
+        run: docker build -t zippy-panther:ci .

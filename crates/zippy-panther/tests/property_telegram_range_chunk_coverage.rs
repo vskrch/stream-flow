@@ -1,6 +1,6 @@
 //! Property-based test for Telegram MTProto range chunk coverage (task 19.4).
 //!
-//! Feature: stream-flow, Property 48
+//! Feature: ZippyPanther, Property 48
 //!
 //! **Property 48: Telegram range chunk coverage**
 //!
@@ -14,7 +14,7 @@
 //! Requirement 11.3: when a `Range` request for Telegram media is received, the
 //! engine fetches **only** the chunks covering the requested byte range. This
 //! exercises the pure chunk-range arithmetic of
-//! [`stream_flow::telegram::chunks_covering`] (and the [`ChunkCoverage`] it
+//! [`zippy_panther::telegram::chunks_covering`] (and the [`ChunkCoverage`] it
 //! returns) against an **independent oracle** that re-derives the covering set
 //! and the per-chunk slices straight from the requirement semantics:
 //!
@@ -32,12 +32,12 @@
 //! Generators bias toward small totals / chunk sizes and the `start == total`
 //! boundary (where the satisfiable↔empty frontier is dense), include a
 //! medium-sized arm, and a large arm (multi-gigabyte totals, megabyte-scale
-//! chunks incl. [`stream_flow::telegram::DEFAULT_CHUNK_SIZE`]) with short
+//! chunks incl. [`zippy_panther::telegram::DEFAULT_CHUNK_SIZE`]) with short
 //! ranges so the arithmetic is verified across the full `u32::MAX` size span
 //! while keeping the per-byte oracle bounded.
 
 use proptest::prelude::*;
-use stream_flow::telegram::{chunks_covering, DEFAULT_CHUNK_SIZE};
+use zippy_panther::telegram::{chunks_covering, DEFAULT_CHUNK_SIZE};
 
 /// A generated request: `(total_size, chunk_size, start, end)` fed verbatim to
 /// [`chunks_covering`]. `start`/`end` are the resolved inclusive offsets and
@@ -132,7 +132,7 @@ proptest! {
     // 256 cases comfortably exceeds the 100-iteration floor for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 48 — Telegram range chunk coverage.
+    /// Feature: ZippyPanther, Property 48 — Telegram range chunk coverage.
     /// **Validates: Requirements 11.3**
     #[test]
     fn telegram_range_chunk_coverage_is_exact((total, chunk_size, start, end) in any_case()) {

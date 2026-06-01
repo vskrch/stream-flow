@@ -53,7 +53,7 @@ impl AllDebridStore {
 
     fn api_url(&self, path: &str) -> Url {
         Url::parse(&format!(
-            "{}{}?agent=stream-flow&apikey={}",
+            "{}{}?agent=ZippyPanther&apikey={}",
             self.base_url, path, self.token
         ))
         .expect("valid AllDebrid API URL")
@@ -235,7 +235,7 @@ impl Store for AllDebridStore {
 
         let magnets_param = hashes.join(",");
         let url_str = format!(
-            "{}/magnet/instant?agent=stream-flow&apikey={}&magnets[]={}",
+            "{}/magnet/instant?agent=ZippyPanther&apikey={}&magnets[]={}",
             self.base_url, self.token, magnets_param
         );
         let url = Url::parse(&url_str).map_err(|e| AppError::unknown(e.to_string()))?;
@@ -325,7 +325,7 @@ impl Store for AllDebridStore {
 
     async fn add_magnet(&self, p: &AddMagnetParams) -> Result<AddMagnetData, AppError> {
         let url_str = format!(
-            "{}/magnet/upload?agent=stream-flow&apikey={}&magnets[]={}",
+            "{}/magnet/upload?agent=ZippyPanther&apikey={}&magnets[]={}",
             self.base_url,
             self.token,
             urlencoding::encode(&p.magnet)
@@ -382,7 +382,7 @@ impl Store for AllDebridStore {
 
     async fn get_magnet(&self, p: &GetMagnetParams) -> Result<GetMagnetData, AppError> {
         let path = format!(
-            "/magnet/status?agent=stream-flow&apikey={}&id={}",
+            "/magnet/status?agent=ZippyPanther&apikey={}&id={}",
             self.token, p.id
         );
         let url = Url::parse(&format!("{}{path}", self.base_url))
@@ -445,7 +445,7 @@ impl Store for AllDebridStore {
     }
 
     async fn list_magnets(&self, p: &ListMagnetsParams) -> Result<ListMagnetsData, AppError> {
-        let path = format!("/magnet/status?agent=stream-flow&apikey={}", self.token);
+        let path = format!("/magnet/status?agent=ZippyPanther&apikey={}", self.token);
         let url = Url::parse(&format!("{}{path}", self.base_url))
             .map_err(|e| AppError::unknown(e.to_string()))?;
 
@@ -500,7 +500,7 @@ impl Store for AllDebridStore {
 
     async fn remove_magnet(&self, p: &RemoveMagnetParams) -> Result<RemoveMagnetData, AppError> {
         let path = format!(
-            "/magnet/delete?agent=stream-flow&apikey={}&id={}",
+            "/magnet/delete?agent=ZippyPanther&apikey={}&id={}",
             self.token, p.id
         );
         let url = Url::parse(&format!("{}{path}", self.base_url))
@@ -525,7 +525,7 @@ impl Store for AllDebridStore {
     async fn generate_link(&self, p: &GenerateLinkParams) -> Result<GenerateLinkData, AppError> {
         // AllDebrid omits IP and must not fail for lack of IP binding (Req 18.4)
         let url_str = format!(
-            "{}/link/unlock?agent=stream-flow&apikey={}&link={}",
+            "{}/link/unlock?agent=ZippyPanther&apikey={}&link={}",
             self.base_url,
             self.token,
             urlencoding::encode(&p.link)

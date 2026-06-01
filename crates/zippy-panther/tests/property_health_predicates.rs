@@ -1,6 +1,6 @@
 //! Property-based test for the health-probe predicates (task 7.6).
 //!
-//! Feature: stream-flow, Property 57
+//! Feature: ZippyPanther, Property 57
 //!
 //! **Property 57: Readiness predicate correctness and liveness independence**
 //!
@@ -17,7 +17,7 @@
 //! **Validates: Requirements 50.10, 44.6, 29.2**
 //!
 //! The component under test is the pure, plain-data
-//! [`stream_flow::health::HealthInputs`] snapshot and its predicate methods
+//! [`zippy_panther::health::HealthInputs`] snapshot and its predicate methods
 //! `readiness_ready`, `liveness_alive`, and `startup_complete` (design:
 //! Resilience → Pattern 6 "Health Model & Probes"). Because the predicates are
 //! pure functions over a fully-gathered snapshot, the property drives them
@@ -47,8 +47,8 @@
 //!   `migrations_applied ∧ startup_probes_done`.
 
 use proptest::prelude::*;
-use stream_flow::health::{HealthInputs, LoadState, StoreBreaker};
-use stream_flow::resilience::breaker::BreakerState;
+use zippy_panther::health::{HealthInputs, LoadState, StoreBreaker};
+use zippy_panther::resilience::breaker::BreakerState;
 
 /// All three breaker states, so the generated store sets span the whole state
 /// space (and combinations like "all Open" vs "some Open" arise naturally).
@@ -126,7 +126,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 57 — readiness predicate correctness and
+    /// Feature: ZippyPanther, Property 57 — readiness predicate correctness and
     /// liveness independence. **Validates: Requirements 50.10, 44.6, 29.2**
     #[test]
     fn readiness_predicate_correct_and_liveness_independent(

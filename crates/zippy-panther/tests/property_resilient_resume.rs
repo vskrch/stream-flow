@@ -1,7 +1,7 @@
 //! Property-based test for the `ResilientStream` reconnect-with-resume +
 //! link-renewal state machine (task 15.2).
 //!
-//! Feature: stream-flow, Property 2
+//! Feature: ZippyPanther, Property 2
 //!
 //! **Property 2: Resilient resume yields a gap-free byte stream equal to the
 //! source**
@@ -39,7 +39,7 @@
 //! ## The unit under test and how the property exercises it
 //!
 //! The production state machine is the real
-//! [`stream_flow::proxy::ResilientStream`], driven against a fully scriptable
+//! [`zippy_panther::proxy::ResilientStream`], driven against a fully scriptable
 //! in-memory [`UpstreamSource`] ([`ScriptedSource`]) that owns the source bytes
 //! and re-issues them on every reopen — exactly the re-issuable-upstream
 //! contract the machine is built around. Crucially the mock decides each
@@ -80,9 +80,11 @@ use proptest::collection::vec as prop_vec;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
-use stream_flow::errors::AppError;
-use stream_flow::proxy::resilient::StreamState;
-use stream_flow::proxy::{ContentRange, RangeSpec, ResilientStream, UpstreamBody, UpstreamSource};
+use zippy_panther::errors::AppError;
+use zippy_panther::proxy::resilient::StreamState;
+use zippy_panther::proxy::{
+    ContentRange, RangeSpec, ResilientStream, UpstreamBody, UpstreamSource,
+};
 
 /// The absolute byte offset at which a reopen of `range` begins delivering, for
 /// a resource of size `total`. The machine only ever reopens with
@@ -378,7 +380,7 @@ proptest! {
     // 256 cases > the 100-iteration floor for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 2 — resilient resume yields a gap-free
+    /// Feature: ZippyPanther, Property 2 — resilient resume yields a gap-free
     /// byte stream equal to the source. **Validates: Requirements 37.5, 37.6,
     /// 5.8**
     #[test]

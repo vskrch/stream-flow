@@ -1,7 +1,7 @@
 //! Property-based test for subtitle content-type mapping and de-duplicated
 //! merge (task 28.8).
 //!
-//! Feature: stream-flow, Property 39
+//! Feature: ZippyPanther, Property 39
 //!
 //! **Property 39: Subtitle content-type mapping and de-duplicated merge**
 //!
@@ -39,8 +39,8 @@
 //!    `(lang, url)` pair present in any input list appears in the output.
 
 use proptest::prelude::*;
-use stream_flow::stremio::types::Subtitle;
-use stream_flow::subtitles::{content_type_for_url, format_from_url, merge_subtitles};
+use zippy_panther::stremio::types::Subtitle;
+use zippy_panther::subtitles::{content_type_for_url, format_from_url, merge_subtitles};
 
 // ---------------------------------------------------------------------------
 // Strategies
@@ -169,7 +169,7 @@ proptest! {
     // (Req 39.3, 39.4)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — supported extension maps to the
+    /// Feature: ZippyPanther, Property 39 — supported extension maps to the
     /// correct Content-Type.
     ///
     /// **Validates: Requirements 39.3, 39.4**
@@ -186,7 +186,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 39 — content-type mapping is
+    /// Feature: ZippyPanther, Property 39 — content-type mapping is
     /// deterministic: calling it twice on the same URL always returns the same
     /// value.
     ///
@@ -209,7 +209,7 @@ proptest! {
     // deterministically (Req 39.4)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — unsupported extension falls back to
+    /// Feature: ZippyPanther, Property 39 — unsupported extension falls back to
     /// `application/octet-stream` consistently.
     ///
     /// **Validates: Requirements 39.4**
@@ -224,7 +224,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 39 — unsupported extension fallback is
+    /// Feature: ZippyPanther, Property 39 — unsupported extension fallback is
     /// deterministic.
     ///
     /// **Validates: Requirements 39.4**
@@ -244,7 +244,7 @@ proptest! {
     // (Req 39.6)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — merged subtitle list contains no
+    /// Feature: ZippyPanther, Property 39 — merged subtitle list contains no
     /// duplicate (lang, url) pairs.
     ///
     /// **Validates: Requirements 39.6**
@@ -272,7 +272,7 @@ proptest! {
     // input lists (Req 39.6)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — every unique (lang, url) pair from
+    /// Feature: ZippyPanther, Property 39 — every unique (lang, url) pair from
     /// any input list appears in the merged output.
     ///
     /// **Validates: Requirements 39.6**
@@ -309,7 +309,7 @@ proptest! {
     // pairs (no extras, no missing) (Req 39.6)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — the merged list length equals the
+    /// Feature: ZippyPanther, Property 39 — the merged list length equals the
     /// number of unique (lang, url) pairs across all inputs (no extras, no
     /// missing entries).
     ///
@@ -340,7 +340,7 @@ proptest! {
     // (Req 39.3, 39.4)
     // -----------------------------------------------------------------------
 
-    /// Feature: stream-flow, Property 39 — `format_from_url` and
+    /// Feature: ZippyPanther, Property 39 — `format_from_url` and
     /// `content_type_for_url` are consistent: when `format_from_url` returns
     /// `Some(fmt)`, `content_type_for_url` returns `fmt.content_type()`.
     ///

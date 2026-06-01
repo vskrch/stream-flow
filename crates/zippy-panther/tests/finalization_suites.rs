@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use actix_web::{test as actix_test, App};
-use stream_flow::config::{Config, LoadOptions, StremioConfig};
-use stream_flow::egress::sanitize_outbound;
-use stream_flow::health::LoadState;
-use stream_flow::http::degradation::{
+use zippy_panther::config::{Config, LoadOptions, StremioConfig};
+use zippy_panther::egress::sanitize_outbound;
+use zippy_panther::health::LoadState;
+use zippy_panther::http::degradation::{
     next_load_state, DegradationLadder, DegradationLevel, LoadThresholds,
 };
-use stream_flow::{build_app, AppState};
+use zippy_panther::{build_app, AppState};
 
 #[test]
 fn replay_harness_compat_env_keeps_both_auth_surfaces_active() {

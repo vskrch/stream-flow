@@ -1,6 +1,6 @@
 //! Property-based test for debrid link IP-binding (`store::link`, task 24.8).
 //!
-//! Feature: stream-flow, Property 61
+//! Feature: ZippyPanther, Property 61
 //!
 //! **Property 61: Debrid link IP-binding uses the Egress_IP, never the
 //! Client_IP**
@@ -24,10 +24,10 @@
 //! [`Ctx`] is used for internal bookkeeping only and must NEVER be forwarded to
 //! a store.
 //!
-//! The unit under test is [`stream_flow::store::link`]:
+//! The unit under test is [`zippy_panther::store::link`]:
 //! [`generate_link`] (the IP-binding decision) and [`requires_ip_binding`]
 //! (the per-store predicate). [`generate_link`] takes `&dyn Store` directly, so
-//! no [`OutboundClient`](stream_flow::egress::OutboundClient) is needed here —
+//! no [`OutboundClient`](zippy_panther::egress::OutboundClient) is needed here —
 //! the property is purely about which IP the link-gen layer hands to the store.
 //!
 //! ## How the invariants are exercised
@@ -61,9 +61,9 @@ use async_trait::async_trait;
 use proptest::prelude::*;
 use time::OffsetDateTime;
 
-use stream_flow::errors::AppError;
-use stream_flow::store::link::{generate_link, requires_ip_binding};
-use stream_flow::store::{
+use zippy_panther::errors::AppError;
+use zippy_panther::store::link::{generate_link, requires_ip_binding};
+use zippy_panther::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetParams, Ctx, GenerateLinkData,
     GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams, ListMagnetsData,
     ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, Store, StoreName,
@@ -233,7 +233,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 61 — debrid link IP-binding uses the
+    /// Feature: ZippyPanther, Property 61 — debrid link IP-binding uses the
     /// Egress_IP, never the Client_IP.
     ///
     /// **Validates: Requirements 51.4, 18.3**

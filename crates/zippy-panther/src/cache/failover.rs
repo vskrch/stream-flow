@@ -75,7 +75,7 @@ impl Default for FailoverConfig {
     fn default() -> Self {
         Self {
             probe_interval: Duration::from_secs(5),
-            probe_key: "__stream_flow_failover_probe__".to_string(),
+            probe_key: "__zippy_panther_failover_probe__".to_string(),
         }
     }
 }

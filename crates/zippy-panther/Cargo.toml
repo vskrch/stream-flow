@@ -1,5 +1,5 @@
 [package]
-name = "stream-flow"
+name = "zippy-panther"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 # The library crate holds all logic; the binary and FFI crates are thin
 # wrappers over it (design: Workspace and Crate Layout).
 [lib]
-name = "stream_flow"
+name = "zippy_panther"
 path = "src/lib.rs"
 crate-type = ["rlib"]
 
@@ -78,7 +78,7 @@ urlencoding = { workspace = true }
 # HLS manifest parse + full rewriting (task 16.1): `m3u8-rs` parses master and
 # media `.m3u8` playlists into structured `Playlist` values and serializes them
 # back, so every variant / segment / `#EXT-X-KEY` / `#EXT-X-MAP` URL can be
-# rewritten to a `stream-flow` proxy URL after resolving relative URIs against
+# rewritten to a `ZippyPanther` proxy URL after resolving relative URIs against
 # the manifest base, with a parse/serialize round trip preserved (design:
 # Components -> HLS; Technology Choices "HLS parsing"; Req 1.1-1.4, 1.8, 48.4).
 m3u8-rs = { workspace = true }
@@ -218,7 +218,7 @@ tempfile = { workspace = true }
 proptest = { workspace = true }
 # HLS manifest parse/serialize round-trip + full-rewriting property test
 # (task 16.6, Property 10): the integration test renders arbitrary valid
-# master/media `.m3u8` manifests and drives them through `stream_flow::hls`.
+# master/media `.m3u8` manifests and drives them through `zippy_panther::hls`.
 # `m3u8-rs` parses + serializes the generated manifest to assert the
 # parse→serialize→parse round trip is a fixed point (Req 1.x / 48.4), and `url`
 # builds the manifest base `Url` passed to `HlsRewriter::rewrite` and computes

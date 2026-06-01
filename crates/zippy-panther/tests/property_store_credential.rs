@@ -1,7 +1,7 @@
 //! Property-based test for per-user store credential resolution with `*`
 //! wildcard fallback (`auth::Auth::resolve_store_credential`, task 9.4).
 //!
-//! Feature: stream-flow, Property 28
+//! Feature: ZippyPanther, Property 28
 //!
 //! **Property 28: Store credential resolution with wildcard fallback**
 //!
@@ -42,8 +42,8 @@
 use std::collections::HashMap;
 
 use proptest::prelude::*;
-use stream_flow::auth::Auth;
-use stream_flow::config::AuthConfig;
+use zippy_panther::auth::Auth;
+use zippy_panther::config::AuthConfig;
 
 /// Build an [`Auth`] from a list of `username:store:token` entries, mirroring
 /// how the config layer populates [`AuthConfig`].
@@ -117,7 +117,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 28 — store credential resolution with
+    /// Feature: ZippyPanther, Property 28 — store credential resolution with
     /// wildcard fallback. **Validates: Requirements 28.4**
     #[test]
     fn store_credential_resolution_prefers_exact_then_wildcard(

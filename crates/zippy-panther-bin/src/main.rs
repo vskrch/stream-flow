@@ -1,9 +1,9 @@
-//! `stream-flow` server binary.
+//! `ZippyPanther` server binary.
 //!
 //! A thin `main` that wires configuration + the actix server over the
-//! `stream_flow` library (design: Workspace and Crate Layout). It links
+//! `zippy_panther` library (design: Workspace and Crate Layout). It links
 //! against the library and constructs the *same* routing tree via
-//! [`stream_flow::build_app`] that the integration-test harness uses (Req
+//! [`zippy_panther::build_app`] that the integration-test harness uses (Req
 //! 49.6).
 //!
 //! The binary loads production configuration, builds the shared `AppState`,
@@ -12,17 +12,17 @@
 use actix_web::{App, HttpServer};
 use std::io;
 use std::time::Duration;
-use stream_flow::config::Config;
-use stream_flow::http::degradation::{RssSampler, SysinfoRssReader};
-use stream_flow::observability::{init_logging, Redactor};
-use stream_flow::{build_app, AppState};
+use zippy_panther::config::Config;
+use zippy_panther::http::degradation::{RssSampler, SysinfoRssReader};
+use zippy_panther::observability::{init_logging, Redactor};
+use zippy_panther::{build_app, AppState};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let config = Config::from_env().map_err(|err| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("failed to load stream-flow config: {err}"),
+            format!("failed to load ZippyPanther config: {err}"),
         )
     })?;
 

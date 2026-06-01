@@ -1,7 +1,7 @@
 //! Property-based test for per-scheme ClearKey sample decryption
 //! (`drm::cenc::decrypt_sample`), task 16.9.
 //!
-//! Feature: stream-flow, Property 13
+//! Feature: ZippyPanther, Property 13
 //!
 //! **Property 13: CENC decryption round trip honoring crypt/skip patterns**
 //!
@@ -31,7 +31,7 @@
 //!
 //! ## How the invariant is exercised
 //!
-//! The decryptor under test is [`stream_flow::drm::cenc::decrypt_sample`]. To
+//! The decryptor under test is [`zippy_panther::drm::cenc::decrypt_sample`]. To
 //! produce valid ciphertext to feed it, this test implements an **independent
 //! reference encryptor** for each of the four schemes whose structure mirrors
 //! the scheme rules exactly (single CTR/CBC chain spanning the sample for
@@ -68,8 +68,8 @@ use cipher::generic_array::GenericArray;
 use cipher::{BlockEncryptMut, KeyIvInit, StreamCipher};
 use proptest::prelude::*;
 
-use stream_flow::drm::cenc::{decrypt_sample, CencScheme};
-use stream_flow::drm::mp4_atom::{SampleEncryptionInfo, SubsampleRange, TrackEncryption};
+use zippy_panther::drm::cenc::{decrypt_sample, CencScheme};
+use zippy_panther::drm::mp4_atom::{SampleEncryptionInfo, SubsampleRange, TrackEncryption};
 
 /// The AES block size (and CENC pattern block unit), in bytes.
 const BLOCK: usize = 16;
@@ -396,7 +396,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 13 — CENC decryption round trip honoring
+    /// Feature: ZippyPanther, Property 13 — CENC decryption round trip honoring
     /// crypt/skip patterns. **Validates: Requirements 4.2, 4.3, 4.4, 4.5**
     #[test]
     fn cenc_decryption_round_trip_honors_crypt_skip_patterns(case in arb_case()) {

@@ -558,7 +558,7 @@ mod tests {
     #[tokio::test]
     async fn open_full_streams_body_and_surfaces_metadata() {
         let server = MockServer::start().await;
-        let payload = b"hello stream-flow direct source body".to_vec();
+        let payload = b"hello ZippyPanther direct source body".to_vec();
         Mock::given(method("GET"))
             .and(path("/video.mp4"))
             .respond_with(

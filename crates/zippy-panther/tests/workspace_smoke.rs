@@ -1,9 +1,9 @@
 //! Workspace smoke test (task 1.3) — Req 49.6.
 //!
-//! Asserts that the `stream_flow` *library* crate exposes the public
-//! [`stream_flow::build_app`] factory and that it is reusable from an
+//! Asserts that the `zippy_panther` *library* crate exposes the public
+//! [`zippy_panther::build_app`] factory and that it is reusable from an
 //! **external** crate. This integration test is compiled as its own crate that
-//! depends on `stream_flow`, exercising the exact reuse path the FFI bridge and
+//! depends on `zippy_panther`, exercising the exact reuse path the FFI bridge and
 //! Rust SDK rely on (Req 49.6: "expose both a library crate and a
 //! binary crate from one workspace so that the library is reusable by the
 //! FFI_Bridge and SDKs").
@@ -14,8 +14,8 @@
 //! precisely the contract we want to lock in.
 
 use actix_web::App;
-use stream_flow::config::Config;
-use stream_flow::AppState;
+use zippy_panther::config::Config;
+use zippy_panther::AppState;
 
 /// The library publicly exposes `build_app`, and the routing tree it returns
 /// is mountable by any external consumer (binary, FFI bridge, or SDK).
@@ -24,7 +24,7 @@ async fn library_exposes_reusable_build_app() {
     // Binding the function item proves the public `build_app` symbol exists and
     // resolves at link time from this external crate (Req 49.6); the binary and
     // the FFI/SDK consumers construct the *identical* routing tree from it.
-    let factory = stream_flow::build_app;
+    let factory = zippy_panther::build_app;
 
     // Reusing `build_app` from this external test crate proves it is part of
     // the public API and links against the library crate (Req 49.6). It takes

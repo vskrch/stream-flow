@@ -1,6 +1,6 @@
 //! Property-based test for the prefetcher LRU bound (task 18.7).
 //!
-//! Feature: stream-flow, Property 17
+//! Feature: ZippyPanther, Property 17
 //!
 //! **Property 17: Prefetcher LRU bound**
 //!
@@ -11,7 +11,7 @@
 //! **Validates: Requirements 7.6** (and relates to 7.5)
 //!
 //! The unit under test is the prefetcher registry
-//! [`stream_flow::prebuffer::PrefetcherManager`] (design: Components →
+//! [`zippy_panther::prebuffer::PrefetcherManager`] (design: Components →
 //! Pre-Buffering; `src/prebuffer/manager.rs`). Requirement 7.6 states: *while
 //! the number of active prefetchers exceeds the configured prebuffer cache
 //! size, the least-recently-used prefetchers are evicted down to the configured
@@ -38,9 +38,9 @@ use std::time::Duration;
 use proptest::prelude::*;
 use url::Url;
 
-use stream_flow::config::{EgressConfig, EgressPolicy, EgressTunnelMode};
-use stream_flow::egress::{HttpIpReflector, OutboundClient};
-use stream_flow::prebuffer::{Prefetcher, PrefetcherManager, SegmentCache};
+use zippy_panther::config::{EgressConfig, EgressPolicy, EgressTunnelMode};
+use zippy_panther::egress::{HttpIpReflector, OutboundClient};
+use zippy_panther::prebuffer::{Prefetcher, PrefetcherManager, SegmentCache};
 
 /// A throwaway egress client. Pre-buffering never dials upstream in this test —
 /// the manager stores prefetchers by identity and the LRU bound is purely about
@@ -144,7 +144,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 17 — for any interleaving of inserts and
+    /// Feature: ZippyPanther, Property 17 — for any interleaving of inserts and
     /// touches over a key universe larger than the cap, the manager keeps
     /// `len() <= prebuffer_cache_size` after every operation, and the surviving
     /// prefetchers are exactly the most-recently-used set (so the evicted ones

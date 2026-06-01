@@ -1,7 +1,7 @@
 //! Property-based test for secret redaction in logs
 //! (`observability::Redactor` — task 12.1, exercised by task 12.3).
 //!
-//! Feature: stream-flow, Property 34
+//! Feature: ZippyPanther, Property 34
 //!
 //! **Property 34: Secret redaction in logs**
 //!
@@ -58,7 +58,7 @@
 //! value is gone verbatim while the non-secret surrounding text survives.
 
 use proptest::prelude::*;
-use stream_flow::observability::{Redactor, REDACTED};
+use zippy_panther::observability::{Redactor, REDACTED};
 
 /// Sensitive query-parameter keys (mirrors the production `SENSITIVE_QUERY_KEYS`
 /// set). Their values must always be scrubbed regardless of registration.
@@ -145,7 +145,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 34 — a **registered** secret value is
+    /// Feature: ZippyPanther, Property 34 — a **registered** secret value is
     /// scrubbed wherever it appears verbatim in a log line, while the
     /// surrounding non-secret text survives.
     ///
@@ -183,7 +183,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 34 — the value of a sensitive **query
+    /// Feature: ZippyPanther, Property 34 — the value of a sensitive **query
     /// parameter** is scrubbed even when the secret was never registered (e.g.
     /// an end user's per-request encrypted `d`/token blob).
     ///
@@ -216,7 +216,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 34 — the value of a sensitive **header**
+    /// Feature: ZippyPanther, Property 34 — the value of a sensitive **header**
     /// is scrubbed while the header name is preserved.
     ///
     /// **Validates: Requirements 32.6, 46.7**

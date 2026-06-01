@@ -28,7 +28,7 @@
 //! The original mediaflow source decrypted `cens` as **plain** AES-CTR over
 //! the whole protected range — it ignored the crypt/skip pattern entirely.
 //! That corrupts every byte that the pattern leaves in the clear (the skipped
-//! blocks), so `stream-flow` instead applies the crypt/skip pattern exactly:
+//! blocks), so `ZippyPanther` instead applies the crypt/skip pattern exactly:
 //! it encrypts `crypt_byte_block` 16-byte blocks, skips `skip_byte_block`
 //! blocks, and repeats, never feeding the skipped blocks through the cipher
 //! (so the CTR counter does not advance over them) — matching the behaviour of

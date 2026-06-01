@@ -1,6 +1,6 @@
 //! Property-based test for `Server_Path_Prefix` normalization (task 3.4).
 //!
-//! Feature: stream-flow, Property 33
+//! Feature: ZippyPanther, Property 33
 //!
 //! **Property 33: Server path prefix normalization is idempotent**
 //!
@@ -14,7 +14,7 @@
 //! Stream_Flow_System SHALL normalize it to start with `/`, not end with `/`,
 //! and collapse repeated internal slashes."
 //!
-//! This property exercises [`stream_flow::config::normalize_path_prefix`] across
+//! This property exercises [`zippy_panther::config::normalize_path_prefix`] across
 //! the full input space — operator-plausible prefixes (segments separated by
 //! runs of slashes, with optional leading/trailing slashes) as well as fully
 //! arbitrary and adversarial strings — and asserts the two invariants the
@@ -37,7 +37,7 @@
 //! the idempotence claim is over the values the normalizer *accepts*.
 
 use proptest::prelude::*;
-use stream_flow::config::{normalize_path_prefix, PathPrefixError};
+use zippy_panther::config::{normalize_path_prefix, PathPrefixError};
 
 /// `true` when `out` has the canonical path-prefix shape required by Req 31.4:
 /// the empty "no prefix" form, or a leading `/`, no trailing `/`, and no
@@ -97,7 +97,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 33 — server path prefix normalization is
+    /// Feature: ZippyPanther, Property 33 — server path prefix normalization is
     /// idempotent. **Validates: Requirements 31.4**
     #[test]
     fn path_prefix_normalization_is_idempotent(input in any_prefix_input()) {

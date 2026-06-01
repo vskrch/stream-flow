@@ -1,7 +1,7 @@
 //! Property-based test for at-rest field encryption (`persistence::vault`,
 //! task 5.4).
 //!
-//! Feature: stream-flow, Property 31
+//! Feature: ZippyPanther, Property 31
 //!
 //! **Property 31: Vault at-rest encryption round trip**
 //!
@@ -13,7 +13,7 @@
 //! Requirement 29.5: "WHERE a Vault_Secret is configured, THE Stream_Flow_System
 //! SHALL encrypt sensitive persisted fields at rest using the Vault_Secret."
 //!
-//! This property exercises [`stream_flow::persistence::vault::Vault`] across the
+//! This property exercises [`zippy_panther::persistence::vault::Vault`] across the
 //! full field-value space — empty fields, UTF-8 tokens, and arbitrary binary
 //! blobs — under arbitrary (non-empty) `Vault_Secret` byte strings, and asserts
 //! the contract the requirement hinges on:
@@ -31,7 +31,7 @@
 //!   ciphertext blob makes decryption fail rather than yield altered data.
 
 use proptest::prelude::*;
-use stream_flow::persistence::vault::Vault;
+use zippy_panther::persistence::vault::Vault;
 
 /// Arbitrary `Vault_Secret` bytes for an *enabled* vault. Non-empty (an empty
 /// secret yields a disabled vault) and drawn across length and byte values so
@@ -51,7 +51,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 31 — Vault at-rest encryption round trip.
+    /// Feature: ZippyPanther, Property 31 — Vault at-rest encryption round trip.
     /// **Validates: Requirements 29.5**
     #[test]
     fn vault_at_rest_encryption_round_trips(

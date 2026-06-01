@@ -1,6 +1,6 @@
 //! Property-based test for HLS pre-buffer variant selection (task 18.6).
 //!
-//! Feature: stream-flow, Property 16
+//! Feature: ZippyPanther, Property 16
 //!
 //! **Property 16: Prebuffer variant selection**
 //!
@@ -18,7 +18,7 @@
 //!
 //! The test drives an *arbitrary* non-empty list of HLS variants (each with a
 //! bandwidth and an I-frame/normal flag) plus an arbitrary bandwidth ceiling
-//! through [`stream_flow::prebuffer::select_prebuffer_variant`] and checks the
+//! through [`zippy_panther::prebuffer::select_prebuffer_variant`] and checks the
 //! result against an independent, specification-level oracle:
 //!
 //! * **Candidate pool:** real playback variants are preferred — I-frame
@@ -38,7 +38,7 @@
 
 use m3u8_rs::VariantStream;
 use proptest::prelude::*;
-use stream_flow::prebuffer::select_prebuffer_variant;
+use zippy_panther::prebuffer::select_prebuffer_variant;
 
 /// A generator spec for a single variant: whether it is an I-frame-only
 /// trick-play variant, and its advertised `BANDWIDTH`.
@@ -152,7 +152,7 @@ proptest! {
     // 512 cases comfortably exceeds the 100-iteration floor for a property task.
     #![proptest_config(ProptestConfig::with_cases(512))]
 
-    /// Feature: stream-flow, Property 16 — Prebuffer variant selection.
+    /// Feature: ZippyPanther, Property 16 — Prebuffer variant selection.
     /// **Validates: Requirements 7.2**
     #[test]
     fn prebuffer_variant_selection_matches_req_7_2(

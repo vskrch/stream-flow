@@ -1,16 +1,16 @@
 [package]
-name = "stream-flow-bin"
+name = "zippy-panther-bin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# The binary target is named `stream-flow` (the published command name) even
-# though the package is `stream-flow-bin` (design: Workspace and Crate Layout).
+# The binary target is named `zippy-panther` (the published command name) even
+# though the package is `zippy-panther-bin` (design: Workspace and Crate Layout).
 [[bin]]
-name = "stream-flow"
+name = "zippy-panther"
 path = "src/main.rs"
 
 [dependencies]
-stream-flow = { workspace = true }
+zippy-panther = { workspace = true }
 actix-web = { workspace = true }
 tokio = { workspace = true }

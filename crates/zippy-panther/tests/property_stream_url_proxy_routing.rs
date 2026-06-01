@@ -1,7 +1,7 @@
 //! Property-based test: stream URLs always route through the proxy
 //! (task 26.6, Property 27).
 //!
-//! Feature: stream-flow, Property 27
+//! Feature: ZippyPanther, Property 27
 //!
 //! **Property 27: Stream URLs always route through the proxy**
 //!
@@ -27,7 +27,7 @@
 //!
 //! 1. Start with the configured proxy base URL (never the raw upstream host).
 //! 2. Contain a proxy-link token (`token=` or `d=`) — i.e. be a valid
-//!    stream-flow proxy link.
+//!    ZippyPanther proxy link.
 //! 3. NOT contain the raw upstream URL verbatim in the host/path portion
 //!    (the upstream URL is sealed inside the encrypted/signed token, not
 //!    exposed in the outer URL).
@@ -55,9 +55,9 @@
 use std::collections::BTreeMap;
 
 use proptest::prelude::*;
-use stream_flow::auth::encryption::ProxyPayload;
-use stream_flow::proxylink::{ProxyCodec, ProxyLink};
-use stream_flow::stremio::{ProxyHeaders, Stream, StreamBehaviorHints};
+use zippy_panther::auth::encryption::ProxyPayload;
+use zippy_panther::proxylink::{ProxyCodec, ProxyLink};
+use zippy_panther::stremio::{ProxyHeaders, Stream, StreamBehaviorHints};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -186,11 +186,11 @@ fn arb_upstream_url() -> impl Strategy<Value = String> {
     ]
 }
 
-/// Strategy for a proxy base URL (the public URL of the stream-flow instance).
+/// Strategy for a proxy base URL (the public URL of the ZippyPanther instance).
 fn arb_proxy_base() -> impl Strategy<Value = String> {
     prop_oneof![
         Just("https://proxy.example.com".to_string()),
-        Just("https://stream-flow.myserver.net".to_string()),
+        Just("https://ZippyPanther.myserver.net".to_string()),
         Just("https://sf.example.org/mediaflow".to_string()),
         Just("http://localhost:8080".to_string()),
         Just("https://proxy.example.com/api/v1".to_string()),
@@ -263,7 +263,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 27 — Stream URLs always route through the proxy.
+    /// Feature: ZippyPanther, Property 27 — Stream URLs always route through the proxy.
     /// **Validates: Requirements 23.5, 24.5, 25.5**
     ///
     /// For any upstream URL and proxy base, a `Stream` object built by wrapping
@@ -300,7 +300,7 @@ proptest! {
         assert_routes_through_proxy(&stream, &proxy_base, &upstream_url);
     }
 
-    /// Feature: stream-flow, Property 27 — StreamBehaviorHints are preserved
+    /// Feature: ZippyPanther, Property 27 — StreamBehaviorHints are preserved
     /// through the URL rewrite (Req 24.5).
     ///
     /// For any upstream URL, proxy base, and `StreamBehaviorHints`, the hints
@@ -345,7 +345,7 @@ proptest! {
         assert_routes_through_proxy(&stream, &proxy_base, &upstream_url);
     }
 
-    /// Feature: stream-flow, Property 27 — proxy link is decodable and recovers
+    /// Feature: ZippyPanther, Property 27 — proxy link is decodable and recovers
     /// the original upstream URL.
     ///
     /// The upstream URL sealed inside the proxy link must be recoverable by
@@ -375,7 +375,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 27 — both proxy-link formats produce
+    /// Feature: ZippyPanther, Property 27 — both proxy-link formats produce
     /// URLs that route through the proxy (Store uses token format, Wrap uses
     /// encrypted format, both must satisfy the invariant).
     #[test]

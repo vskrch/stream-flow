@@ -1,6 +1,6 @@
 //! Property-based test for MPD parsing + DASH→HLS conversion (task 16.7).
 //!
-//! Feature: stream-flow, Property 11
+//! Feature: ZippyPanther, Property 11
 //!
 //! **Property 11: MPD parse and DASH→HLS variant correspondence**
 //!
@@ -26,7 +26,7 @@
 //! The test drives an *arbitrary* MPD from a proptest **model** (varying
 //! period / adaptation-set / representation counts, bandwidths, resolutions,
 //! and static vs dynamic), renders that model to an MPD XML document, parses it
-//! with [`stream_flow::mpd::parse_mpd`], and asserts the parsed structure and
+//! with [`zippy_panther::mpd::parse_mpd`], and asserts the parsed structure and
 //! the conversion output correspond to the model:
 //!
 //! * **Structural correspondence / round-trip (Req 2.1, 48.4):** the parsed
@@ -50,7 +50,7 @@
 //! slice, so the VOD/live windowing arithmetic is verified in isolation.
 
 use proptest::prelude::*;
-use stream_flow::mpd::{
+use zippy_panther::mpd::{
     parse_mpd, to_hls_master, to_hls_media, AdaptationSet, HlsMediaOptions, MediaSegment, Mpd,
     Period, PresentationType, Representation, SegmentAddressing,
 };
@@ -389,7 +389,7 @@ proptest! {
     // 256 cases > the 100-iteration floor required for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 11 — MPD parse and DASH→HLS variant
+    /// Feature: ZippyPanther, Property 11 — MPD parse and DASH→HLS variant
     /// correspondence. **Validates: Requirements 2.1, 2.2, 2.4, 2.5, 48.4**
     #[test]
     fn mpd_parse_and_dash_to_hls_variant_correspondence(

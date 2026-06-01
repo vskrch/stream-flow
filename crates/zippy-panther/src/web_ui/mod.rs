@@ -103,10 +103,10 @@ fn index_html(base: &str) -> String {
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>stream-flow</title><link rel="stylesheet" href="/assets/style.css"></head>
+<head><meta charset="utf-8"><title>ZippyPanther</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
 <main>
-<h1>stream-flow</h1>
+<h1>ZippyPanther</h1>
 <section><h2>Streaming</h2><p>Proxy streams, HLS, DASH, subtitles, Acestream, Telegram, Xtream, and EPG through one egress-controlled engine.</p></section>
 <section><h2>Stremio</h2><p>Install store addons or wrap upstream addons through encrypted proxy links.</p><p><a href="/configure?base_url={base}">Configure install URLs</a></p></section>
 <section><h2>Operations</h2><p><a href="/health">Health</a> · <a href="/metrics">Metrics</a> · <a href="/admin">Admin</a></p></section>
@@ -120,7 +120,7 @@ fn configure_html(base: &str, store_install: &str, wrap_install: &str) -> String
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>stream-flow configure</title><link rel="stylesheet" href="/assets/style.css"></head>
+<head><meta charset="utf-8"><title>ZippyPanther configure</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
 <main>
 <h1>Configure</h1>
@@ -141,7 +141,7 @@ fn admin_html(state: &AppState) -> String {
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>stream-flow admin</title><link rel="stylesheet" href="/assets/style.css"></head>
+<head><meta charset="utf-8"><title>ZippyPanther admin</title><link rel="stylesheet" href="/assets/style.css"></head>
 <body>
 <main>
 <h1>Admin</h1>

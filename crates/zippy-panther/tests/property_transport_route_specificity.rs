@@ -2,7 +2,7 @@
 //! (`proxy::routing::RoutingTable::select_route` + `RoutePattern`, task 14.1).
 //! Exercises task 14.3.
 //!
-//! Feature: stream-flow, Property 18
+//! Feature: ZippyPanther, Property 18
 //!
 //! **Property 18: Transport route specificity selection**
 //!
@@ -56,7 +56,7 @@
 use proptest::prelude::*;
 use url::Url;
 
-use stream_flow::proxy::{ProxyUrl, RoutePattern, RoutingTable, TransportRoute};
+use zippy_panther::proxy::{ProxyUrl, RoutePattern, RoutingTable, TransportRoute};
 
 // ===========================================================================
 // Independent pattern model + oracle (re-derived from Req 13.1 / 13.2 text;
@@ -241,7 +241,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 18 — `select_route` picks a matching
+    /// Feature: ZippyPanther, Property 18 — `select_route` picks a matching
     /// route with the fewest wildcards, or reports no match when none applies.
     ///
     /// **Validates: Requirements 13.1, 13.2**

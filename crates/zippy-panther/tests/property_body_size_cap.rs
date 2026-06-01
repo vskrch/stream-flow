@@ -2,7 +2,7 @@
 //! `security::check_response_body_size`, and the async `security::read_to_cap`
 //! buffered-stream reader — task 12.2). Exercises task 12.5.
 //!
-//! Feature: stream-flow, Property 45
+//! Feature: ZippyPanther, Property 45
 //!
 //! **Property 45: Body-size cap boundary**
 //!
@@ -59,9 +59,9 @@ use futures::StreamExt;
 use proptest::collection::vec as prop_vec;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::config::SecurityConfig;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::security::{check_request_body_size, check_response_body_size, read_to_cap};
+use zippy_panther::config::SecurityConfig;
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::security::{check_request_body_size, check_response_body_size, read_to_cap};
 
 /// Arbitrary cap value, kept small so the wide random `size` spread stays cheap
 /// while still covering "zero cap" and large caps.
@@ -124,7 +124,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 45 — request body-size cap boundary
+    /// Feature: ZippyPanther, Property 45 — request body-size cap boundary
     /// (Req 46.4). The inbound request is accepted iff `size <= cap`, and an
     /// over-cap body is the canonical `PayloadTooLarge` (HTTP 413).
     ///
@@ -154,7 +154,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 45 — buffered response body-size cap
+    /// Feature: ZippyPanther, Property 45 — buffered response body-size cap
     /// boundary for an already-known length (Req 46.5). Accepted iff
     /// `size <= cap`; over-cap is `PayloadTooLarge` (HTTP 413).
     ///
@@ -188,7 +188,7 @@ proptest! {
     // per-case current-thread runtime, so the count is kept modest.
     #![proptest_config(ProptestConfig::with_cases(128))]
 
-    /// Feature: stream-flow, Property 45 — streaming buffered-read cap boundary
+    /// Feature: ZippyPanther, Property 45 — streaming buffered-read cap boundary
     /// and eager abort (Req 46.5). `read_to_cap` accepts the body iff the total
     /// size is `<= cap`; otherwise it aborts the read with `PayloadTooLarge`
     /// the moment the running total first exceeds the cap, without consuming

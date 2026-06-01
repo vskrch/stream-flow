@@ -631,7 +631,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // Property test: health-score monotonicity and ordering (Property 42)
     // -----------------------------------------------------------------------
-    // Feature: stream-flow, Property 42: Health-score monotonicity and ordering
+    // Feature: ZippyPanther, Property 42: Health-score monotonicity and ordering
     // Validates: Requirements 42.1, 42.2, 42.3, 42.4, 42.5, 42.6
 
     use proptest::prelude::*;

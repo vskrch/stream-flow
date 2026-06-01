@@ -2,7 +2,7 @@
 //! peak-memory invariants (`proxy::buffer::AdaptiveJitterBuffer` — task 13.2).
 //! Exercises task 13.7.
 //!
-//! Feature: stream-flow, Property 5
+//! Feature: ZippyPanther, Property 5
 //!
 //! **Property 5: Adaptive buffer sizing**
 //!
@@ -54,7 +54,7 @@ use bytes::Bytes;
 use proptest::collection::vec as prop_vec;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::proxy::AdaptiveJitterBuffer;
+use zippy_panther::proxy::AdaptiveJitterBuffer;
 
 /// One step of the reader/writer interleaving: the reader pushes a chunk of
 /// `n` bytes, or the writer pulls up to `n` bytes.
@@ -78,7 +78,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 5 — adaptive sizing + bounded peak memory
+    /// Feature: ZippyPanther, Property 5 — adaptive sizing + bounded peak memory
     /// under an arbitrary reader/writer interleaving (Req 37.3, 5.7, 35.1).
     ///
     /// At every step of an arbitrary push/pull sequence over arbitrary sizes
@@ -178,7 +178,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 5 — the "for any delivered byte offset
+    /// Feature: ZippyPanther, Property 5 — the "for any delivered byte offset
     /// `o`" sizing decision, probed exhaustively at the window boundary
     /// (Req 37.3).
     ///

@@ -1,6 +1,6 @@
 //! Property-based test for healthy-store selection reconciliation (task 23.2).
 //!
-//! Feature: stream-flow, Property 54
+//! Feature: ZippyPanther, Property 54
 //!
 //! **Property 54: Healthy-store selection reconciles cooldown and circuit
 //! breaker**
@@ -12,7 +12,7 @@
 //!
 //! **Validates: Requirements 20.2, 20.4, 50.3, 37.7**
 //!
-//! The unit under test is [`stream_flow::store::fallback`]:
+//! The unit under test is [`zippy_panther::store::fallback`]:
 //! [`StoreFallbackChain::next_healthy`] and [`StoreBreakerSet::is_healthy`].
 //! The property exercises arbitrary combinations of per-store breaker states
 //! (`Closed`, `Open`, `HalfOpen`) and cooldown states (`clear`, `active`) and
@@ -33,11 +33,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
-use stream_flow::errors::{AppError, ErrorCategory};
-use stream_flow::resilience::breaker::{BreakerConfig, BreakerState};
-use stream_flow::store::fallback::{StoreBreakerSet, StoreFallbackChain};
-use stream_flow::store::StoreName;
-use stream_flow::store::{
+use zippy_panther::errors::{AppError, ErrorCategory};
+use zippy_panther::resilience::breaker::{BreakerConfig, BreakerState};
+use zippy_panther::store::fallback::{StoreBreakerSet, StoreFallbackChain};
+use zippy_panther::store::StoreName;
+use zippy_panther::store::{
     AddMagnetData, AddMagnetParams, CheckMagnetData, CheckMagnetParams, GenerateLinkData,
     GenerateLinkParams, GetMagnetData, GetMagnetParams, GetUserParams, ListMagnetsData,
     ListMagnetsParams, MagnetStatus, RemoveMagnetData, RemoveMagnetParams, SubscriptionStatus,
@@ -46,7 +46,7 @@ use stream_flow::store::{
 
 use async_trait::async_trait;
 
-type StoreEntry = (StoreName, Arc<dyn stream_flow::store::Store>);
+type StoreEntry = (StoreName, Arc<dyn zippy_panther::store::Store>);
 
 // ---------------------------------------------------------------------------
 // Arbitrary state generation
@@ -111,7 +111,7 @@ impl MockStore {
 }
 
 #[async_trait]
-impl stream_flow::store::Store for MockStore {
+impl zippy_panther::store::Store for MockStore {
     fn get_name(&self) -> StoreName {
         self.name
     }
@@ -194,7 +194,7 @@ fn build_chain(states: &[StoreState]) -> (Arc<StoreBreakerSet>, Vec<StoreEntry>)
     let cooldown_duration = Duration::from_secs(300);
     let bs = Arc::new(StoreBreakerSet::new(breaker_config, cooldown_duration));
 
-    let mut store_list: Vec<(StoreName, Arc<dyn stream_flow::store::Store>)> = Vec::new();
+    let mut store_list: Vec<(StoreName, Arc<dyn zippy_panther::store::Store>)> = Vec::new();
 
     for state in states {
         let name = ALL_STORES[state.store_idx];
@@ -260,7 +260,7 @@ proptest! {
     // >= 100 iterations as required by the task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 54 — for any combination of (breaker
+    /// Feature: ZippyPanther, Property 54 — for any combination of (breaker
     /// states, cooldown states) across a set of stores, `next_healthy` returns
     /// the first store where BOTH breaker is not Open AND cooldown is clear.
     /// When all stores have either Open breaker or active cooldown, returns
@@ -352,7 +352,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 54 — when ALL stores have either an Open
+    /// Feature: ZippyPanther, Property 54 — when ALL stores have either an Open
     /// breaker or an active cooldown (or both), `next_healthy` returns
     /// `UpstreamUnavailable`. This is the "all unhealthy" clause tested with
     /// forced-unhealthy inputs.

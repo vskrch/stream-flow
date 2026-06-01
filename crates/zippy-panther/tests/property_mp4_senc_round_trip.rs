@@ -1,7 +1,7 @@
 //! Property-based test for the MP4 sample-encryption box parser
 //! (`drm::mp4_atom`) and the ClearKey key store (`drm::clearkey`), task 16.10.
 //!
-//! Feature: stream-flow, Property 14
+//! Feature: ZippyPanther, Property 14
 //!
 //! **Property 14: MP4 sample-encryption box parse round trip**
 //!
@@ -53,12 +53,12 @@ use std::time::Duration;
 
 use proptest::prelude::*;
 
-use stream_flow::drm::clearkey::ClearKeyStore;
-use stream_flow::drm::mp4_atom::{
+use zippy_panther::drm::clearkey::ClearKeyStore;
+use zippy_panther::drm::mp4_atom::{
     find_box, parse_saio, parse_saiz, parse_senc, parse_tenc, SampleAuxInfoOffsets,
     SampleAuxInfoSizes, SampleEncryptionInfo, SubsampleRange, TrackEncryption,
 };
-use stream_flow::errors::ErrorCategory;
+use zippy_panther::errors::ErrorCategory;
 
 // ---------------------------------------------------------------------------
 // Wire-format builders (replicas of the private `#[cfg(test)]` helpers in
@@ -257,7 +257,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 14 — MP4 sample-encryption box parse
+    /// Feature: ZippyPanther, Property 14 — MP4 sample-encryption box parse
     /// round trip. **Validates: Requirements 4.9**
     #[test]
     fn mp4_sample_encryption_boxes_round_trip(
@@ -424,7 +424,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 14 — ClearKey key resolution by KID.
+    /// Feature: ZippyPanther, Property 14 — ClearKey key resolution by KID.
     /// **Validates: Requirements 4.6**
     #[test]
     fn clearkey_store_resolves_configured_kids_and_names_unconfigured(

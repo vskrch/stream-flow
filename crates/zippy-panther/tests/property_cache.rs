@@ -1,7 +1,7 @@
 //! Property-based test for the cache backend round trip, namespacing, and TTL
 //! (task 4.4).
 //!
-//! Feature: stream-flow, Property 30
+//! Feature: ZippyPanther, Property 30
 //!
 //! **Property 30: Cache store/retrieve round trip, namespacing, and TTL**
 //!
@@ -12,7 +12,7 @@
 //!
 //! **Validates: Requirements 30.1, 30.3, 30.4, 30.6**
 //!
-//! The backend under test is [`stream_flow::cache::LocalCache`] — the
+//! The backend under test is [`zippy_panther::cache::LocalCache`] — the
 //! always-present in-process [`CacheBackend`] (moka, namespace-prefixed,
 //! TTL + LRU). It is deterministic and needs no external server, so the
 //! property exercises the real storage path rather than a mock. The three
@@ -41,7 +41,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::cache::{namespaced_key, CacheBackend, LocalCache, NAMESPACE_SEPARATOR};
+use zippy_panther::cache::{namespaced_key, CacheBackend, LocalCache, NAMESPACE_SEPARATOR};
 
 /// A short-but-reliable TTL for the expiry arm. The post-expiry wait
 /// ([`EXPIRY_WAIT`]) is several multiples of this, so by the time we re-`get`
@@ -60,7 +60,7 @@ fn arb_namespace() -> impl Strategy<Value = String> {
     prop_oneof![
         2 => Just(String::new()),
         5 => "[a-zA-Z0-9:_.\\-]{0,16}",
-        2 => "stream-flow:[a-z]{1,8}",
+        2 => "ZippyPanther:[a-z]{1,8}",
         1 => any::<String>(),
     ]
 }
@@ -93,7 +93,7 @@ proptest! {
     // TTL-expiry arm waits on a real (short) wall-clock interval per case.
     #![proptest_config(ProptestConfig::with_cases(128))]
 
-    /// Feature: stream-flow, Property 30 — cache store/retrieve round trip,
+    /// Feature: ZippyPanther, Property 30 — cache store/retrieve round trip,
     /// namespacing, and TTL. **Validates: Requirements 30.1, 30.3, 30.4, 30.6**
     #[test]
     fn cache_round_trip_namespacing_and_ttl(

@@ -1,6 +1,6 @@
 //! Property-based test for the unified retry policy (task 6.6).
 //!
-//! Feature: stream-flow, Property 50
+//! Feature: ZippyPanther, Property 50
 //!
 //! **Property 50: Retry-policy classification and bounded jittered backoff**
 //!
@@ -32,8 +32,8 @@ use std::time::Duration;
 use proptest::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use stream_flow::errors::{AppError, ErrorCategory};
-use stream_flow::resilience::{RetryPolicy, Retryability};
+use zippy_panther::errors::{AppError, ErrorCategory};
+use zippy_panther::resilience::{RetryPolicy, Retryability};
 
 /// The full category space (mirrors the canonical taxonomy) so classification
 /// is checked over every variant (Req 50.1).
@@ -121,7 +121,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 50 — classification is deterministic and
+    /// Feature: ZippyPanther, Property 50 — classification is deterministic and
     /// partitions the transient categories (`UpstreamUnavailable`,
     /// `HosterUnavailable`, `TooManyRequests`) from every permanent one.
     /// **Validates: Requirements 50.1, 35.4**
@@ -148,7 +148,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 50 — every full-jitter backoff lies in
+    /// Feature: ZippyPanther, Property 50 — every full-jitter backoff lies in
     /// the band `[0, capped]` and never exceeds `max_delay`, for any policy,
     /// attempt, and seed. **Validates: Requirements 50.1, 35.4**
     #[test]
@@ -181,7 +181,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 50 — the capped delay equals
+    /// Feature: ZippyPanther, Property 50 — the capped delay equals
     /// `min(max_delay, base·multiplierᵃᵗᵗᵉᵐᵖᵗ)` for any attempt.
     /// **Validates: Requirements 50.1, 35.4**
     #[test]
@@ -200,7 +200,7 @@ proptest! {
         prop_assert!(capped_secs <= policy.max_delay.as_secs_f64() + TOL_SECS);
     }
 
-    /// Feature: stream-flow, Property 50 — once the exponential term reaches or
+    /// Feature: ZippyPanther, Property 50 — once the exponential term reaches or
     /// overflows `max_delay`, the cap saturates at exactly `max_delay` (no
     /// overflow/panic). A `multiplier > 1` plus a huge attempt drives
     /// `multiplierᵃᵗᵗᵉᵐᵖᵗ → +inf`, so the cap must collapse to `max_delay`.
@@ -231,7 +231,7 @@ proptest! {
         prop_assert!(policy.backoff(attempt, &mut rng) <= policy.max_delay);
     }
 
-    /// Feature: stream-flow, Property 50 — when an error carries a `retry_after`
+    /// Feature: ZippyPanther, Property 50 — when an error carries a `retry_after`
     /// hint, `delay_for` waits exactly that long clamped to `max_delay`,
     /// independent of the RNG; without a hint it falls back to the in-band
     /// jittered backoff. **Validates: Requirements 50.1, 35.4**
@@ -269,7 +269,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 50 — the seeded RNG makes the backoff
+    /// Feature: ZippyPanther, Property 50 — the seeded RNG makes the backoff
     /// schedule reproducible: identical seeds produce identical delays for the
     /// same attempt. **Validates: Requirements 50.1, 35.4**
     #[test]

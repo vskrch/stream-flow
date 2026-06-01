@@ -1,7 +1,7 @@
 //! Property-based test for outbound header sanitization
 //! (`egress::sanitize_outbound`, task 8.4).
 //!
-//! Feature: stream-flow, Property 60
+//! Feature: ZippyPanther, Property 60
 //!
 //! **Property 60: Outbound requests never carry client-identifying headers**
 //!
@@ -51,7 +51,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use actix_web::http::header::{HeaderMap, HeaderName, HeaderValue};
 use proptest::prelude::*;
-use stream_flow::egress::{
+use zippy_panther::egress::{
     is_client_identifying_header, sanitize_outbound, CLIENT_IDENTIFYING_HEADERS,
 };
 
@@ -131,7 +131,7 @@ fn arb_value_with_ip(ip: String) -> impl Strategy<Value = String> {
 /// [`HeaderValue`] and cannot accidentally coincide with a generated IP.
 fn arb_plain_value() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just("stream-flow/1.0".to_string()),
+        Just("ZippyPanther/1.0".to_string()),
         Just("*/*".to_string()),
         Just("bytes=0-1023".to_string()),
         Just("gzip, deflate, br".to_string()),
@@ -203,7 +203,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 60 — outbound requests never carry
+    /// Feature: ZippyPanther, Property 60 — outbound requests never carry
     /// client-identifying headers. **Validates: Requirements 51.2, 51.3, 51.12**
     #[test]
     fn outbound_never_carries_client_identifying_headers(

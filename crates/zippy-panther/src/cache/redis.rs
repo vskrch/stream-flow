@@ -155,9 +155,9 @@ mod tests {
     /// runs in the default `cargo test` with no server present.
     #[test]
     fn from_url_builds_lazily_and_reports_namespace() {
-        let cache = RedisCache::from_url("redis://127.0.0.1:6379", "stream-flow")
+        let cache = RedisCache::from_url("redis://127.0.0.1:6379", "ZippyPanther")
             .expect("pool construction is offline-safe");
-        assert_eq!(cache.namespace(), "stream-flow");
+        assert_eq!(cache.namespace(), "ZippyPanther");
     }
 
     /// An empty namespace is permitted (it adds no prefix — see

@@ -1,6 +1,6 @@
 //! Property-based test for the circuit breaker (task 6.7).
 //!
-//! Feature: stream-flow, Property 51
+//! Feature: ZippyPanther, Property 51
 //!
 //! **Property 51: Circuit-breaker state-machine invariants and breaker-aware
 //! selection**
@@ -21,7 +21,7 @@
 //!
 //! **Validates: Requirements 50.2, 50.3, 50.4**
 //!
-//! The unit under test is [`stream_flow::resilience::breaker`]: the
+//! The unit under test is [`zippy_panther::resilience::breaker`]: the
 //! [`CircuitBreaker`] state machine (driven on a [`ManualClock`] so the
 //! `Open → HalfOpen` cooldown transition is deterministic) and the
 //! [`select_available`] breaker-aware selector (design: Resilience → Pattern 1
@@ -50,11 +50,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use proptest::prelude::*;
-use stream_flow::errors::{AppError, ErrorCategory};
-use stream_flow::resilience::breaker::{
+use zippy_panther::errors::{AppError, ErrorCategory};
+use zippy_panther::resilience::breaker::{
     BreakerConfig, BreakerKey, BreakerState, CircuitBreaker, ManualClock,
 };
-use stream_flow::resilience::select_available;
+use zippy_panther::resilience::select_available;
 
 // ---------------------------------------------------------------------------
 // Trip-eligibility mirror (design: Pattern 1 classification)
@@ -270,7 +270,7 @@ proptest! {
     // fast while broadly exploring operation interleavings.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 51 — the real breaker's observed state,
+    /// Feature: ZippyPanther, Property 51 — the real breaker's observed state,
     /// admission decision, and short-circuit behavior agree with an
     /// independent reference model after **every** operation of **any**
     /// generated sequence, and the breaker never panics. This single
@@ -360,7 +360,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 51 — opening is **exact**: from `Closed`,
+    /// Feature: ZippyPanther, Property 51 — opening is **exact**: from `Closed`,
     /// `n` consecutive trip-eligible failures leave the breaker `Closed` for
     /// every `n < failure_threshold` and flip it to `Open` at exactly
     /// `n == failure_threshold`; interleaved non-eligible failures never count
@@ -416,7 +416,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 51 (selection clause) — for any configured
+    /// Feature: ZippyPanther, Property 51 (selection clause) — for any configured
     /// order of per-store breaker states, [`select_available`] returns the
     /// **first** store whose breaker is not `Open` (an `Open` breaker is removed
     /// from rotation; a `HalfOpen` breaker, admitting a recovery probe, stays in

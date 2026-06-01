@@ -1,5 +1,5 @@
 [package]
-name = "stream-flow-ffi"
+name = "zippy-panther-ffi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ license.workspace = true
 # This crate is built with `--profile release-ffi` (`panic = "abort"`) and
 # relies on `catch_unwind` at every boundary (design: Profile note).
 [lib]
-name = "stream_flow_ffi"
+name = "zippy_panther_ffi"
 path = "src/lib.rs"
 crate-type = ["staticlib", "cdylib"]
 
@@ -17,8 +17,8 @@ crate-type = ["staticlib", "cdylib"]
 # The C-ABI surface is gated behind `ffi` so the crate is a no-op unless an
 # FFI build explicitly opts in (matches mediaflow's `ffi` feature).
 default = []
-ffi = ["dep:stream-flow", "dep:serde_json"]
+ffi = ["dep:zippy-panther", "dep:serde_json"]
 
 [dependencies]
-stream-flow = { workspace = true, optional = true }
+zippy-panther = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/stream-flow",
-    "crates/stream-flow-bin",
-    "crates/stream-flow-ffi",
-    "crates/stream-flow-sdk",
+    "crates/zippy-panther",
+    "crates/zippy-panther-bin",
+    "crates/zippy-panther-ffi",
+    "crates/zippy-panther-sdk",
     "crates/os_info_stub",
 ]
 
@@ -134,7 +134,7 @@ sysinfo = "0.32"
 openssl = { version = "0.10", features = ["vendored"] }
 
 # Internal lib crate (referenced by bin + ffi crates)
-stream-flow = { path = "crates/stream-flow" }
+zippy-panther = { path = "crates/zippy-panther" }
 
 # Dev / test
 proptest = "1"
@@ -154,8 +154,8 @@ tempfile = "3.27"
 #
 # Build the server with the default `release` profile and the FFI staticlib
 # with `--profile release-ffi`:
-#     cargo build --release -p stream-flow-bin
-#     cargo build --profile release-ffi -p stream-flow-ffi
+#     cargo build --release -p zippy-panther-bin
+#     cargo build --profile release-ffi -p zippy-panther-ffi
 # ---------------------------------------------------------------------------
 [profile.release]
 opt-level = 3

@@ -1,6 +1,6 @@
 //! Property-based test for DASH segment-addressing resolution (task 16.8).
 //!
-//! Feature: stream-flow, Property 12
+//! Feature: ZippyPanther, Property 12
 //!
 //! **Property 12: DASH segment addressing correctness**
 //!
@@ -17,7 +17,7 @@
 //!
 //! The four DASH segment-addressing modes (Req 3.1–3.6) are exercised as
 //! independent properties against the real
-//! [`stream_flow::mpd::resolve_segments`] dispatch (`src/mpd/segments.rs`):
+//! [`zippy_panther::mpd::resolve_segments`] dispatch (`src/mpd/segments.rs`):
 //!
 //! * **`SegmentTemplate` fixed (Req 3.1, 3.5):** an arbitrary template using
 //!   all four identifiers (with arbitrary `%0Nd` width specifiers and the `$$`
@@ -39,7 +39,7 @@
 //!   ordered (init < index < media), non-overlapping, and contiguous.
 
 use proptest::prelude::*;
-use stream_flow::mpd::{
+use zippy_panther::mpd::{
     resolve_segments, MpdError, Representation, SegmentAddressing, SegmentBase, SegmentList,
     SegmentTemplate, SegmentTimeline, SegmentUrl, TimelineEntry, UrlRange,
 };
@@ -95,7 +95,7 @@ proptest! {
     // 256 cases > the 100-iteration floor required for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 12 — fixed `SegmentTemplate` identifier
+    /// Feature: ZippyPanther, Property 12 — fixed `SegmentTemplate` identifier
     /// substitution and segment enumeration. **Validates: Requirements 3.1, 3.5**
     #[test]
     fn fixed_template_substitutes_identifiers_and_enumerates_segments(
@@ -187,7 +187,7 @@ proptest! {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 12 — `SegmentTimeline` `(t,d,r)`
+    /// Feature: ZippyPanther, Property 12 — `SegmentTimeline` `(t,d,r)`
     /// expansion to `Σ(r+1)` strictly non-overlapping monotonic segments.
     /// **Validates: Requirements 3.2**
     #[test]
@@ -289,7 +289,7 @@ proptest! {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 12 — a forward `@t` jump that leaves a
+    /// Feature: ZippyPanther, Property 12 — a forward `@t` jump that leaves a
     /// hole is a `MissingSegment` error naming the representation and the gap.
     /// **Validates: Requirements 3.6**
     #[test]
@@ -342,7 +342,7 @@ proptest! {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 12 — `SegmentList` enumerates explicit
+    /// Feature: ZippyPanther, Property 12 — `SegmentList` enumerates explicit
     /// `<SegmentURL>` media URLs and `@mediaRange` byte ranges; generated
     /// contiguous ranges stay contiguous and within bounds.
     /// **Validates: Requirements 3.4**
@@ -428,7 +428,7 @@ proptest! {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 12 — `SegmentBase` derives the init byte
+    /// Feature: ZippyPanther, Property 12 — `SegmentBase` derives the init byte
     /// range and the indexed media byte range; the regions are ordered,
     /// non-overlapping, and contiguous. **Validates: Requirements 3.3**
     #[test]

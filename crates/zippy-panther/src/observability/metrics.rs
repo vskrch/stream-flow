@@ -25,7 +25,7 @@ use prometheus::{
 
 /// Metric/series name prefix so every series is grouped under one namespace in
 /// the exposition (and never collides with sidecar exporters).
-const NS: &str = "stream_flow";
+const NS: &str = "zippy_panther";
 
 /// The process-wide Prometheus metrics registry (Req 32.1, 32.5, 50.14).
 ///
@@ -344,7 +344,7 @@ mod tests {
         // Non-vec series advertise HELP/TYPE even before any observation.
         assert!(text.contains("# HELP"));
         assert!(text.contains("# TYPE"));
-        assert!(text.contains("stream_flow_cache_hits_total"));
+        assert!(text.contains("zippy_panther_cache_hits_total"));
     }
 
     #[test]
@@ -355,9 +355,9 @@ mod tests {
         m.record_proxied_request("error", Duration::from_millis(1));
 
         let text = m.gather();
-        assert!(text.contains("stream_flow_proxied_requests_total{outcome=\"success\"} 2"));
-        assert!(text.contains("stream_flow_proxied_requests_total{outcome=\"error\"} 1"));
-        assert!(text.contains("stream_flow_proxied_request_duration_seconds_count 3"));
+        assert!(text.contains("zippy_panther_proxied_requests_total{outcome=\"success\"} 2"));
+        assert!(text.contains("zippy_panther_proxied_requests_total{outcome=\"error\"} 1"));
+        assert!(text.contains("zippy_panther_proxied_request_duration_seconds_count 3"));
     }
 
     #[test]
@@ -369,13 +369,13 @@ mod tests {
 
         let text = m.gather();
         assert!(text.contains(
-            "stream_flow_store_operations_total{outcome=\"success\",store=\"realdebrid\"} 1"
+            "zippy_panther_store_operations_total{outcome=\"success\",store=\"realdebrid\"} 1"
         ));
         assert!(text.contains(
-            "stream_flow_store_operations_total{outcome=\"error\",store=\"realdebrid\"} 1"
+            "zippy_panther_store_operations_total{outcome=\"error\",store=\"realdebrid\"} 1"
         ));
         assert!(text.contains(
-            "stream_flow_store_operations_total{outcome=\"success\",store=\"alldebrid\"} 1"
+            "zippy_panther_store_operations_total{outcome=\"success\",store=\"alldebrid\"} 1"
         ));
     }
 
@@ -388,9 +388,9 @@ mod tests {
         m.record_upstream_failure("timeout");
 
         let text = m.gather();
-        assert!(text.contains("stream_flow_cache_hits_total 2"));
-        assert!(text.contains("stream_flow_cache_misses_total 1"));
-        assert!(text.contains("stream_flow_upstream_failures_total{kind=\"timeout\"} 1"));
+        assert!(text.contains("zippy_panther_cache_hits_total 2"));
+        assert!(text.contains("zippy_panther_cache_misses_total 1"));
+        assert!(text.contains("zippy_panther_upstream_failures_total{kind=\"timeout\"} 1"));
     }
 
     #[test]
@@ -405,17 +405,19 @@ mod tests {
         m.record_resource_reclaimed("sse_subscription");
 
         let text = m.gather();
-        assert!(text.contains("stream_flow_retries_total 1"));
+        assert!(text.contains("zippy_panther_retries_total 1"));
         assert!(text.contains(
-            "stream_flow_circuit_breaker_transitions_total{origin=\"realdebrid\",transition=\"open\"} 1"
+            "zippy_panther_circuit_breaker_transitions_total{origin=\"realdebrid\",transition=\"open\"} 1"
         ));
         assert!(text.contains(
-            "stream_flow_circuit_breaker_transitions_total{origin=\"realdebrid\",transition=\"close\"} 1"
+            "zippy_panther_circuit_breaker_transitions_total{origin=\"realdebrid\",transition=\"close\"} 1"
         ));
-        assert!(text.contains("stream_flow_store_fallbacks_total 1"));
-        assert!(text.contains("stream_flow_task_restarts_total{task=\"prefetcher\"} 1"));
-        assert!(text.contains("stream_flow_redis_reattach_total 1"));
-        assert!(text.contains("stream_flow_resources_reclaimed_total{kind=\"sse_subscription\"} 1"));
+        assert!(text.contains("zippy_panther_store_fallbacks_total 1"));
+        assert!(text.contains("zippy_panther_task_restarts_total{task=\"prefetcher\"} 1"));
+        assert!(text.contains("zippy_panther_redis_reattach_total 1"));
+        assert!(
+            text.contains("zippy_panther_resources_reclaimed_total{kind=\"sse_subscription\"} 1")
+        );
     }
 
     #[test]
@@ -425,6 +427,6 @@ mod tests {
         m.record_cache_hit();
         clone.record_cache_hit();
         // Both increments land on the one shared counter.
-        assert!(clone.gather().contains("stream_flow_cache_hits_total 2"));
+        assert!(clone.gather().contains("zippy_panther_cache_hits_total 2"));
     }
 }

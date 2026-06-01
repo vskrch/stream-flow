@@ -3,16 +3,16 @@
 //! Exercises the public observability surface the way the binary and the
 //! dual-surface router do: the `/metrics` endpoint is guarded by the metrics
 //! password (Prometheus exposition on success, `401` otherwise — Req 32.1,
-//! 32.2), the [`Metrics`](stream_flow::observability::Metrics) registry records
+//! 32.2), the [`Metrics`](zippy_panther::observability::Metrics) registry records
 //! counters/latencies for proxied requests, store ops, cache hit/miss, and
 //! upstream failures (Req 32.5), and the
-//! [`Redactor`](stream_flow::observability::Redactor) scrubs known secrets out
+//! [`Redactor`](zippy_panther::observability::Redactor) scrubs known secrets out
 //! of URLs/headers before they reach a log line (Req 32.6, 46.7).
 
 use actix_web::{http::StatusCode, test, App};
-use stream_flow::config::{AuthConfig, Config};
-use stream_flow::observability::{Metrics, Redactor};
-use stream_flow::{build_app, AppState};
+use zippy_panther::config::{AuthConfig, Config};
+use zippy_panther::observability::{Metrics, Redactor};
+use zippy_panther::{build_app, AppState};
 
 // NOTE: actix's `test` is imported as a *module* path (`test::init_service`)
 // only; we never bring its attribute macro into attribute position. Async
@@ -117,12 +117,12 @@ fn metrics_registry_records_and_exposes_all_required_series() {
 
     let exposition = metrics.gather();
     for series in [
-        "stream_flow_proxied_requests_total",
-        "stream_flow_proxied_request_duration_seconds",
-        "stream_flow_store_operations_total",
-        "stream_flow_cache_hits_total",
-        "stream_flow_cache_misses_total",
-        "stream_flow_upstream_failures_total",
+        "zippy_panther_proxied_requests_total",
+        "zippy_panther_proxied_request_duration_seconds",
+        "zippy_panther_store_operations_total",
+        "zippy_panther_cache_hits_total",
+        "zippy_panther_cache_misses_total",
+        "zippy_panther_upstream_failures_total",
     ] {
         assert!(
             exposition.contains(series),
@@ -146,12 +146,12 @@ fn metrics_registry_records_self_healing_actions() {
 
     let exposition = metrics.gather();
     for series in [
-        "stream_flow_retries_total",
-        "stream_flow_circuit_breaker_transitions_total",
-        "stream_flow_store_fallbacks_total",
-        "stream_flow_task_restarts_total",
-        "stream_flow_redis_reattach_total",
-        "stream_flow_resources_reclaimed_total",
+        "zippy_panther_retries_total",
+        "zippy_panther_circuit_breaker_transitions_total",
+        "zippy_panther_store_fallbacks_total",
+        "zippy_panther_task_restarts_total",
+        "zippy_panther_redis_reattach_total",
+        "zippy_panther_resources_reclaimed_total",
     ] {
         assert!(
             exposition.contains(series),

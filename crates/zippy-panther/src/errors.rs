@@ -443,8 +443,8 @@ impl ResponseError for AppError {
         // `WWW-Authenticate` and the `Proxy-Authenticate` header so clients
         // using either convention re-prompt for HTTP Basic credentials.
         if self.auth_challenge {
-            builder.insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"stream-flow\""));
-            builder.insert_header((header::PROXY_AUTHENTICATE, "Basic realm=\"stream-flow\""));
+            builder.insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"ZippyPanther\""));
+            builder.insert_header((header::PROXY_AUTHENTICATE, "Basic realm=\"ZippyPanther\""));
         }
 
         builder.json(self.to_error_response())
@@ -846,13 +846,13 @@ mod response_error_tests {
             .headers()
             .get(header::WWW_AUTHENTICATE)
             .and_then(|v| v.to_str().ok());
-        assert_eq!(www, Some("Basic realm=\"stream-flow\""));
+        assert_eq!(www, Some("Basic realm=\"ZippyPanther\""));
 
         let proxy = resp
             .headers()
             .get(header::PROXY_AUTHENTICATE)
             .and_then(|v| v.to_str().ok());
-        assert_eq!(proxy, Some("Basic realm=\"stream-flow\""));
+        assert_eq!(proxy, Some("Basic realm=\"ZippyPanther\""));
     }
 
     #[test]

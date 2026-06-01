@@ -3,7 +3,7 @@
 //! Given an upstream `.m3u8` body and the absolute URL it was fetched from,
 //! [`HlsRewriter::rewrite`] parses it with [`m3u8_rs`] and returns a serialized
 //! manifest in which **every** variant, segment, `#EXT-X-KEY`, and
-//! `#EXT-X-MAP` URL has been rewritten to a `stream-flow` proxy URL (Req 1.1).
+//! `#EXT-X-MAP` URL has been rewritten to a `ZippyPanther` proxy URL (Req 1.1).
 //! Each rewritten URL embeds the resolved upstream URL and the custom upstream
 //! request headers inside an encrypted `d` proxy-link token (the
 //! [`auth::encryption`](crate::auth::encryption) mediaflow-style AES-CBC
@@ -68,7 +68,7 @@ impl Endpoint {
 }
 
 /// Rewrites upstream HLS manifests so every embedded URL flows back through the
-/// `stream-flow` proxy (design: Components → HLS; Req 1.1–1.4).
+/// `ZippyPanther` proxy (design: Components → HLS; Req 1.1–1.4).
 ///
 /// Built once per HLS request from the public proxy base, the proxy-link
 /// encryption key (derived from the `API_Password`), and the custom upstream
@@ -107,7 +107,7 @@ impl HlsRewriter {
     }
 
     /// The `/proxy/hls/` URL prefix every rewritten URL begins with. A URL that
-    /// starts with this prefix is a `stream-flow` proxy URL (used by Property
+    /// starts with this prefix is a `ZippyPanther` proxy URL (used by Property
     /// 10 to assert no upstream-origin URL survives).
     pub fn proxy_prefix(&self) -> String {
         format!("{}/proxy/hls/", self.proxy_base)
@@ -511,7 +511,7 @@ mod tests {
             "Referer".to_string(),
             "https://referer.example/".to_string(),
         );
-        headers.insert("User-Agent".to_string(), "stream-flow/test".to_string());
+        headers.insert("User-Agent".to_string(), "ZippyPanther/test".to_string());
         let r = rewriter().with_headers(headers.clone());
 
         let m3u8 = b"#EXTM3U\n#EXT-X-TARGETDURATION:6\n\

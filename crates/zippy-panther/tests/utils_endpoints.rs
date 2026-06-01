@@ -1,6 +1,6 @@
 //! Streaming-utility endpoint integration tests (task 20.1) — Req 15.
 //!
-//! Drives the real [`stream_flow::build_app`] routing tree (the same factory
+//! Drives the real [`zippy_panther::build_app`] routing tree (the same factory
 //! the binary boots from, Req 49.6) and asserts the mediaflow streaming-utility
 //! surface is wired to its real handlers:
 //!
@@ -14,8 +14,8 @@
 
 use actix_web::{http::StatusCode, test, App};
 use serde_json::json;
-use stream_flow::config::Config;
-use stream_flow::{build_app, AppState};
+use zippy_panther::config::Config;
+use zippy_panther::{build_app, AppState};
 
 /// Req 15.8: `/health` returns a success response.
 #[actix_web::test]

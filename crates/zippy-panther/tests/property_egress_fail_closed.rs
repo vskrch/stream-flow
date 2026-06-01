@@ -1,7 +1,7 @@
 //! Property-based test for the egress fail-closed decision
 //! (`egress::decide_egress`, task 8.5).
 //!
-//! Feature: stream-flow, Property 62
+//! Feature: ZippyPanther, Property 62
 //!
 //! **Property 62: Egress fail-closed prevents real-IP leakage**
 //!
@@ -56,9 +56,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use proptest::prelude::*;
-use stream_flow::config::EgressPolicy;
-use stream_flow::egress::{decide_egress, fail_closed_error, EgressDecision, LeakCheck};
-use stream_flow::errors::ErrorCategory;
+use zippy_panther::config::EgressPolicy;
+use zippy_panther::egress::{decide_egress, fail_closed_error, EgressDecision, LeakCheck};
+use zippy_panther::errors::ErrorCategory;
 
 /// Arbitrary IP — both IPv4 and IPv6 so the `Verified`/`Leaking` payloads carry
 /// a representative spread of addresses (the decision ignores the value, but
@@ -91,7 +91,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 62 — egress fail-closed prevents real-IP
+    /// Feature: ZippyPanther, Property 62 — egress fail-closed prevents real-IP
     /// leakage. **Validates: Requirements 51.1, 51.8**
     #[test]
     fn egress_fail_closed_prevents_real_ip_leakage(

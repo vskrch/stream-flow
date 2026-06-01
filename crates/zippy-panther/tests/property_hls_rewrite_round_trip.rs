@@ -1,13 +1,13 @@
 //! Property-based test for HLS manifest parse/serialize round trip + full URL
 //! rewriting (task 16.6).
 //!
-//! Feature: stream-flow, Property 10
+//! Feature: ZippyPanther, Property 10
 //!
 //! **Property 10: HLS manifest parse/serialize round trip and full rewriting**
 //!
 //! *For any* valid M3U8 manifest, parsing then serializing produces an
 //! equivalent manifest; and after rewriting, every variant, segment,
-//! `#EXT-X-KEY`, and `#EXT-X-MAP` URL in the output is a `stream-flow` proxy
+//! `#EXT-X-KEY`, and `#EXT-X-MAP` URL in the output is a `ZippyPanther` proxy
 //! URL (none remain pointing at the upstream origin), with relative URIs
 //! resolved against the manifest base before rewriting.
 //!
@@ -38,7 +38,7 @@
 //!
 //! **Arm B — full rewriting (Req 1.1–1.4).** [`HlsRewriter::rewrite`] produces
 //! an output in which **every** embedded URL (master variants + alternative
-//! renditions, media segments, `#EXT-X-KEY`, `#EXT-X-MAP`) is a `stream-flow`
+//! renditions, media segments, `#EXT-X-KEY`, `#EXT-X-MAP`) is a `ZippyPanther`
 //! proxy URL — none reference any upstream host — and the encrypted `d` token
 //! each proxy URL carries decrypts to the *resolved-against-the-manifest-base*
 //! absolute upstream URL. The multiset of those decrypted URLs equals the
@@ -49,8 +49,8 @@
 use proptest::prelude::*;
 use url::Url;
 
-use stream_flow::auth::encryption::{decrypt, CbcKey};
-use stream_flow::hls::HlsRewriter;
+use zippy_panther::auth::encryption::{decrypt, CbcKey};
+use zippy_panther::hls::HlsRewriter;
 
 // ---------------------------------------------------------------------------
 // Fixed test identities. Upstream hosts carry dotted labels that can never
@@ -61,7 +61,7 @@ use stream_flow::hls::HlsRewriter;
 const ORIGIN_HOST: &str = "origin.upstream.invalid";
 const ALT_HOST: &str = "alt.upstream.invalid";
 const PROXY_BASE: &str = "https://proxy.test/mediaflow";
-const API_PASSWORD: &str = "stream-flow-property-10-secret";
+const API_PASSWORD: &str = "ZippyPanther-property-10-secret";
 
 // ---------------------------------------------------------------------------
 // Generator model
@@ -319,7 +319,7 @@ proptest! {
     // 256 cases comfortably exceeds the 100-iteration floor for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 10 — HLS manifest parse/serialize round
+    /// Feature: ZippyPanther, Property 10 — HLS manifest parse/serialize round
     /// trip and full rewriting.
     /// **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 48.4**
     #[test]
@@ -378,7 +378,7 @@ proptest! {
 
         let out_urls = all_urls(&out);
 
-        // Every embedded URL is a `stream-flow` proxy URL and none reference an
+        // Every embedded URL is a `ZippyPanther` proxy URL and none reference an
         // upstream host (Req 1.1: nothing still points at the origin).
         for u in &out_urls {
             prop_assert!(

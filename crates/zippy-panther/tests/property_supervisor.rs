@@ -1,7 +1,7 @@
 //! Property-based test for supervised background-task restart with backoff
 //! (task 7.4).
 //!
-//! Feature: stream-flow, Property 52
+//! Feature: ZippyPanther, Property 52
 //!
 //! **Property 52: Supervised task restart with backoff**
 //!
@@ -39,7 +39,7 @@ use std::time::Duration;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
-use stream_flow::supervisor::{
+use zippy_panther::supervisor::{
     spawn_supervised, CrashLoopGuard, ExitReason, RestartDecision, RestartPolicy, ShutdownSignal,
     TaskStatus,
 };
@@ -130,7 +130,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 52 — the pure backoff schedule is the
+    /// Feature: ZippyPanther, Property 52 — the pure backoff schedule is the
     /// capped exponential `min(max_backoff, base·multiplierⁱⁿᵈᵉˣ)`: it equals
     /// the formula, is monotonic non-decreasing, and **never exceeds**
     /// `max_backoff` for any index. **Validates: Requirements 50.7, 50.12**
@@ -167,7 +167,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 52 — for a large index the schedule
+    /// Feature: ZippyPanther, Property 52 — for a large index the schedule
     /// saturates to exactly `max_backoff` (never overflowing/panicking on the
     /// runaway `multiplierⁱⁿᵈᵉˣ` term). A `multiplier > 1` plus a huge index
     /// drives `multiplierⁱⁿᵈᵉˣ → +inf`, so the term must collapse to the cap.
@@ -195,7 +195,7 @@ proptest! {
         prop_assert!(backoff <= policy.max_backoff);
     }
 
-    /// Feature: stream-flow, Property 52 — the crash-loop guard hands out the
+    /// Feature: ZippyPanther, Property 52 — the crash-loop guard hands out the
     /// configured schedule: while restarts remain inside the window each
     /// `on_exit` authorizes a `Restart` whose backoff is exactly
     /// `policy.backoff(in_window_index)` (always `<= max_backoff`) with the
@@ -245,7 +245,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 52 — a supervised task that always panics
+    /// Feature: ZippyPanther, Property 52 — a supervised task that always panics
     /// or always exits early is restarted using exactly the configured backoff
     /// schedule, recording one restart event per restart (each `<= max_backoff`)
     /// with the matching exit reason, until the crash-loop cap parks it
@@ -340,7 +340,7 @@ proptest! {
         result?;
     }
 
-    /// Feature: stream-flow, Property 52 — a task that only ever runs forever
+    /// Feature: ZippyPanther, Property 52 — a task that only ever runs forever
     /// is never restarted: advancing the fake clock far past every backoff
     /// window leaves `restart_count == 0` and the task `Running`, with its body
     /// having entered exactly once. **Validates: Requirements 50.7, 50.12**

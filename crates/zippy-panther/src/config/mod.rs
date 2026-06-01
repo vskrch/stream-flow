@@ -427,7 +427,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             redis_url: None,
-            namespace: "stream-flow".to_string(),
+            namespace: "ZippyPanther".to_string(),
             default_ttl_secs: 300,
         }
     }
@@ -448,7 +448,7 @@ pub struct DbConfig {
 impl Default for DbConfig {
     fn default() -> Self {
         Self {
-            path: "stream-flow.db".to_string(),
+            path: "ZippyPanther.db".to_string(),
             busy_timeout_secs: 5,
             max_connections: 5,
         }
@@ -937,7 +937,7 @@ mod tests {
 
         // A representative streaming sub-config default.
         assert_eq!(config.hls.prebuffer_segments, 5);
-        assert_eq!(config.cache.namespace, "stream-flow");
+        assert_eq!(config.cache.namespace, "ZippyPanther");
     }
 
     // -- Req 31.7: missing required value aborts naming the value -----------

@@ -5,7 +5,7 @@
 //! Proxy Link / Token Formats, "stremthru style: signed/unencrypted token").
 //! It is the format produced when the `/v0/proxy` request carries a present
 //! `token` query parameter (Req 21.2) and is accepted alongside the mediaflow
-//! AES-CBC `d` parameter so an operator can drop `stream-flow` in for either
+//! AES-CBC `d` parameter so an operator can drop `ZippyPanther` in for either
 //! upstream project (Req 36.7).
 //!
 //! # Framing
@@ -164,7 +164,7 @@ mod tests {
     fn payload() -> ProxyPayload {
         let mut p = ProxyPayload::new("https://cdn.example.com/movie.mkv");
         p.headers
-            .insert("User-Agent".to_string(), "stream-flow/1.0".to_string());
+            .insert("User-Agent".to_string(), "ZippyPanther/1.0".to_string());
         p.filename = Some("movie.mkv".to_string());
         p.exp = Some(1_900_000_000);
         p.ip = Some(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)));

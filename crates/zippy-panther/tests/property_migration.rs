@@ -1,7 +1,7 @@
 //! Property-based test for the startup migration runner's idempotence and
 //! ordering (task 5.5).
 //!
-//! Feature: stream-flow, Property 32
+//! Feature: ZippyPanther, Property 32
 //!
 //! **Property 32: Migration idempotence and ordering**
 //!
@@ -13,8 +13,8 @@
 //! **Validates: Requirements 29.2, 29.3**
 //!
 //! The migrator under test is the compile-time-embedded set driven by
-//! [`stream_flow::persistence::run_migrations`] over a real [`SqlitePool`]
-//! built by [`stream_flow::persistence::build_pool`] (design: Database ->
+//! [`zippy_panther::persistence::run_migrations`] over a real [`SqlitePool`]
+//! built by [`zippy_panther::persistence::build_pool`] (design: Database ->
 //! Migration mechanism). `sqlx`'s `Migrator::run` records every applied
 //! migration's version + checksum in its `_sqlx_migrations` bookkeeping table,
 //! so an already-applied migration is skipped and never re-run (Req 29.3), and
@@ -61,8 +61,8 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use sqlx::SqlitePool;
 
-use stream_flow::config::DbConfig;
-use stream_flow::persistence::{build_pool, run_migrations};
+use zippy_panther::config::DbConfig;
+use zippy_panther::persistence::{build_pool, run_migrations};
 
 /// The schema tables the design's Database -> Schema section mandates for the
 /// initial migration. Used to prove the migrator actually built the schema
@@ -140,7 +140,7 @@ proptest! {
     // count is kept modest while staying well above the floor.
     #![proptest_config(ProptestConfig::with_cases(128))]
 
-    /// Feature: stream-flow, Property 32 — applying the migrator any number of
+    /// Feature: ZippyPanther, Property 32 — applying the migrator any number of
     /// times yields the same final schema as applying it once (already-applied
     /// migrations are skipped), and the recorded applied-version set increases
     /// monotonically by version. **Validates: Requirements 29.2, 29.3**

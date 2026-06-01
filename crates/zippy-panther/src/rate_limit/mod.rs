@@ -725,7 +725,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // Property 40: Token-bucket rate limiting (Req 40.1, 40.2, 40.3, 40.4)
     // -----------------------------------------------------------------------
-    // Feature: stream-flow, Property 40: Token-bucket rate limiting
+    // Feature: ZippyPanther, Property 40: Token-bucket rate limiting
     // Validates: Requirements 40.1, 40.2, 40.3, 40.4
 
     use proptest::prelude::*;

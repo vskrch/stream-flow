@@ -1,7 +1,7 @@
 //! Property-based test for EPG/Xtream upstream URL base64-or-plain decoding
-//! (`stream_flow::epg::decode_upstream_url`, task 18.8).
+//! (`zippy_panther::epg::decode_upstream_url`, task 18.8).
 //!
-//! Feature: stream-flow, Property 49
+//! Feature: ZippyPanther, Property 49
 //!
 //! **Property 49: EPG/Xtream upstream URL base64-or-plain decoding**
 //!
@@ -18,7 +18,7 @@
 //!
 //! Each case generates an arbitrary, canonical `http`/`https` [`Url`] and
 //! asserts both halves of Property 49 against
-//! [`decode_upstream_url`](stream_flow::epg::decode_upstream_url):
+//! [`decode_upstream_url`](zippy_panther::epg::decode_upstream_url):
 //!
 //! * **Round trip (Req 8.6):** the plain canonical URL string decodes back to
 //!   the same URL (used directly), and encoding that same string in *every*
@@ -37,8 +37,8 @@
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine as _;
 use proptest::prelude::*;
-use stream_flow::epg::decode_upstream_url;
 use url::Url;
+use zippy_panther::epg::decode_upstream_url;
 
 /// Arbitrary URL scheme — the decoder accepts only `http`/`https`.
 fn arb_scheme() -> impl Strategy<Value = &'static str> {
@@ -102,7 +102,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 49 — a plain URL is used directly and
+    /// Feature: ZippyPanther, Property 49 — a plain URL is used directly and
     /// every base64 alphabet of that URL decodes to the identical URL before
     /// fetching. **Validates: Requirements 8.6**
     #[test]
@@ -141,7 +141,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 49 — the plain and base64 forms are
+    /// Feature: ZippyPanther, Property 49 — the plain and base64 forms are
     /// disjoint (a plain URL carries `:`, a base64 string never does) so the
     /// two forms can never be confused, yet both recover the identical URL.
     /// **Validates: Requirements 8.6**

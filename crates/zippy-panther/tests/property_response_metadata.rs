@@ -1,7 +1,7 @@
 //! Property-based test for Byte_Serving response-metadata correctness
 //! (task 13.5).
 //!
-//! Feature: stream-flow, Property 3
+//! Feature: ZippyPanther, Property 3
 //!
 //! **Property 3: Response metadata correctness (HEAD==GET, headers, videoSize)**
 //!
@@ -28,7 +28,7 @@
 //! ## What this property exercises
 //!
 //! The header-bearing fields are computed by the pure
-//! [`stream_flow::proxy::compute_response_metadata`] (task 13.1): given a
+//! [`zippy_panther::proxy::compute_response_metadata`] (task 13.1): given a
 //! [`RangeSpec`], an optionally-known total size, and the `is_head` flag, it
 //! resolves the `200`/`206`/`416` status, `Content-Range`, `Content-Length`,
 //! and `Accept-Ranges` a Byte_Serving response carries. The function is the
@@ -61,7 +61,7 @@
 
 use proptest::prelude::*;
 
-use stream_flow::proxy::{compute_response_metadata, ContentRange, RangeSpec, Unsatisfiable};
+use zippy_panther::proxy::{compute_response_metadata, ContentRange, RangeSpec, Unsatisfiable};
 
 /// The slice of a Byte_Serving response a Stremio client actually observes,
 /// assembled from the production [`compute_response_metadata`] header fields
@@ -165,7 +165,7 @@ proptest! {
     // 256 cases > the 100-iteration floor for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 3 — response metadata correctness
+    /// Feature: ZippyPanther, Property 3 — response metadata correctness
     /// (HEAD==GET, headers, videoSize). **Validates: Requirements 37.8, 37.12,
     /// 37.13, 37.14**
     #[test]

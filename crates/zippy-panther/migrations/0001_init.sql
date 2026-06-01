@@ -1,4 +1,4 @@
--- stream-flow initial schema (migration 0001_init) — Req 29.2, design: Database -> Schema.
+-- ZippyPanther initial schema (migration 0001_init) — Req 29.2, design: Database -> Schema.
 --
 -- Embedded SQLite only (no external DB server — Req 29.1). This migration is
 -- embedded into the binary at compile time via `sqlx::migrate!()` and applied

@@ -1,6 +1,6 @@
 //! Proxy-link / token codecs (`proxylink`) — Req 14.5, 14.6, 14.7, 21.2, 36.7.
 //!
-//! `stream-flow` both **produces and accepts two on-the-wire proxy-link
+//! `ZippyPanther` both **produces and accepts two on-the-wire proxy-link
 //! formats** so it is a drop-in replacement for either upstream project
 //! (design: Data Models → Proxy Link / Token Formats):
 //!

@@ -1,6 +1,6 @@
 //! Property-based test for bulkhead isolation between dependencies (task 6.9).
 //!
-//! Feature: stream-flow, Property 59
+//! Feature: ZippyPanther, Property 59
 //!
 //! **Property 59: Bulkhead isolation between dependencies**
 //!
@@ -15,7 +15,7 @@
 //! **Validates: Requirements 35.3, 20.3, 50.9**
 //!
 //! The component under test is
-//! [`stream_flow::resilience::bulkhead::Bulkhead`] (task 6.4) — one bounded
+//! [`zippy_panther::resilience::bulkhead::Bulkhead`] (task 6.4) — one bounded
 //! [`tokio::sync::Semaphore`]-backed concurrency pool per upstream dependency.
 //! The pools are deterministic and `acquire` is non-blocking (it fails fast
 //! with an [`AppError`] when saturated rather than parking the caller), so the
@@ -43,8 +43,8 @@
 
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::resilience::bulkhead::{Bulkhead, BulkheadKey};
 use tokio::sync::OwnedSemaphorePermit;
+use zippy_panther::resilience::bulkhead::{Bulkhead, BulkheadKey};
 
 /// An interleaving of acquire/release operations over a set of pools.
 #[derive(Clone, Debug)]
@@ -163,7 +163,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 59 — bulkhead isolation between
+    /// Feature: ZippyPanther, Property 59 — bulkhead isolation between
     /// dependencies. **Validates: Requirements 35.3, 20.3, 50.9**
     #[test]
     fn bulkhead_isolation_between_dependencies(scenario in arb_scenario()) {

@@ -1,4 +1,4 @@
-//! Rust client SDK for `stream-flow`.
+//! Rust client SDK for `ZippyPanther`.
 //!
 //! The SDK is intentionally HTTP-first: it does not embed server internals or
 //! duplicate routing logic. It provides typed helpers for the production
@@ -21,7 +21,7 @@ pub enum SdkError {
     },
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("stream-flow returned HTTP {status}: {body}")]
+    #[error("ZippyPanther returned HTTP {status}: {body}")]
     Status {
         status: reqwest::StatusCode,
         body: String,
@@ -31,7 +31,7 @@ pub enum SdkError {
 pub type Result<T> = std::result::Result<T, SdkError>;
 
 #[derive(Clone, Debug)]
-pub struct StreamFlowClient {
+pub struct ZippyPantherClient {
     base_url: Url,
     client: reqwest::Client,
     api_password: Option<String>,
@@ -59,7 +59,7 @@ pub struct ProxyUrlResponse {
     pub url: String,
 }
 
-impl StreamFlowClient {
+impl ZippyPantherClient {
     pub fn new(base_url: impl AsRef<str>) -> Result<Self> {
         let mut base_url = Url::parse(base_url.as_ref().trim_end_matches('/'))?;
         if !base_url.path().ends_with('/') {
@@ -333,7 +333,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = StreamFlowClient::new(server.uri())
+        let client = ZippyPantherClient::new(server.uri())
             .unwrap()
             .with_api_password("secret");
         assert_eq!(client.health().await.unwrap()["status"], "ok");
@@ -354,7 +354,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = StreamFlowClient::new(server.uri())
+        let client = ZippyPantherClient::new(server.uri())
             .unwrap()
             .with_proxy_auth("Basic abc");
         let result = client
@@ -376,7 +376,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = StreamFlowClient::new(server.uri()).unwrap();
+        let client = ZippyPantherClient::new(server.uri()).unwrap();
         assert_eq!(
             client.list_magnets("rd", Some(25), Some(5)).await.unwrap()["items"],
             json!([])
@@ -385,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn stremio_manifest_urls_are_built_from_base() {
-        let client = StreamFlowClient::new("https://flow.example/root").unwrap();
+        let client = ZippyPantherClient::new("https://flow.example/root").unwrap();
         assert_eq!(
             client.store_addon_manifest_url("tb").unwrap().as_str(),
             "https://flow.example/root/stremio/store/tb/manifest.json"
@@ -405,7 +405,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = StreamFlowClient::new(server.uri()).unwrap();
+        let client = ZippyPantherClient::new(server.uri()).unwrap();
         let err = client.health().await.unwrap_err();
         assert!(matches!(err, SdkError::Status { body, .. } if body == "unavailable"));
     }

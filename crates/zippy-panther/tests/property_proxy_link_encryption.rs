@@ -1,7 +1,7 @@
 //! Property-based test for the dual-format proxy-link codec
 //! (`proxylink::ProxyCodec`, task 20.4).
 //!
-//! Feature: stream-flow, Property 8
+//! Feature: ZippyPanther, Property 8
 //!
 //! **Property 8: Proxy-link encryption round trip for both token formats, with
 //! expiry/IP rejection**
@@ -51,9 +51,9 @@ use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use proptest::prelude::*;
-use stream_flow::auth::encryption::ProxyPayload;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::proxylink::{ProxyCodec, ProxyLink};
+use zippy_panther::auth::encryption::ProxyPayload;
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::proxylink::{ProxyCodec, ProxyLink};
 
 /// Fixed key material — the property holds for any single codec instance that
 /// holds both formats' keys (Req 36.7).
@@ -118,7 +118,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 8 — encode → decode recovers the payload
+    /// Feature: ZippyPanther, Property 8 — encode → decode recovers the payload
     /// exactly through BOTH the mediaflow AES-CBC `d` form and the stremthru
     /// signed `token` form, and a valid (non-expired, IP-matching) link
     /// resolves back to exactly the payload. **Validates: Requirements 14.1,
@@ -166,7 +166,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 8 — a payload whose embedded `exp` is in
+    /// Feature: ZippyPanther, Property 8 — a payload whose embedded `exp` is in
     /// the past is rejected with `403 Forbidden` on resolve, in both formats.
     /// **Validates: Requirements 14.5, 14.4**
     #[test]
@@ -198,7 +198,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 8 — a payload bound to an IP that differs
+    /// Feature: ZippyPanther, Property 8 — a payload bound to an IP that differs
     /// from the requester's `Client_IP` is rejected with `403 Forbidden`
     /// flagged `ip_restricted`, in both formats.
     /// **Validates: Requirements 14.6, 14.4**

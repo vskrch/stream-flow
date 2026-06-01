@@ -332,7 +332,7 @@ pub struct ReleaseInfo {
 /// # Examples
 ///
 /// ```
-/// use stream_flow::quality::{parse_release_name, Resolution, VideoCodec, AudioCodec};
+/// use zippy_panther::quality::{parse_release_name, Resolution, VideoCodec, AudioCodec};
 ///
 /// let info = parse_release_name("Movie.2023.1080p.BluRay.x265.DTS-GROUP");
 /// assert_eq!(info.resolution, Some(Resolution::R1080p));

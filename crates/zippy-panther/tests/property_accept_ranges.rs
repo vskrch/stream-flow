@@ -2,7 +2,7 @@
 //! response-metadata computation (`proxy::range::compute_response_metadata` —
 //! task 13.1). Exercises task 13.6.
 //!
-//! Feature: stream-flow, Property 4
+//! Feature: ZippyPanther, Property 4
 //!
 //! **Property 4: Accept-Ranges advertised whenever size is known**
 //!
@@ -61,7 +61,7 @@
 //! size is known.
 
 use proptest::prelude::*;
-use stream_flow::proxy::{compute_response_metadata, RangeSpec};
+use zippy_panther::proxy::{compute_response_metadata, RangeSpec};
 
 /// A byte position / length generator kept within a wide but overflow-safe
 /// range. Includes `0` and values both below and above typical sizes so the
@@ -106,7 +106,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 4 — `Accept-Ranges: bytes` is advertised
+    /// Feature: ZippyPanther, Property 4 — `Accept-Ranges: bytes` is advertised
     /// exactly when the total size is known, independent of the range spec, the
     /// request method (`HEAD`/`GET`), and whether the upstream advertised it.
     ///

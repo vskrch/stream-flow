@@ -1,7 +1,7 @@
 //! Property-based test for store error mapping totality and taxonomy
 //! membership (`store::error::map_store_error`, task 22.5).
 //!
-//! Feature: stream-flow, Property 20
+//! Feature: ZippyPanther, Property 20
 //!
 //! **Property 20: Store error mapping is total and within the taxonomy**
 //!
@@ -26,8 +26,8 @@
 //!   originating store.
 
 use proptest::prelude::*;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::store::{map_store_error, StoreName};
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::store::{map_store_error, StoreName};
 
 /// Strategy producing any of the nine `StoreName` variants uniformly.
 fn arb_store_name() -> impl Strategy<Value = StoreName> {
@@ -103,7 +103,7 @@ proptest! {
     // >= 100 iterations as required by the spec; use 256 for good coverage.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 20 — store error mapping is total and
+    /// Feature: ZippyPanther, Property 20 — store error mapping is total and
     /// within the taxonomy. **Validates: Requirements 16.8, 16.9, 16.10**
     #[test]
     fn store_error_mapping_is_total_and_within_taxonomy(

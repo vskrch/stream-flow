@@ -198,7 +198,7 @@ mod tests {
     fn full_payload() -> ProxyPayload {
         let mut headers = BTreeMap::new();
         headers.insert("Referer".to_string(), "https://example.com/".to_string());
-        headers.insert("User-Agent".to_string(), "stream-flow/1.0".to_string());
+        headers.insert("User-Agent".to_string(), "ZippyPanther/1.0".to_string());
         ProxyPayload {
             url: "https://cdn.example.com/movie.mkv".to_string(),
             headers,

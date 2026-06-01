@@ -77,7 +77,7 @@ impl ExtraParams {
 /// A resolved direct media URL plus the request headers required to play it
 /// (Req 12.2).
 ///
-/// The handler wraps this into a `stream-flow` proxy URL with the headers
+/// The handler wraps this into a `ZippyPanther` proxy URL with the headers
 /// attached (Req 12.3); that wrapping lives in the HTTP edge, not here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractorResult {

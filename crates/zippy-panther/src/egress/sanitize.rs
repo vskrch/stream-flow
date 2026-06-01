@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn preserves_non_identifying_headers() {
         let inbound = map_of(&[
-            ("User-Agent", "stream-flow/1.0"),
+            ("User-Agent", "ZippyPanther/1.0"),
             ("Range", "bytes=0-1023"),
             ("Accept", "*/*"),
             ("X-Forwarded-For", "1.2.3.4"),
@@ -197,7 +197,7 @@ mod tests {
 
         assert_eq!(
             out.get("user-agent").map(|v| v.to_str().unwrap()),
-            Some("stream-flow/1.0")
+            Some("ZippyPanther/1.0")
         );
         assert_eq!(
             out.get("range").map(|v| v.to_str().unwrap()),
@@ -229,7 +229,7 @@ mod tests {
         let client_ip: IpAddr = "203.0.113.7".parse().unwrap();
         let inbound = map_of(&[
             ("X-Originating-IP", "203.0.113.7"),
-            ("User-Agent", "stream-flow/1.0"),
+            ("User-Agent", "ZippyPanther/1.0"),
         ]);
 
         let out = sanitize_outbound(&inbound, Some(client_ip));

@@ -1,7 +1,7 @@
 //! Property-based test for the `StoreName` ↔ `StoreCode` bijection
 //! (task 22.4).
 //!
-//! Feature: stream-flow, Property 19
+//! Feature: ZippyPanther, Property 19
 //!
 //! **Property 19: Store name/code bijection**
 //!
@@ -27,7 +27,7 @@
 //! `StoreCode` and vice versa, and the `ALL` arrays cover exactly 9 entries.
 
 use proptest::prelude::*;
-use stream_flow::store::{StoreCode, StoreName};
+use zippy_panther::store::{StoreCode, StoreName};
 
 /// Strategy that produces an arbitrary `StoreName` (uniform over all 9).
 fn arb_store_name() -> impl Strategy<Value = StoreName> {
@@ -43,7 +43,7 @@ proptest! {
     // >= 100 iterations as required by the spec.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 19 — name → code → name is the identity.
+    /// Feature: ZippyPanther, Property 19 — name → code → name is the identity.
     /// **Validates: Requirements 16.3, 16.6**
     #[test]
     fn name_to_code_to_name_is_identity(name in arb_store_name()) {
@@ -56,7 +56,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 19 — code → name → code is the identity.
+    /// Feature: ZippyPanther, Property 19 — code → name → code is the identity.
     /// **Validates: Requirements 16.3, 16.6**
     #[test]
     fn code_to_name_to_code_is_identity(code in arb_store_code()) {
@@ -69,7 +69,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 19 — the bijection is total: every name
+    /// Feature: ZippyPanther, Property 19 — the bijection is total: every name
     /// maps to a code and every code maps to a name (no panics, no partial
     /// functions). **Validates: Requirements 16.3, 16.6**
     #[test]

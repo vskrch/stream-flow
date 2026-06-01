@@ -1,7 +1,7 @@
 //! Property-based test: ID-map omits unknown namespaces
 //! (task 24.10, Property 25).
 //!
-//! Feature: stream-flow, Property 25
+//! Feature: ZippyPanther, Property 25
 //!
 //! **Property 25: ID-map omits unknown namespaces**
 //!
@@ -37,7 +37,7 @@
 //! false positive.
 
 use proptest::prelude::*;
-use stream_flow::meta::IdMapResponse;
+use zippy_panther::meta::IdMapResponse;
 
 /// The four supported ID namespaces (Req 22.1) — the complete key universe.
 const NAMESPACES: &[&str] = &["imdb", "tmdb", "tvdb", "trakt"];
@@ -88,7 +88,7 @@ fn arb_id_map_response() -> impl Strategy<Value = IdMapResponse> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 25 — ID-map omits unknown namespaces.
+    /// Feature: ZippyPanther, Property 25 — ID-map omits unknown namespaces.
     /// **Validates: Requirements 22.1, 22.3**
     ///
     /// For an arbitrary partial id-map record, the serialized JSON object
@@ -161,7 +161,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 25 — present values are preserved verbatim
+    /// Feature: ZippyPanther, Property 25 — present values are preserved verbatim
     /// and the JSON round-trips back to the same record.
     /// **Validates: Requirements 22.1, 22.3**
     ///

@@ -1,7 +1,7 @@
 //! Property-based test for the hedged / speculative-request combinator
 //! (task 6.11).
 //!
-//! Feature: stream-flow, Property 58
+//! Feature: ZippyPanther, Property 58
 //!
 //! **Property 58: Hedged requests take first success, cancel the rest, and
 //! never hedge the same store**
@@ -18,7 +18,7 @@
 //!
 //! **Validates: Requirements 37.1, 37.7, 20.2, 50.9**
 //!
-//! The combinator under test is [`stream_flow::resilience::hedge::hedged`]
+//! The combinator under test is [`zippy_panther::resilience::hedge::hedged`]
 //! (design: Resilience → Pattern 4). Candidate identity is a generic key (the
 //! "never two concurrent attempts on the same store" unit), eligibility is a
 //! caller-supplied flag (the not-in-cooldown / breaker-not-`Open` predicate),
@@ -69,8 +69,8 @@ use std::time::Duration;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
-use stream_flow::errors::{AppError, ErrorCategory};
-use stream_flow::resilience::hedge::{hedged, Candidate, CandidateId, HedgeConfig};
+use zippy_panther::errors::{AppError, ErrorCategory};
+use zippy_panther::resilience::hedge::{hedged, Candidate, CandidateId, HedgeConfig};
 
 /// The concurrency cap the combinator actually applies, mirroring its internal
 /// rule: `max(1, max_in_flight)` when enabled, otherwise `1` (a disabled or
@@ -279,7 +279,7 @@ proptest! {
     // >= 100 cases required for a property task.
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 58 — hedged requests take the first
+    /// Feature: ZippyPanther, Property 58 — hedged requests take the first
     /// success, cancel the rest, cap concurrency, and never hedge the same
     /// store. **Validates: Requirements 37.1, 37.7, 20.2, 50.9**
     #[test]

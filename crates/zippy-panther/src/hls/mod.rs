@@ -1,12 +1,12 @@
 //! HLS manifest & segment proxying (`hls`) — Req 1.
 //!
 //! The HLS module proxies `M3U8_Manifest`s and their derived segments/keys so
-//! all playback traffic flows back through `stream-flow` with consistent auth,
+//! all playback traffic flows back through `ZippyPanther` with consistent auth,
 //! headers, and egress isolation (design: Components → HLS). It has two halves:
 //!
 //! * [`rewrite`] — the pure parse + full-rewrite core. [`HlsRewriter`] parses a
 //!   master or media manifest with [`m3u8_rs`] and rewrites **every** variant,
-//!   segment, `#EXT-X-KEY`, and `#EXT-X-MAP` URL to a `stream-flow` proxy URL,
+//!   segment, `#EXT-X-KEY`, and `#EXT-X-MAP` URL to a `ZippyPanther` proxy URL,
 //!   resolving relative URIs against the manifest base first (Req 1.1–1.4) and
 //!   returning a descriptive parse error for an unparseable body (Req 1.8).
 //! * [`fetch`] — the I/O half. [`HlsClient`] fetches the upstream manifest body

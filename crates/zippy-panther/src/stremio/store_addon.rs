@@ -12,7 +12,7 @@
 //! * a **search** catalog whose entries are the explore entries filtered to
 //!   those whose title matches the query
 //!   ([`search_catalog`](StoreAddon::search_catalog), Req 23.3);
-//! * a **stream** resource whose every [`Stream`] URL is a `stream-flow`
+//! * a **stream** resource whose every [`Stream`] URL is a `ZippyPanther`
 //!   **proxy link** (never a bare upstream/store URL), so playback always flows
 //!   through the [`Streaming_Proxy_Engine`](crate::proxy)
 //!   ([`streams`](StoreAddon::streams), Req 23.4; Property 26).
@@ -122,7 +122,7 @@ impl StoreAddon {
 
     /// The addon's catalog id (stable per store).
     pub fn catalog_id(&self) -> String {
-        format!("streamflow-store-{}", self.store_name.code().as_str())
+        format!("zippypanther-store-{}", self.store_name.code().as_str())
     }
 
     /// The addon [`Manifest`], declaring the **catalog and stream** resources
@@ -149,7 +149,7 @@ impl StoreAddon {
         let catalogs = vec![Catalog {
             r#type: STORE_CONTENT_TYPE.to_string(),
             id: self.catalog_id(),
-            name: format!("StreamFlow Store · {}", self.store_name),
+            name: format!("ZippyPanther Store · {}", self.store_name),
             extra: vec![
                 CatalogExtra {
                     name: "search".to_string(),
@@ -164,10 +164,10 @@ impl StoreAddon {
         }];
 
         Manifest {
-            id: format!("st.streamflow.store.{}", self.store_name.as_str()),
-            name: format!("StreamFlow Store: {}", self.store_name),
+            id: format!("st.zippypanther.store.{}", self.store_name.as_str()),
+            name: format!("ZippyPanther Store: {}", self.store_name),
             description: format!(
-                "Browse and search the contents of your {} debrid store, streamed through StreamFlow.",
+                "Browse and search the contents of your {} debrid store, streamed through ZippyPanther.",
                 self.store_name
             ),
             version: ADDON_VERSION.to_string(),
@@ -245,7 +245,7 @@ impl StoreAddon {
     /// `id` is a catalog item id minted by this addon
     /// ([`item_prefix`](StoreAddon::item_prefix) + magnet id). The addon fetches
     /// that magnet's files from the store and returns one [`Stream`] per
-    /// playable file, **each with a `stream-flow` proxy-link URL** wrapping the
+    /// playable file, **each with a `ZippyPanther` proxy-link URL** wrapping the
     /// file's store link — so the bytes are delivered by the
     /// [`Streaming_Proxy_Engine`](crate::proxy), never fetched directly by the
     /// client (Req 23.4; Property 26). The file name and (when known) size are
@@ -355,7 +355,7 @@ impl StoreAddon {
 
         Ok(Stream {
             url: Some(url),
-            name: Some(format!("StreamFlow · {}", self.store_name)),
+            name: Some(format!("ZippyPanther · {}", self.store_name)),
             description: Some(file.name.clone()),
             // Only carry a genuine file index (the `-1` sentinel is "unknown").
             file_index: (file.index >= 0).then_some(file.index),
@@ -721,7 +721,7 @@ mod tests {
         let s0 = &resp.streams[0];
         let url = s0.url.as_deref().expect("stream carries a URL");
 
-        // The URL is a stream-flow proxy link rooted at the proxy base, never
+        // The URL is a ZippyPanther proxy link rooted at the proxy base, never
         // the bare upstream/store URL (Req 23.4; Property 26).
         assert!(url.starts_with(&format!("{BASE_URL}/v0/proxy/stream?")));
         assert!(url.contains("token="));
@@ -898,7 +898,7 @@ pub mod handlers {
         pub store_code: String,
         /// Stremio content type (e.g. `other`).
         pub r#type: String,
-        /// Catalog id (e.g. `streamflow-store-rd`).
+        /// Catalog id (e.g. `zippypanther-store-rd`).
         pub id: String,
     }
 
@@ -1166,7 +1166,7 @@ pub mod handlers {
             assert_eq!(resp.status(), 200);
 
             let body: serde_json::Value = actix_test::read_body_json(resp).await;
-            assert_eq!(body["id"], "st.streamflow.store.realdebrid");
+            assert_eq!(body["id"], "st.zippypanther.store.realdebrid");
             assert!(!body["name"].as_str().unwrap_or("").is_empty());
             assert!(!body["version"].as_str().unwrap_or("").is_empty());
             // Manifest declares catalog and stream resources (Req 23.1).
@@ -1215,7 +1215,7 @@ pub mod handlers {
             .await;
 
             let req = actix_test::TestRequest::get()
-                .uri("/stremio/store/rd/catalog/other/streamflow-store-rd.json")
+                .uri("/stremio/store/rd/catalog/other/zippypanther-store-rd.json")
                 .to_request();
             let resp = actix_test::call_service(&app, req).await;
             // Stremio errors are returned as HTTP 200 with an `err` field.
@@ -1304,7 +1304,7 @@ pub mod handlers {
             .await;
 
             let req = actix_test::TestRequest::get()
-                .uri("/stremio/store/rd/catalog/other/streamflow-store-rd.json?search=matrix")
+                .uri("/stremio/store/rd/catalog/other/zippypanther-store-rd.json?search=matrix")
                 .to_request();
             let resp = actix_test::call_service(&app, req).await;
             // Route accepted the request (200 with Stremio error body).

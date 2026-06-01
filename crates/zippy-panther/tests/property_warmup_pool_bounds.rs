@@ -1,7 +1,7 @@
 //! Property-based test for the warmup-pool size bound and LRU eviction
 //! (task 29.5).
 //!
-//! Feature: stream-flow, Property 43
+//! Feature: ZippyPanther, Property 43
 //!
 //! **Property 43: Warmup pool bounds**
 //!
@@ -37,8 +37,8 @@ use std::collections::{HashMap, HashSet};
 
 use proptest::prelude::*;
 
-use stream_flow::config::WarmupConfig;
-use stream_flow::warmup::{StoreCost, WarmupKey, WarmupPool};
+use zippy_panther::config::WarmupConfig;
+use zippy_panther::warmup::{StoreCost, WarmupKey, WarmupPool};
 
 // ---------------------------------------------------------------------------
 // LRU oracle (independent textbook implementation)
@@ -158,7 +158,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 43 (pool-size bound and LRU eviction) —
+    /// Feature: ZippyPanther, Property 43 (pool-size bound and LRU eviction) —
     /// for any interleaving of `upsert_link` / `record_access` / `get` over a
     /// key universe strictly larger than `pool_size`, the pool never holds more
     /// than `pool_size` entries, and the surviving entries are exactly the
@@ -236,7 +236,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 43 (per-store refresh rate) —
+    /// Feature: ZippyPanther, Property 43 (per-store refresh rate) —
     /// for any sequence of `can_refresh_store` / `record_refresh` calls against
     /// a rate limit of 2 per 60-second window, the number of in-window recorded
     /// refreshes never exceeds the limit, and `can_refresh_store` returns `false`

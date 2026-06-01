@@ -1,6 +1,6 @@
 //! Property-based test for the canonical error taxonomy (task 2.3).
 //!
-//! Feature: stream-flow, Property 47
+//! Feature: ZippyPanther, Property 47
 //!
 //! **Property 47: Errors are typed, consistent, and total on malformed input**
 //!
@@ -13,10 +13,10 @@
 //!
 //! **Validates: Requirements 47.1, 47.2, 47.6, 47.7**
 //!
-//! All fallible parse/decrypt/validate boundaries in `stream-flow` converge on
+//! All fallible parse/decrypt/validate boundaries in `ZippyPanther` converge on
 //! exactly one error type ([`AppError`]) carrying exactly one canonical
 //! category enum ([`ErrorCategory`]) and serialize through exactly one body
-//! ([`stream_flow::errors::ErrorResponse`]). This property exhaustively
+//! ([`zippy_panther::errors::ErrorResponse`]). This property exhaustively
 //! exercises that taxonomy across the full space of categories, adversarial /
 //! malformed message content, arbitrary (even out-of-range) upstream status
 //! codes, and every marker combination, asserting the four invariants the
@@ -41,7 +41,7 @@
 use std::time::Duration;
 
 use proptest::prelude::*;
-use stream_flow::errors::{AppError, ErrorCategory};
+use zippy_panther::errors::{AppError, ErrorCategory};
 
 /// Generates every [`ErrorCategory`] variant with equal weight so the property
 /// covers the full classification space (Req 47.1).
@@ -112,7 +112,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 47 — errors are typed, consistent, and
+    /// Feature: ZippyPanther, Property 47 — errors are typed, consistent, and
     /// total on malformed input. **Validates: Requirements 47.1, 47.2, 47.6,
     /// 47.7**
     #[test]
@@ -204,7 +204,7 @@ proptest! {
         // -- Consistency: the envelope round-trips through JSON unchanged ----
         let serialized = serde_json::to_string(&resp)
             .expect("ErrorResponse must always serialize to a string");
-        let decoded: stream_flow::errors::ErrorResponse =
+        let decoded: zippy_panther::errors::ErrorResponse =
             serde_json::from_str(&serialized)
                 .expect("serialized ErrorResponse must round-trip");
         prop_assert_eq!(decoded, resp);

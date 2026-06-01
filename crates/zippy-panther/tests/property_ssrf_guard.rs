@@ -1,7 +1,7 @@
 //! Property-based test for the SSRF guard predicate
 //! (`security::guard_resolved_ip` / `security::is_disallowed_range`, task 12.4).
 //!
-//! Feature: stream-flow, Property 44
+//! Feature: ZippyPanther, Property 44
 //!
 //! **Property 44: SSRF guard predicate**
 //!
@@ -44,9 +44,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use proptest::prelude::*;
-use stream_flow::config::SecurityConfig;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::security::{guard_resolved_ip, is_disallowed_range};
+use zippy_panther::config::SecurityConfig;
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::security::{guard_resolved_ip, is_disallowed_range};
 
 // ---------------------------------------------------------------------------
 // Independent oracle (a separate re-implementation of the precedence rules)
@@ -340,7 +340,7 @@ proptest! {
     // 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 44 — SSRF guard predicate.
+    /// Feature: ZippyPanther, Property 44 — SSRF guard predicate.
     /// **Validates: Requirements 46.1, 46.2, 46.3**
     #[test]
     fn ssrf_guard_predicate_matches_oracle(case in arb_case()) {

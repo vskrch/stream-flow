@@ -1,7 +1,7 @@
 //! Property-based test for the `sid` acceptance/ignore predicate
 //! (task 24.7, Property 23).
 //!
-//! Feature: stream-flow, Property 23
+//! Feature: ZippyPanther, Property 23
 //!
 //! **Property 23: sid acceptance/ignore predicate**
 //!
@@ -17,7 +17,7 @@
 //! rather than rejected.
 //!
 //! The implementation under test is the public predicate
-//! [`stream_flow::store::endpoints::validate_sid`].
+//! [`zippy_panther::store::endpoints::validate_sid`].
 //!
 //! ## How the invariant is exercised
 //!
@@ -32,7 +32,7 @@
 //!    contract with a deliberately different implementation strategy.
 
 use proptest::prelude::*;
-use stream_flow::store::endpoints::validate_sid;
+use zippy_panther::store::endpoints::validate_sid;
 
 // ---------------------------------------------------------------------------
 // Independent oracle
@@ -139,7 +139,7 @@ proptest! {
     // proptest's default is 256 cases (>= 100 required for a property task).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 23 — well-formed sids are retained verbatim.
+    /// Feature: ZippyPanther, Property 23 — well-formed sids are retained verbatim.
     /// **Validates: Requirements 17.13**
     ///
     /// Any `tt<digits>[:season:episode]` value (no surrounding whitespace) is
@@ -162,7 +162,7 @@ proptest! {
         );
     }
 
-    /// Feature: stream-flow, Property 23 — arbitrary sids are ignored, never rejected.
+    /// Feature: ZippyPanther, Property 23 — arbitrary sids are ignored, never rejected.
     /// **Validates: Requirements 17.13**
     ///
     /// For any string the function is total (never panics) and its result
@@ -193,7 +193,7 @@ proptest! {
         }
     }
 
-    /// Feature: stream-flow, Property 23 — boundary near-misses match the oracle.
+    /// Feature: ZippyPanther, Property 23 — boundary near-misses match the oracle.
     /// **Validates: Requirements 17.13**
     ///
     /// Strings that crowd the acceptance boundary (missing prefix, missing

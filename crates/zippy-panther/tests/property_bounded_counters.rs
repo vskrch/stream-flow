@@ -1,7 +1,7 @@
 //! Property-based test for the bounded-counter invariants that back the
 //! per-host, per-store, and per-user concurrency limits (task 6.10).
 //!
-//! Feature: stream-flow, Property 6
+//! Feature: ZippyPanther, Property 6
 //!
 //! **Property 6: Bounded-counter invariants (per-host, per-store, per-user)**
 //!
@@ -16,7 +16,7 @@
 //! ## What is under test
 //!
 //! All three bounded counters named by the property are realized by the same
-//! primitive: a [`stream_flow::resilience::bulkhead::Bulkhead`] semaphore pool
+//! primitive: a [`zippy_panther::resilience::bulkhead::Bulkhead`] semaphore pool
 //! (design: Resilience → Pattern 3). The pool's `max_permits` is the bound;
 //! [`Bulkhead::acquire`] hands back an RAII [`OwnedSemaphorePermit`] whose drop
 //! returns the slot. This single primitive maps onto the three scopes the
@@ -61,9 +61,9 @@
 
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use stream_flow::errors::ErrorCategory;
-use stream_flow::resilience::bulkhead::{Bulkhead, BulkheadKey};
 use tokio::sync::OwnedSemaphorePermit;
+use zippy_panther::errors::ErrorCategory;
+use zippy_panther::resilience::bulkhead::{Bulkhead, BulkheadKey};
 
 /// The three bounded-counter scopes the property enumerates. Each is a
 /// distinct [`Bulkhead`] pool; the variants only select *which* pool an
@@ -137,7 +137,7 @@ proptest! {
     // bounds (including the degenerate max == 0 pool).
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// Feature: stream-flow, Property 6 — bounded-counter invariants
+    /// Feature: ZippyPanther, Property 6 — bounded-counter invariants
     /// (per-host, per-store, per-user).
     /// **Validates: Requirements 35.3, 20.3, 19.4, 19.5**
     #[test]
